@@ -1,11 +1,28 @@
 using System.Text.Json.Serialization;
 using PuppyFinder.Api.Data;
+using PuppyFinder.Api.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddOpenApi();
 builder.Services.ConfigureHttpJsonOptions(options =>
     options.SerializerOptions.Converters.Add(new JsonStringEnumConverter()));
+
+builder.Services.AddHttpClient("petfinder", client =>
+{
+    client.Timeout = TimeSpan.FromSeconds(15);
+    client.DefaultRequestHeaders.UserAgent.ParseAdd("PuppyFinder/1.0");
+});
+builder.Services.AddHttpClient("rescuegroups", client =>
+{
+    client.Timeout = TimeSpan.FromSeconds(15);
+    client.DefaultRequestHeaders.UserAgent.ParseAdd("PuppyFinder/1.0");
+    client.DefaultRequestHeaders.Accept.ParseAdd("application/vnd.api+json");
+});
+
+builder.Services.AddSingleton<IListingProvider, PetfinderProvider>();
+builder.Services.AddSingleton<IListingProvider, RescueGroupsProvider>();
+builder.Services.AddSingleton<ListingAggregator>();
 
 const string FrontendCors = "frontend";
 builder.Services.AddCors(options =>
@@ -20,6 +37,28 @@ if (app.Environment.IsDevelopment())
 }
 
 app.UseCors(FrontendCors);
+
+app.MapGet("/api/listings", async (string? breed, string? state, ListingAggregator aggregator, CancellationToken ct) =>
+{
+    var listings = (await aggregator.GetListingsAsync(ct)).AsEnumerable();
+
+    if (!string.IsNullOrWhiteSpace(breed))
+    {
+        listings = listings.Where(l => l.Breed.Contains(breed, StringComparison.OrdinalIgnoreCase));
+    }
+
+    if (!string.IsNullOrWhiteSpace(state))
+    {
+        listings = listings.Where(l => l.State.Equals(state, StringComparison.OrdinalIgnoreCase));
+    }
+
+    return Results.Ok(listings);
+})
+.WithName("GetListings");
+
+app.MapGet("/api/sources", (ListingAggregator aggregator) =>
+    Results.Ok(aggregator.GetSourceStatuses()))
+.WithName("GetSources");
 
 app.MapGet("/api/breeds", () =>
     Results.Ok(SiteCatalog.Breeds.Select(b => new { b.Slug, b.DisplayName })))

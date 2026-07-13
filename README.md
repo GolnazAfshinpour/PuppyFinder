@@ -1,8 +1,22 @@
 # PuppyFinder
 
-One place to start your puppy search: pick a breed (and optionally a state) and jump straight into the breed-filtered listings on every major legitimate US site — breeder marketplaces, adoption platforms, shelters, and rescues.
+Every adoptable dog, one place: PuppyFinder shows real puppy/dog listings inside its own UI, aggregated live from official source APIs, with each card linking back to the original listing.
 
-No API keys, no scraping — the backend serves a curated catalog of sites with verified deep-link URL patterns, and all navigation happens in your browser.
+## Setup: API keys (required for live listings)
+
+At least one free key is needed:
+
+1. **Petfinder** (instant): https://www.petfinder.com/developers/ — sign up, copy the **key + secret**
+2. **RescueGroups** (email form): https://rescuegroups.org/services/adoptable-pet-data-api/
+
+Paste into `backend/appsettings.Development.json`:
+
+```json
+"Petfinder":    { "ApiKey": "YOUR_KEY", "ApiSecret": "YOUR_SECRET" },
+"RescueGroups": { "ApiKey": "YOUR_KEY" }
+```
+
+Restart the API and listings appear. ⚠ Don't commit real keys — for anything beyond local dev, use `dotnet user-secrets`.
 
 ## Stack
 
@@ -11,30 +25,22 @@ No API keys, no scraping — the backend serves a curated catalog of sites with 
 
 ## Running locally
 
-Start the API (http://localhost:5133):
-
 ```sh
-cd backend
-dotnet run
+cd backend && dotnet run          # API on http://localhost:5133
+cd frontend && npm install && npm run dev   # UI on http://localhost:5173 (or next free port)
 ```
 
-In a second terminal, start the frontend (http://localhost:5173, or the next free port):
-
-```sh
-cd frontend
-npm install
-npm run dev
-```
-
-The Vite dev server proxies `/api/*` to the backend, so no CORS configuration is needed in development.
+The Vite dev server proxies `/api/*` to the backend.
 
 ## API
 
 | Endpoint | Description |
 |---|---|
+| `GET /api/listings?breed=&state=` | Aggregated real dog listings (filtered) |
+| `GET /api/sources` | Per-source status: enabled, count, last error |
 | `GET /api/breeds` | Curated breed list for the dropdown |
-| `GET /api/sites?breed={slug}&state={XX}` | Site cards with resolved deep links for the chosen breed/state |
+| `GET /api/sites?breed=&state=` | Deep links into each source site (footer chips) |
 
-The site catalog and per-site URL templates live in `backend/Data/SiteCatalog.cs`. To add a site or breed, extend the lists there (URL patterns are documented in [docs/SOURCES.md](docs/SOURCES.md)).
+## Architecture
 
-Source research (which sites are legit, what access they offer): [docs/SOURCES.md](docs/SOURCES.md)
+Sources implement `IListingProvider` (`backend/Services/`); `ListingAggregator` merges enabled providers and caches for 10 minutes. `SiteCatalog.cs` holds the curated site/breed catalog and verified deep-link URL patterns. Source research: [docs/SOURCES.md](docs/SOURCES.md).
