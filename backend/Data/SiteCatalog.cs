@@ -222,10 +222,13 @@ public static class SiteCatalog
         {
             "akc" when breed is not null =>
                 $"https://marketplace.akc.org/puppies/{breed.AkcSlug}",
-            // PuppySpot intentionally has no breed deep link: their URL pattern can't be
-            // verified behind Cloudflare, so it falls through to the homepage.
+            // Good Dog and PuppySpot URL patterns discovered via search-engine indexes
+            // (their bot protection blocks direct verification): gooddog.com/{breed}[/{state}]
+            // is the listings page; /breeds/{breed} is only a profile page.
             "gooddog" when breed is not null =>
-                $"https://www.gooddog.com/breeds/{breed.LinkSlug}",
+                $"https://www.gooddog.com/{breed.LinkSlug}{(stateSegment is null ? "" : $"/{stateSegment}")}",
+            "puppyspot" when breed is not null =>
+                $"https://www.puppyspot.com/puppies-for-sale-by-breeders/breed/{breed.LinkSlug}",
             "petfinder" =>
                 $"https://www.petfinder.com/search/dogs-for-adoption/us/{(stateSegment is null ? "" : stateSegment + "/")}"
                 + (breed is null ? "" : $"?breed%5B0%5D={WebUtility.UrlEncode(breed.SearchName)}"),
@@ -241,7 +244,6 @@ public static class SiteCatalog
             : site.Id switch
             {
                 "aspca" or "bestfriends" => $"Browse dogs on {site.Name}",
-                "puppyspot" => $"Browse puppies on {site.Name}",
                 "akcrescue" => $"Find {breed.DisplayName} rescues on {site.Name}",
                 _ => $"See {breed.DisplayName}s on {site.Name}",
             };
