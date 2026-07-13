@@ -146,7 +146,7 @@ public static class SiteCatalog
             LinkSlugOverride: "maltese", SearchNameOverride: "Maltese", IncludeInQuiz: false),
     ];
 
-    public static readonly IReadOnlyList<Site> Sites =
+    private static readonly IReadOnlyList<Site> AllSites =
     [
         new("akc", "AKC Marketplace", SiteCategory.BreederMarketplace,
             "Puppies from AKC-registered litters, listed by the American Kennel Club.",
@@ -256,6 +256,17 @@ public static class SiteCatalog
             Delivery: "Local — you contact the poster directly",
             BestFor: "Breed-specific rescue searches right down to your state"),
     ];
+
+    // Cards render in this order: strongest vetting first, caution-labeled classifieds last.
+    private static readonly string[] TrustOrder =
+    [
+        "gooddog", "akc", "petfinder", "adoptapet", "puppyspot", "pawrade",
+        "rescueme", "akcrescue", "bestfriends", "aspca",
+        "puppies", "greenfield", "lancaster",
+    ];
+
+    public static readonly IReadOnlyList<Site> Sites =
+        AllSites.OrderBy(s => Array.IndexOf(TrustOrder, s.Id)).ToList();
 
     private static readonly Dictionary<string, string> StateNames = new(StringComparer.OrdinalIgnoreCase)
     {
