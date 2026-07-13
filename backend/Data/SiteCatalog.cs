@@ -213,10 +213,28 @@ public static class SiteCatalog
             BestFor: "Adopting a specific breed from people who know it best"),
     ];
 
+    private static readonly Dictionary<string, string> StateNames = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["AL"] = "alabama", ["AK"] = "alaska", ["AZ"] = "arizona", ["AR"] = "arkansas",
+        ["CA"] = "california", ["CO"] = "colorado", ["CT"] = "connecticut", ["DE"] = "delaware",
+        ["FL"] = "florida", ["GA"] = "georgia", ["HI"] = "hawaii", ["ID"] = "idaho",
+        ["IL"] = "illinois", ["IN"] = "indiana", ["IA"] = "iowa", ["KS"] = "kansas",
+        ["KY"] = "kentucky", ["LA"] = "louisiana", ["ME"] = "maine", ["MD"] = "maryland",
+        ["MA"] = "massachusetts", ["MI"] = "michigan", ["MN"] = "minnesota", ["MS"] = "mississippi",
+        ["MO"] = "missouri", ["MT"] = "montana", ["NE"] = "nebraska", ["NV"] = "nevada",
+        ["NH"] = "new-hampshire", ["NJ"] = "new-jersey", ["NM"] = "new-mexico", ["NY"] = "new-york",
+        ["NC"] = "north-carolina", ["ND"] = "north-dakota", ["OH"] = "ohio", ["OK"] = "oklahoma",
+        ["OR"] = "oregon", ["PA"] = "pennsylvania", ["RI"] = "rhode-island", ["SC"] = "south-carolina",
+        ["SD"] = "south-dakota", ["TN"] = "tennessee", ["TX"] = "texas", ["UT"] = "utah",
+        ["VT"] = "vermont", ["VA"] = "virginia", ["WA"] = "washington", ["WV"] = "west-virginia",
+        ["WI"] = "wisconsin", ["WY"] = "wyoming",
+    };
+
     /// <summary>Builds the deepest listing link each site supports for the given breed/state.</summary>
     public static string BuildLink(Site site, Breed? breed, string? state)
     {
         var stateSegment = string.IsNullOrWhiteSpace(state) ? null : state.ToLowerInvariant();
+        var stateName = state is not null && StateNames.TryGetValue(state, out var name) ? name : null;
 
         return site.Id switch
         {
@@ -229,11 +247,15 @@ public static class SiteCatalog
                 $"https://www.gooddog.com/{breed.LinkSlug}{(stateSegment is null ? "" : $"/{stateSegment}")}",
             "puppyspot" when breed is not null =>
                 $"https://www.puppyspot.com/puppies-for-sale-by-breeders/breed/{breed.LinkSlug}",
+            // Petfinder's Dec-2025 rebuild dropped URL-driven search filters (any search URL
+            // renders "0 results" until the visitor sets a location), so breed searches land
+            // on their breed adoption page instead.
+            "petfinder" when breed is not null =>
+                $"https://www.petfinder.com/dogs-and-puppies/breeds/{breed.LinkSlug}/",
             "petfinder" =>
-                $"https://www.petfinder.com/search/dogs-for-adoption/us/{(stateSegment is null ? "" : stateSegment + "/")}"
-                + (breed is null ? "" : $"?breed%5B0%5D={WebUtility.UrlEncode(breed.SearchName)}"),
+                "https://www.petfinder.com/search/dogs-for-adoption/us/",
             "adoptapet" when breed is not null =>
-                $"https://www.adoptapet.com/s/adopt-a-{breed.LinkSlug}",
+                $"https://www.adoptapet.com/s/adopt-a-{breed.LinkSlug}{(stateName is null ? "" : $"/{stateName}")}",
             _ => site.HomeUrl,
         };
     }

@@ -1,5 +1,6 @@
 <script setup>
 import { computed, ref } from 'vue'
+import PuppyLogo from './PuppyLogo.vue'
 
 const emit = defineEmits(['close', 'select'])
 
@@ -103,13 +104,18 @@ function reset() {
       </button>
 
       <template v-if="!results">
-        <h2 class="text-xl font-bold">🐕 Find your breed</h2>
-        <p class="mb-5 text-sm opacity-60">
-          Six quick questions — we'll match you to the breeds that fit your life.
-        </p>
+        <div class="mb-5 flex items-center gap-3">
+          <PuppyLogo class="h-14 w-14 shrink-0 drop-shadow-sm" />
+          <div>
+            <h2 class="font-display text-3xl leading-none font-semibold tracking-wide">Find your breed</h2>
+            <p class="text-sm opacity-60">
+              Six quick questions — we'll match you to the breeds that fit your life.
+            </p>
+          </div>
+        </div>
 
         <fieldset v-for="q in QUESTIONS" :key="q.key" class="mb-4">
-          <legend class="mb-2 text-sm font-bold">{{ q.label }}</legend>
+          <legend class="mb-2 text-xs font-bold tracking-wide uppercase opacity-60">{{ q.label }}</legend>
           <div class="flex flex-wrap gap-2">
             <button
               v-for="o in q.options"
@@ -138,21 +144,28 @@ function reset() {
       </template>
 
       <template v-else>
-        <h2 class="mb-2 text-xl font-bold">Your top matches</h2>
-        <div v-for="(m, i) in results" :key="m.slug" class="border-base-300 border-t py-4">
-          <div class="flex items-baseline justify-between">
-            <span class="font-bold">{{ i === 0 ? '🏆 ' : '' }}{{ m.displayName }}</span>
-            <span class="text-primary text-sm font-bold">{{ m.matchPercent }}% match</span>
+        <div class="mb-4 flex items-center gap-3">
+          <PuppyLogo class="h-14 w-14 shrink-0 drop-shadow-sm" />
+          <h2 class="font-display text-3xl leading-none font-semibold tracking-wide">Your top matches</h2>
+        </div>
+        <div class="flex flex-col gap-3">
+          <div v-for="(m, i) in results" :key="m.slug" class="card bg-base-200">
+            <div class="card-body gap-2 p-4">
+              <div class="flex items-baseline justify-between gap-2">
+                <span class="card-title text-base">{{ i === 0 ? '🏆 ' : '' }}{{ m.displayName }}</span>
+                <span class="badge badge-primary badge-soft font-bold">{{ m.matchPercent }}% match</span>
+              </div>
+              <progress class="progress progress-primary w-full" :value="m.matchPercent" max="100" />
+              <p class="text-sm">{{ m.blurb }}</p>
+              <div class="flex flex-col justify-between gap-1 text-xs opacity-60 sm:flex-row">
+                <span>Typical price: {{ m.typicalPrice }}</span>
+                <span>{{ m.reasons.join(' · ') }}</span>
+              </div>
+              <button type="button" class="btn btn-primary btn-sm mt-1" @click="emit('select', m.slug)">
+                Search {{ m.displayName }}s everywhere →
+              </button>
+            </div>
           </div>
-          <progress class="progress progress-primary my-2 w-full" :value="m.matchPercent" max="100" />
-          <p class="mb-2 text-sm">{{ m.blurb }}</p>
-          <div class="mb-3 flex flex-col justify-between gap-1 text-xs opacity-60 sm:flex-row">
-            <span>Typical price: {{ m.typicalPrice }}</span>
-            <span>{{ m.reasons.join(' · ') }}</span>
-          </div>
-          <button type="button" class="btn btn-outline btn-sm" @click="emit('select', m.slug)">
-            Search {{ m.displayName }}s everywhere →
-          </button>
         </div>
         <button type="button" class="btn btn-ghost btn-sm mt-3" @click="reset">← Change my answers</button>
       </template>
