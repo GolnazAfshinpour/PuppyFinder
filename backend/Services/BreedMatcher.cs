@@ -44,6 +44,7 @@ public static class BreedMatcher
 
     public static IReadOnlyList<BreedMatch> TopMatches(QuizAnswers answers, int count = 3) =>
         SiteCatalog.Breeds
+            .Where(b => b.IncludeInQuiz)
             .Select(breed => Score(breed, answers))
             .OrderByDescending(m => m.MatchPercent)
             .ThenBy(m => m.DisplayName)

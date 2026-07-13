@@ -10,7 +10,7 @@ public record Breed(
     string Slug,
     string DisplayName,
     string AkcSlug,
-    string Size,            // Small | Medium | Large
+    string Size,            // Teacup | Small | Medium | Large
     int Energy,             // 1 couch potato … 5 needs a job
     int Grooming,           // 1 wash-and-go … 5 salon regular
     int Shedding,           // 1 minimal … 5 fur everywhere
@@ -18,9 +18,16 @@ public record Breed(
     int ApartmentFriendly,  // 1 needs space … 5 thrives in apartments
     int PriceLow,
     int PriceHigh,
-    string Blurb)
+    string Blurb,
+    // Aliases like "Teacup Poodle" aren't a recognized breed: sites list them under
+    // the parent breed, so links search the parent while the display name stays as typed.
+    string? LinkSlugOverride = null,
+    string? SearchNameOverride = null,
+    bool IncludeInQuiz = true)
 {
     public string TypicalPrice => $"${PriceLow:n0}–${PriceHigh:n0}";
+    public string LinkSlug => LinkSlugOverride ?? Slug;
+    public string SearchName => SearchNameOverride ?? DisplayName;
 }
 
 public enum SiteCategory
@@ -113,6 +120,29 @@ public static class SiteCatalog
         new("yorkshire-terrier", "Yorkshire Terrier", "yorkshire-terrier",
             "Small", 3, 4, 1, 2, 5, 1200, 3000,
             "Feisty toy terrier with a silky, low-shed coat; ideal for compact homes."),
+
+        // Teacup searches — not a recognized breed; sites list these under the parent
+        // breed, so links target the parent. Kept out of the quiz (traits mirror parents).
+        new("teacup-poodle", "Teacup Poodle", "poodle-toy",
+            "Teacup", 2, 5, 1, 2, 5, 2000, 5000,
+            "Extra-small Toy Poodle. \"Teacup\" is a size label, not a breed — vet the breeder's health practices extra carefully.",
+            LinkSlugOverride: "poodle", SearchNameOverride: "Poodle", IncludeInQuiz: false),
+        new("teacup-yorkie", "Teacup Yorkie", "yorkshire-terrier",
+            "Teacup", 2, 4, 1, 1, 5, 1500, 4500,
+            "Extra-small Yorkshire Terrier. \"Teacup\" is a size label, not a breed — vet the breeder's health practices extra carefully.",
+            LinkSlugOverride: "yorkshire-terrier", SearchNameOverride: "Yorkshire Terrier", IncludeInQuiz: false),
+        new("teacup-chihuahua", "Teacup Chihuahua", "chihuahua",
+            "Teacup", 2, 1, 2, 1, 5, 1200, 3500,
+            "Extra-small Chihuahua. \"Teacup\" is a size label, not a breed — vet the breeder's health practices extra carefully.",
+            LinkSlugOverride: "chihuahua", SearchNameOverride: "Chihuahua", IncludeInQuiz: false),
+        new("teacup-pomeranian", "Teacup Pomeranian", "pomeranian",
+            "Teacup", 2, 4, 3, 1, 5, 1500, 5000,
+            "Extra-small Pomeranian. \"Teacup\" is a size label, not a breed — vet the breeder's health practices extra carefully.",
+            LinkSlugOverride: "pomeranian", SearchNameOverride: "Pomeranian", IncludeInQuiz: false),
+        new("teacup-maltese", "Teacup Maltese", "maltese",
+            "Teacup", 2, 4, 1, 1, 5, 1500, 4500,
+            "Extra-small Maltese. \"Teacup\" is a size label, not a breed — vet the breeder's health practices extra carefully.",
+            LinkSlugOverride: "maltese", SearchNameOverride: "Maltese", IncludeInQuiz: false),
     ];
 
     public static readonly IReadOnlyList<Site> Sites =
@@ -195,12 +225,12 @@ public static class SiteCatalog
             // PuppySpot intentionally has no breed deep link: their URL pattern can't be
             // verified behind Cloudflare, so it falls through to the homepage.
             "gooddog" when breed is not null =>
-                $"https://www.gooddog.com/breeds/{breed.Slug}",
+                $"https://www.gooddog.com/breeds/{breed.LinkSlug}",
             "petfinder" =>
                 $"https://www.petfinder.com/search/dogs-for-adoption/us/{(stateSegment is null ? "" : stateSegment + "/")}"
-                + (breed is null ? "" : $"?breed%5B0%5D={WebUtility.UrlEncode(breed.DisplayName)}"),
+                + (breed is null ? "" : $"?breed%5B0%5D={WebUtility.UrlEncode(breed.SearchName)}"),
             "adoptapet" when breed is not null =>
-                $"https://www.adoptapet.com/s/adopt-a-{breed.Slug}",
+                $"https://www.adoptapet.com/s/adopt-a-{breed.LinkSlug}",
             _ => site.HomeUrl,
         };
     }
