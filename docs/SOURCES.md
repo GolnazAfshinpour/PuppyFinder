@@ -1,6 +1,8 @@
 # PuppyFinder — Source Site Research & Roadmap
 
-> **Decision (July 2026):** PuppyFinder uses **direct deep links** into each site's listing pages — no API calls. See README. This research is kept for reference if API aggregation is ever revisited.
+> **Decision (July 2026):** PuppyFinder shows real listings in its own UI, aggregated from **keyless government open-data feeds** (plus RescueGroups when a key is added), with deep-link footer chips to the big consumer sites.
+
+> ⚠ **Correction:** the Petfinder v2 API was **discontinued on Dec 2, 2025** (site rebuild; no new keys since 2024). The Tier-1 entry below is retained as history but is no longer actionable.
 
 *Research date: July 2026. Which big, legitimate US dog/puppy sites can we aggregate listings from, and how?*
 
@@ -11,18 +13,27 @@ interface + registering it in `Program.cs`.
 
 ---
 
+## Tier 0 — Government open data (no key, in production)
+
+| Dataset | Endpoint | Status |
+|---|---|---|
+| Montgomery County MD "Adoptable Pets" (refreshed every 2 h) | `https://data.montgomerycountymd.gov/resource/e54u-qx42.json` | ✅ Live via `SocrataProvider` |
+| King County WA "Lost, found, adoptable pets" | `https://data.kingcounty.gov/resource/yaai-7frk.json?record_type=ADOPTABLE&animal_type=Dog` | ✅ Live via `SocrataProvider` |
+
+Public Socrata JSON — no auth, generous anonymous limits. More city/county feeds can be found via
+[data.gov (tag: pets)](https://catalog.data.gov/dataset/?tags=pets) and added as one more `SocrataDataset` config in `Program.cs`.
+
 ## Tier 1 — Public/free APIs (aggregation-ready)
 
 | Site | API | Auth | Status |
 |---|---|---|---|
-| [Petfinder](https://www.petfinder.com) | [v2 REST API](https://www.petfinder.com/developers/) | Free key + secret (OAuth client-credentials) | ✅ Provider implemented — `PetfinderProvider.cs` |
-| [RescueGroups.org](https://rescuegroups.org) | [v5 REST API](https://rescuegroups.org/services/adoptable-pet-data-api/) | Free API key (request form) | 🔜 Best next provider |
+| [Petfinder](https://www.petfinder.com) | ~~v2 REST API~~ | — | ❌ **API discontinued Dec 2, 2025**; provider removed |
+| [RescueGroups.org](https://rescuegroups.org) | [v5 REST API](https://rescuegroups.org/services/adoptable-pet-data-api/) | Free API key (request form) | ✅ Provider implemented, dormant until key arrives |
 
-### Petfinder
-- Largest US adoption search engine — aggregates thousands of shelters and rescues.
-- Official, documented v2 API: `GET /v2/animals?type=dog&status=adoptable` after an OAuth token call.
-- Key signup: https://www.petfinder.com/developers/ (~2 minutes, free).
-- Credentials go in `backend/appsettings.Development.json` under `"Petfinder"`.
+### Petfinder (historical)
+- Largest US adoption search engine, but its public v2 API was shut down Dec 2, 2025 during a site
+  rebuild; new key issuance had already stopped in 2024. Replacement is a WordPress-only widget.
+- Petfinder remains in the deep-link footer (their consumer search URLs still work).
 
 ### RescueGroups.org
 - Adoptable-pet data platform used by shelters/rescues since 2006; explicitly built for third-party developers.

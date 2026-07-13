@@ -8,19 +8,43 @@ builder.Services.AddOpenApi();
 builder.Services.ConfigureHttpJsonOptions(options =>
     options.SerializerOptions.Converters.Add(new JsonStringEnumConverter()));
 
-builder.Services.AddHttpClient("petfinder", client =>
-{
-    client.Timeout = TimeSpan.FromSeconds(15);
-    client.DefaultRequestHeaders.UserAgent.ParseAdd("PuppyFinder/1.0");
-});
 builder.Services.AddHttpClient("rescuegroups", client =>
 {
     client.Timeout = TimeSpan.FromSeconds(15);
     client.DefaultRequestHeaders.UserAgent.ParseAdd("PuppyFinder/1.0");
     client.DefaultRequestHeaders.Accept.ParseAdd("application/vnd.api+json");
 });
+builder.Services.AddHttpClient("socrata", client =>
+{
+    client.Timeout = TimeSpan.FromSeconds(15);
+    client.DefaultRequestHeaders.UserAgent.ParseAdd("PuppyFinder/1.0");
+});
 
-builder.Services.AddSingleton<IListingProvider, PetfinderProvider>();
+// Government open-data feeds — public JSON, no API key needed.
+var montgomeryCounty = new SocrataDataset(
+    SourceName: "Montgomery County Animal Services",
+    SourceUrl: "https://www.montgomerycountymd.gov/animalservices/",
+    Endpoint: "https://data.montgomerycountymd.gov/resource/e54u-qx42.json?$limit=100",
+    NameField: "petname", BreedField: "breed", AgeField: "petage", SexField: "sex",
+    ImageField: "url", LinkField: null, CityField: null,
+    DefaultCity: "Derwood", State: "MD",
+    AnimalTypeField: "animaltype",
+    FallbackListingUrl: "https://www.montgomerycountymd.gov/animalservices/adoption/adoptdog.html");
+
+var kingCounty = new SocrataDataset(
+    SourceName: "King County Pet Adoption",
+    SourceUrl: "https://kingcounty.gov/en/dept/executive-services/animals-pets-pests/regional-animal-services/adopt-a-pet",
+    Endpoint: "https://data.kingcounty.gov/resource/yaai-7frk.json?record_type=ADOPTABLE&animal_type=Dog&$limit=100",
+    NameField: "animal_name", BreedField: "animal_breed", AgeField: "age", SexField: "animal_gender",
+    ImageField: "image", LinkField: "link", CityField: "city",
+    DefaultCity: "Kent", State: "WA",
+    AnimalTypeField: null,
+    FallbackListingUrl: "https://kingcounty.gov/en/dept/executive-services/animals-pets-pests/regional-animal-services/adopt-a-pet");
+
+builder.Services.AddSingleton<IListingProvider>(sp => new SocrataProvider(
+    montgomeryCounty, sp.GetRequiredService<IHttpClientFactory>(), sp.GetRequiredService<ILogger<SocrataProvider>>()));
+builder.Services.AddSingleton<IListingProvider>(sp => new SocrataProvider(
+    kingCounty, sp.GetRequiredService<IHttpClientFactory>(), sp.GetRequiredService<ILogger<SocrataProvider>>()));
 builder.Services.AddSingleton<IListingProvider, RescueGroupsProvider>();
 builder.Services.AddSingleton<ListingAggregator>();
 

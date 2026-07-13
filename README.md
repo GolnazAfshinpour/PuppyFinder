@@ -1,22 +1,14 @@
 # PuppyFinder
 
-Every adoptable dog, one place: PuppyFinder shows real puppy/dog listings inside its own UI, aggregated live from official source APIs, with each card linking back to the original listing.
+Every adoptable dog, one place: PuppyFinder shows real puppy/dog listings inside its own UI, aggregated live from public data sources — **no API keys required** — with each card linking back to the original listing.
 
-## Setup: API keys (required for live listings)
+## Where the listings come from
 
-At least one free key is needed:
+- **Government open data (always on):** Montgomery County MD Animal Services and King County WA pet adoption feeds — public Socrata JSON endpoints, refreshed continuously.
+- **RescueGroups.org (optional):** request a free key at https://rescuegroups.org/services/adoptable-pet-data-api/ and paste it into `backend/appsettings.Development.json` for nationwide rescue coverage. ⚠ Don't commit real keys.
+- ~~Petfinder~~ — their public API was discontinued Dec 2, 2025; Petfinder remains available via the deep-link footer chips.
 
-1. **Petfinder** (instant): https://www.petfinder.com/developers/ — sign up, copy the **key + secret**
-2. **RescueGroups** (email form): https://rescuegroups.org/services/adoptable-pet-data-api/
-
-Paste into `backend/appsettings.Development.json`:
-
-```json
-"Petfinder":    { "ApiKey": "YOUR_KEY", "ApiSecret": "YOUR_SECRET" },
-"RescueGroups": { "ApiKey": "YOUR_KEY" }
-```
-
-Restart the API and listings appear. ⚠ Don't commit real keys — for anything beyond local dev, use `dotnet user-secrets`.
+Full research and roadmap: [docs/SOURCES.md](docs/SOURCES.md)
 
 ## Stack
 
@@ -26,7 +18,7 @@ Restart the API and listings appear. ⚠ Don't commit real keys — for anything
 ## Running locally
 
 ```sh
-cd backend && dotnet run          # API on http://localhost:5133
+cd backend && dotnet run                    # API on http://localhost:5133
 cd frontend && npm install && npm run dev   # UI on http://localhost:5173 (or next free port)
 ```
 
@@ -43,4 +35,4 @@ The Vite dev server proxies `/api/*` to the backend.
 
 ## Architecture
 
-Sources implement `IListingProvider` (`backend/Services/`); `ListingAggregator` merges enabled providers and caches for 10 minutes. `SiteCatalog.cs` holds the curated site/breed catalog and verified deep-link URL patterns. Source research: [docs/SOURCES.md](docs/SOURCES.md).
+Sources implement `IListingProvider` (`backend/Services/`); `ListingAggregator` merges enabled providers and caches for 10 minutes. `SocrataProvider` is config-driven — adding another city/county open-data feed is one more `SocrataDataset` entry in `Program.cs`. `SiteCatalog.cs` holds the deep-link URL patterns for the footer.

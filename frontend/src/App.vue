@@ -56,12 +56,8 @@ async function loadExtras() {
 // The breed dropdown holds display names because listings carry free-text breed names.
 watch([selectedBreed, selectedState], loadListings)
 
-const needsSetup = computed(
-  () =>
-    !loading.value &&
-    !error.value &&
-    sources.value.length > 0 &&
-    sources.value.every((s) => !s.enabled),
+const rescueGroupsDisabled = computed(() =>
+  sources.value.some((s) => s.name === 'RescueGroups' && !s.enabled),
 )
 
 const sourceErrors = computed(() =>
@@ -94,7 +90,7 @@ onMounted(() => {
       <p>Every adoptable dog, one place — real listings aggregated live from source sites.</p>
     </header>
 
-    <div v-if="!needsSetup" class="controls">
+    <div class="controls">
       <select v-model="selectedBreed">
         <option value="">All breeds</option>
         <option v-for="b in breeds" :key="b.slug" :value="b.displayName">{{ b.displayName }}</option>
@@ -107,29 +103,6 @@ onMounted(() => {
 
     <p v-if="loading" class="status">Fetching listings from source sites…</p>
     <p v-else-if="error" class="status error">{{ error }}</p>
-
-    <div v-else-if="needsSetup" class="setup-card">
-      <h2>🔑 One step to go live</h2>
-      <p>
-        PuppyFinder shows real adoptable-dog listings pulled from official APIs.
-        Add at least one free API key:
-      </p>
-      <ol>
-        <li>
-          <strong>Petfinder</strong> (instant):
-          <a href="https://www.petfinder.com/developers/" target="_blank" rel="noopener noreferrer">petfinder.com/developers</a>
-          — grab the key <em>and</em> secret
-        </li>
-        <li>
-          <strong>RescueGroups</strong> (email form):
-          <a href="https://rescuegroups.org/services/adoptable-pet-data-api/" target="_blank" rel="noopener noreferrer">rescuegroups.org — Adoptable Pet Data API</a>
-        </li>
-      </ol>
-      <p>
-        Paste them into <code>backend/appsettings.Development.json</code> and restart the API —
-        one key is enough to start.
-      </p>
-    </div>
 
     <template v-else>
       <p v-for="s in sourceErrors" :key="s.name" class="status error">
@@ -166,6 +139,12 @@ onMounted(() => {
         </li>
       </ul>
     </template>
+
+    <p v-if="rescueGroupsDisabled && !loading" class="coverage-note">
+      Want more coverage? Add a free
+      <a href="https://rescuegroups.org/services/adoptable-pet-data-api/" target="_blank" rel="noopener noreferrer">RescueGroups API key</a>
+      to <code>backend/appsettings.Development.json</code>.
+    </p>
 
     <footer v-if="sites.length" class="sites-footer">
       <span class="sites-label">Browse the source sites directly:</span>
@@ -240,26 +219,11 @@ onMounted(() => {
   color: var(--accent);
 }
 
-.setup-card {
-  max-width: 560px;
-  margin: 0 auto;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  box-shadow: var(--shadow);
-  padding: 2rem 2.25rem;
-}
-
-.setup-card h2 {
-  margin-top: 0;
-}
-
-.setup-card ol {
-  padding-left: 1.25rem;
-}
-
-.setup-card li {
-  margin-bottom: 0.5rem;
+.coverage-note {
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  margin-top: 2.5rem;
 }
 
 .listing-grid {
