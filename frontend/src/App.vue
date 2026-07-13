@@ -4,6 +4,7 @@ import SearchHub from './components/SearchHub.vue'
 import SiteCard from './components/SiteCard.vue'
 import BreedQuiz from './components/BreedQuiz.vue'
 import ListingsSection from './components/ListingsSection.vue'
+import ThemePicker from './components/ThemePicker.vue'
 
 const US_STATES = [
   'AL', 'AK', 'AZ', 'AR', 'CA', 'CO', 'CT', 'DE', 'FL', 'GA',
@@ -99,10 +100,24 @@ onMounted(() => {
 </script>
 
 <template>
-  <main class="page">
-    <header class="header">
-      <h1>🐶 PuppyFinder</h1>
-      <p>Search once — we point you to the right page on every legit puppy site.</p>
+  <main class="mx-auto max-w-5xl px-4 pt-4 pb-16 sm:px-6">
+    <div class="flex justify-end">
+      <ThemePicker />
+    </div>
+
+    <header class="mb-9 text-center">
+      <h1 class="mb-3 text-lg font-bold">🐶 PuppyFinder</h1>
+      <p class="text-3xl font-extrabold tracking-tight sm:text-4xl">
+        Find your puppy, the easy way.
+      </p>
+      <p class="mt-2 mb-6 text-base-content/60">
+        One search points you to the right page on every trusted puppy site.
+      </p>
+      <ul class="steps steps-vertical mx-auto w-fit text-sm sm:steps-horizontal">
+        <li class="step step-primary">Pick a breed — or take the quiz</li>
+        <li class="step step-primary">Choose adopt or buy</li>
+        <li class="step step-primary">Jump to the right page on every site</li>
+      </ul>
     </header>
 
     <SearchHub
@@ -116,15 +131,21 @@ onMounted(() => {
       @open-quiz="quizOpen = true"
     />
 
-    <p v-if="loadingSites" class="status">Loading sites…</p>
-    <p v-else-if="error" class="status error">{{ error }}</p>
-    <ul v-else class="site-grid">
+    <h2 class="mb-5 text-center text-2xl font-bold">
+      Your matching sites
+      <span v-if="selectedBreedName" class="text-primary">for {{ selectedBreedName }}s</span>
+    </h2>
+    <p v-if="loadingSites" class="text-center text-base-content/60">
+      <span class="loading loading-dots loading-md" />
+    </p>
+    <div v-else-if="error" class="alert alert-error mx-auto max-w-xl">{{ error }}</div>
+    <ul v-else class="grid list-none gap-6 p-0 sm:grid-cols-2 xl:grid-cols-3">
       <SiteCard v-for="site in visibleSites" :key="site.id" :site="site" />
     </ul>
 
     <ListingsSection :listings="listings" :loading="loadingListings" />
 
-    <p class="footnote">
+    <p class="mt-10 text-center text-sm text-base-content/60">
       PuppyFinder links you directly to each site's own listings — always verify a breeder
       or rescue yourself before sending money.
     </p>
@@ -132,58 +153,3 @@ onMounted(() => {
     <BreedQuiz v-if="quizOpen" @close="quizOpen = false" @select="pickQuizBreed" />
   </main>
 </template>
-
-<style scoped>
-.page {
-  max-width: 1080px;
-  margin: 0 auto;
-  padding: 3rem 1.5rem 4rem;
-}
-
-.header {
-  text-align: center;
-  margin-bottom: 2rem;
-}
-
-.header h1 {
-  font-size: 2.5rem;
-  margin: 0 0 0.35rem;
-}
-
-.header p {
-  color: var(--text-muted);
-  margin: 0;
-  font-size: 1.05rem;
-}
-
-.status {
-  text-align: center;
-  color: var(--text-muted);
-}
-
-.status.error {
-  color: var(--accent);
-}
-
-.site-grid {
-  list-style: none;
-  padding: 0;
-  margin: 0;
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
-  gap: 1.5rem;
-}
-
-.footnote {
-  text-align: center;
-  color: var(--text-muted);
-  font-size: 0.85rem;
-  margin-top: 2.5rem;
-}
-
-@media (max-width: 640px) {
-  .header h1 {
-    font-size: 2rem;
-  }
-}
-</style>

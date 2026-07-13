@@ -18,7 +18,9 @@ Full research and roadmap: [docs/SOURCES.md](docs/SOURCES.md)
 ## Stack
 
 - **Backend:** .NET (ASP.NET Core minimal API) — `backend/`
-- **Frontend:** Vue 3 + Vite — `frontend/`
+- **Frontend:** Vue 3 + Vite + Tailwind CSS 4 + DaisyUI 5 — `frontend/`
+
+Theming: all 35 DaisyUI themes are enabled — use the 🎨 picker in the header to switch live (persisted in localStorage; default is `autumn`).
 
 ## Running locally
 
