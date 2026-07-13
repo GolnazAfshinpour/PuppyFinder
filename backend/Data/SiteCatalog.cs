@@ -257,12 +257,12 @@ public static class SiteCatalog
             BestFor: "Breed-specific rescue searches right down to your state"),
     ];
 
-    // Cards render in this order: strongest vetting first, caution-labeled classifieds last.
+    // Cards render in this order: buying sites first, then adoption sites;
+    // within each group strongest vetting first, caution-labeled classifieds last.
     private static readonly string[] TrustOrder =
     [
-        "gooddog", "akc", "petfinder", "adoptapet", "puppyspot", "pawrade",
-        "rescueme", "akcrescue", "bestfriends", "aspca",
-        "puppies", "greenfield", "lancaster",
+        "gooddog", "akc", "puppyspot", "pawrade", "puppies", "greenfield", "lancaster",
+        "petfinder", "adoptapet", "rescueme", "akcrescue", "bestfriends", "aspca",
     ];
 
     public static readonly IReadOnlyList<Site> Sites =
