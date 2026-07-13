@@ -1,0 +1,111 @@
+using System.Text.Json;
+using PuppyFinder.Api.Data;
+
+namespace PuppyFinder.Api.Services;
+
+/// <summary>
+/// Merges the curated breed list (with quiz traits and verified slugs) with the
+/// full breed catalog from the free, keyless dog.ceo API. Curated entries win on
+/// conflicts; external breeds get neutral traits and are used for the dropdown
+/// and deep links only (the quiz scores curated breeds exclusively).
+/// </summary>
+public sealed class BreedCatalogService(
+    IHttpClientFactory httpClientFactory,
+    ILogger<BreedCatalogService> logger)
+{
+    private const string BreedsUrl = "https://dog.ceo/api/breeds/list/all";
+
+    // dog.ceo squashes some names to one word; expand the common ones.
+    private static readonly Dictionary<string, string> NameFixes = new()
+    {
+        ["germanshepherd"] = "German Shepherd",
+        ["stbernard"] = "St. Bernard",
+        ["mexicanhairless"] = "Mexican Hairless",
+        ["cotondetulear"] = "Coton de Tulear",
+        ["shihtzu"] = "Shih Tzu",
+        ["bullterrier"] = "Bull Terrier",
+    };
+
+    private readonly SemaphoreSlim _lock = new(1, 1);
+    private IReadOnlyList<Breed>? _cached;
+
+    public async Task<IReadOnlyList<Breed>> GetBreedsAsync(CancellationToken cancellationToken)
+    {
+        if (_cached is not null)
+        {
+            return _cached;
+        }
+
+        await _lock.WaitAsync(cancellationToken);
+        try
+        {
+            if (_cached is not null)
+            {
+                return _cached;
+            }
+
+            var merged = SiteCatalog.Breeds.ToDictionary(b => b.Slug);
+            try
+            {
+                var client = httpClientFactory.CreateClient("dogceo");
+                var payload = await client.GetStringAsync(BreedsUrl, cancellationToken);
+                using var json = JsonDocument.Parse(payload);
+
+                foreach (var name in ExpandNames(json.RootElement.GetProperty("message")))
+                {
+                    var slug = name.ToLowerInvariant().Replace(". ", "-").Replace(' ', '-');
+                    if (!merged.ContainsKey(slug))
+                    {
+                        merged[slug] = new Breed(
+                            slug, name, slug,
+                            Size: "Medium", Energy: 3, Grooming: 3, Shedding: 3,
+                            KidFriendly: 3, ApartmentFriendly: 3,
+                            PriceLow: 0, PriceHigh: 0, Blurb: "");
+                    }
+                }
+
+                logger.LogInformation("Breed catalog: {Count} breeds (curated + dog.ceo)", merged.Count);
+            }
+            catch (Exception ex)
+            {
+                logger.LogWarning("dog.ceo fetch failed, using curated breeds only: {Message}", ex.Message);
+            }
+
+            _cached = merged.Values.OrderBy(b => b.DisplayName).ToList();
+            return _cached;
+        }
+        finally
+        {
+            _lock.Release();
+        }
+    }
+
+    public async Task<Breed?> FindAsync(string slug, CancellationToken cancellationToken) =>
+        (await GetBreedsAsync(cancellationToken))
+            .FirstOrDefault(b => b.Slug.Equals(slug, StringComparison.OrdinalIgnoreCase));
+
+    private static IEnumerable<string> ExpandNames(JsonElement message)
+    {
+        foreach (var breed in message.EnumerateObject())
+        {
+            var subBreeds = breed.Value.EnumerateArray().ToList();
+            if (subBreeds.Count == 0)
+            {
+                yield return Pretty(breed.Name);
+            }
+            else
+            {
+                // Convention: sub-breed comes first ("retriever"/"golden" → "Golden Retriever").
+                foreach (var sub in subBreeds)
+                {
+                    yield return $"{Pretty(sub.GetString()!)} {Pretty(breed.Name)}";
+                }
+            }
+        }
+    }
+
+    private static string Pretty(string raw) =>
+        NameFixes.TryGetValue(raw, out var fixedName)
+            ? fixedName
+            : char.ToUpperInvariant(raw[0]) + raw[1..];
+}

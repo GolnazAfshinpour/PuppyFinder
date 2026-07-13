@@ -19,6 +19,12 @@ builder.Services.AddHttpClient("socrata", client =>
     client.Timeout = TimeSpan.FromSeconds(15);
     client.DefaultRequestHeaders.UserAgent.ParseAdd("PuppyFinder/1.0");
 });
+builder.Services.AddHttpClient("dogceo", client =>
+{
+    client.Timeout = TimeSpan.FromSeconds(15);
+    client.DefaultRequestHeaders.UserAgent.ParseAdd("PuppyFinder/1.0");
+});
+builder.Services.AddSingleton<BreedCatalogService>();
 
 // Government open-data feeds — public JSON, no API key needed.
 var montgomeryCounty = new SocrataDataset(
@@ -84,19 +90,11 @@ app.MapGet("/api/sources", (ListingAggregator aggregator) =>
     Results.Ok(aggregator.GetSourceStatuses()))
 .WithName("GetSources");
 
-app.MapGet("/api/breeds", () =>
-    Results.Ok(SiteCatalog.Breeds.Select(b => new
+app.MapGet("/api/breeds", async (BreedCatalogService catalog, CancellationToken ct) =>
+    Results.Ok((await catalog.GetBreedsAsync(ct)).Select(b => new
     {
         b.Slug,
         b.DisplayName,
-        b.Size,
-        b.Energy,
-        b.Grooming,
-        b.Shedding,
-        b.KidFriendly,
-        b.ApartmentFriendly,
-        b.TypicalPrice,
-        b.Blurb,
     })))
 .WithName("GetBreeds");
 
@@ -106,13 +104,12 @@ app.MapPost("/api/quiz", (QuizAnswers answers) =>
         : Results.Ok(BreedMatcher.TopMatches(answers)))
 .WithName("MatchBreeds");
 
-app.MapGet("/api/sites", (string? breed, string? state) =>
+app.MapGet("/api/sites", async (string? breed, string? state, BreedCatalogService catalog, CancellationToken ct) =>
 {
     Breed? selected = null;
     if (!string.IsNullOrWhiteSpace(breed))
     {
-        selected = SiteCatalog.Breeds.FirstOrDefault(b =>
-            b.Slug.Equals(breed, StringComparison.OrdinalIgnoreCase));
+        selected = await catalog.FindAsync(breed, ct);
         if (selected is null)
         {
             return Results.BadRequest($"Unknown breed '{breed}'.");
