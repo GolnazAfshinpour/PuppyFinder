@@ -127,6 +127,7 @@ app.MapGet("/api/sites", async (string? breed, string? state, BreedCatalogServic
         site.PriceNote,
         site.Delivery,
         site.BestFor,
+        site.Caution,
         LinkUrl = SiteCatalog.BuildLink(site, selected, state),
         LinkLabel = SiteCatalog.BuildLinkLabel(site, selected),
     });

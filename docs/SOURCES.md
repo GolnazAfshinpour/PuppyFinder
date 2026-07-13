@@ -63,6 +63,26 @@ Public Socrata JSON — no auth, generous anonymous limits. More city/county fee
 breeder listings. Options: a curated "Browse breeder sites" link-out section in the UI, or pursue
 formal partnerships later.
 
+## Catalog expansion (July 2026)
+
+Traffic/reputation research added the remaining most-used sites, per the policy of
+**including high-traffic sites with honest caution labels** rather than omitting them:
+
+| Site | Why included | Caution? |
+|---|---|---|
+| [Puppies.com](https://www.puppies.com) | Oldest/largest classifieds (since 2003), millions of visitors | ⚠ minimal vetting |
+| [Pawrade](https://www.pawrade.com) | Growing broker with background-check claims + health guarantee | note in vetting field |
+| [Lancaster Puppies](https://www.lancasterpuppies.com) | Very high traffic (PA/OH classifieds) | ⚠⚠ documented sick-puppy / puppy-mill complaints (BBB, Trustpilot) |
+| [Greenfield Puppies](https://www.greenfieldpuppies.com) | High-traffic East-coast sibling of Lancaster | ⚠⚠ same model |
+| [Rescue Me!](https://www.rescueme.org) | 1M+ adoptions, breed-by-state rescue browsing | none |
+
+Deliberately excluded: **Craigslist** (68% of puppy-scam reports originate there), **Petland**
+(retail chain, longstanding welfare controversy), NextDayPets/CKC marketplace (low reputation/relevance).
+
+Deep-link patterns (search-index verified): `puppies.com/find-a-puppy/{breed}[/{state-name}]`,
+`lancasterpuppies.com/breeds/{breed}/puppy[?state=XX]`, `greenfieldpuppies.com/{breed}-puppies-for-sale/`,
+`pawrade.com/puppies/{breed}/`, `{breed-no-hyphens}.rescueme.org/{state-name-no-hyphens}`.
+
 ## Roadmap
 
 1. **Phase 1 (now):** Add the free Petfinder key → live adoption listings flow.

@@ -48,7 +48,8 @@ public record Site(
     string Vetting,     // what screening the site applies
     string PriceNote,
     string Delivery,    // how the dog gets to you
-    string BestFor);
+    string BestFor,
+    string? Caution = null); // honest one-line warning for weak-vetting sites
 
 /// <summary>
 /// Static catalog of legitimate US puppy/dog sites and the URL patterns for
@@ -211,6 +212,49 @@ public static class SiteCatalog
             PriceNote: "Rescue adoption fees, typically $150–$500",
             Delivery: "Varies by rescue group",
             BestFor: "Adopting a specific breed from people who know it best"),
+        new("puppies", "Puppies.com", SiteCategory.BreederMarketplace,
+            "One of the oldest and largest puppy classifieds sites (since 2003), with thousands of listings nationwide.",
+            "https://www.puppies.com",
+            Kind: "Buy from breeders",
+            Vetting: "Seller reviews and optional ID badges — listings themselves are not screened",
+            PriceNote: "Wide range — classifieds pricing set by each seller",
+            Delivery: "Arranged directly with the seller",
+            BestFor: "The biggest raw selection, if you're prepared to vet sellers yourself",
+            Caution: "Open classifieds with minimal vetting — screen any seller yourself, insist on health records, and never wire money."),
+        new("pawrade", "Pawrade", SiteCategory.BreederMarketplace,
+            "Broker marketplace with a nationwide breeder network, health guarantee, and door delivery.",
+            "https://www.pawrade.com",
+            Kind: "Buy from breeders",
+            Vetting: "Broker model: Pawrade says it background-checks breeders; you buy through Pawrade, not the breeder directly",
+            PriceNote: "$$$ — broker pricing, typically from ~$2,000",
+            Delivery: "Nationwide delivery coordinated by Pawrade",
+            BestFor: "Concierge-style buying with a scam guarantee"),
+        new("lancaster", "Lancaster Puppies", SiteCategory.BreederMarketplace,
+            "Very high-traffic classifieds site centered on Pennsylvania/Ohio breeders.",
+            "https://www.lancasterpuppies.com",
+            Kind: "Buy from breeders",
+            Vetting: "Classifieds — sellers are not screened by the site",
+            PriceNote: "Often below-market prices — a signal to inspect carefully",
+            Delivery: "Arranged directly with the seller; many expect pickup",
+            BestFor: "East-coast buyers willing to visit breeders in person",
+            Caution: "Reviews include sick-puppy and puppy-mill complaints — visit in person, meet the parents, and verify vet records before paying anything."),
+        new("greenfield", "Greenfield Puppies", SiteCategory.BreederMarketplace,
+            "Long-running Pennsylvania-based puppy classifieds covering the East Coast.",
+            "https://www.greenfieldpuppies.com",
+            Kind: "Buy from breeders",
+            Vetting: "Classifieds — breeder claims (vet checks, guarantees) are per-listing, not site-verified",
+            PriceNote: "Often below-market prices — a signal to inspect carefully",
+            Delivery: "Arranged directly with the seller",
+            BestFor: "East-coast buyers willing to visit breeders in person",
+            Caution: "Same Amish-country classifieds model as Lancaster — do your own vetting, in person, before paying anything."),
+        new("rescueme", "Rescue Me!", SiteCategory.Rescue,
+            "Volunteer-run network with over 1 million animals adopted; browse rescues breed-by-breed and state-by-state.",
+            "https://www.rescueme.org",
+            Kind: "Adopt",
+            Vetting: "Free postings from shelters and individuals — meet the animal and poster yourself",
+            PriceNote: "Adoption fees vary; some fully sponsored",
+            Delivery: "Local — you contact the poster directly",
+            BestFor: "Breed-specific rescue searches right down to your state"),
     ];
 
     private static readonly Dictionary<string, string> StateNames = new(StringComparer.OrdinalIgnoreCase)
@@ -256,6 +300,17 @@ public static class SiteCatalog
                 "https://www.petfinder.com/search/dogs-for-adoption/us/",
             "adoptapet" when breed is not null =>
                 $"https://www.adoptapet.com/s/adopt-a-{breed.LinkSlug}{(stateName is null ? "" : $"/{stateName}")}",
+            "puppies" when breed is not null =>
+                $"https://www.puppies.com/find-a-puppy/{breed.LinkSlug}{(stateName is null ? "" : $"/{stateName}")}",
+            "lancaster" when breed is not null =>
+                $"https://www.lancasterpuppies.com/breeds/{breed.LinkSlug}/puppy{(state is null ? "" : $"?state={state.ToUpperInvariant()}")}",
+            "greenfield" when breed is not null =>
+                $"https://www.greenfieldpuppies.com/{breed.LinkSlug}-puppies-for-sale/",
+            "pawrade" when breed is not null =>
+                $"https://www.pawrade.com/puppies/{breed.LinkSlug}/",
+            // Rescue Me! uses breed subdomains without hyphens: goldenretriever.rescueme.org/newyork
+            "rescueme" when breed is not null =>
+                $"https://{breed.LinkSlug.Replace("-", "")}.rescueme.org/{(stateName is null ? "" : stateName.Replace("-", ""))}",
             _ => site.HomeUrl,
         };
     }
@@ -266,7 +321,7 @@ public static class SiteCatalog
             : site.Id switch
             {
                 "aspca" or "bestfriends" => $"Browse dogs on {site.Name}",
-                "akcrescue" => $"Find {breed.DisplayName} rescues on {site.Name}",
+                "akcrescue" or "rescueme" => $"Find {breed.DisplayName} rescues on {site.Name}",
                 _ => $"See {breed.DisplayName}s on {site.Name}",
             };
 }

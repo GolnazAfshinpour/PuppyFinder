@@ -32,6 +32,9 @@ defineProps({
           <span><strong>Best for:</strong> {{ site.bestFor }}</span>
         </div>
       </div>
+      <div v-if="site.caution" role="alert" class="alert alert-warning alert-soft py-2 text-xs">
+        <span>⚠️ {{ site.caution }}</span>
+      </div>
       <a class="btn btn-primary btn-block" :href="site.linkUrl" target="_blank" rel="noopener noreferrer">
         {{ site.linkLabel }} ↗
       </a>
