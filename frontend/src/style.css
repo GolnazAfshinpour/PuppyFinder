@@ -4,7 +4,8 @@
 }
 
 @theme {
-  --font-sans: 'Avenir Next', 'Segoe UI', system-ui, -apple-system, sans-serif;
+  --font-sans: 'Quicksand', 'Avenir Next', 'Segoe UI', system-ui, sans-serif;
+  --font-display: 'Grenze Gotisch', 'Palatino', serif;
 }
 
 body {
