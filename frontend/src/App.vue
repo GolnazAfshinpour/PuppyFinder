@@ -1,5 +1,9 @@
 <script setup>
 import { computed, onMounted, ref, watch } from 'vue'
+import SearchHub from './components/SearchHub.vue'
+import SiteCard from './components/SiteCard.vue'
+import BreedQuiz from './components/BreedQuiz.vue'
+import ListingsSection from './components/ListingsSection.vue'
 
 const US_STATES = [
   'AL', 'AK', 'AZ', 'AR', 'CA', 'CO', 'CT', 'DE', 'FL', 'GA',
@@ -9,77 +13,88 @@ const US_STATES = [
   'SD', 'TN', 'TX', 'UT', 'VT', 'VA', 'WA', 'WV', 'WI', 'WY',
 ]
 
-const listings = ref([])
-const sources = ref([])
-const sites = ref([])
 const breeds = ref([])
-const selectedBreed = ref('')
+const sites = ref([])
+const listings = ref([])
+const selectedBreed = ref('') // breed slug
 const selectedState = ref('')
-const loading = ref(true)
+const goal = ref('both')
+const quizOpen = ref(false)
+const loadingSites = ref(true)
+const loadingListings = ref(true)
 const error = ref('')
-const brokenImages = ref(new Set())
 
-async function loadListings() {
+const selectedBreedName = computed(
+  () => breeds.value.find((b) => b.slug === selectedBreed.value)?.displayName ?? '',
+)
+
+const visibleSites = computed(() => {
+  if (goal.value === 'adopt') return sites.value.filter((s) => s.kind === 'Adopt')
+  if (goal.value === 'buy') return sites.value.filter((s) => s.kind !== 'Adopt')
+  return sites.value
+})
+
+async function loadSites() {
+  loadingSites.value = true
   error.value = ''
   try {
     const params = new URLSearchParams()
     if (selectedBreed.value) params.set('breed', selectedBreed.value)
     if (selectedState.value) params.set('state', selectedState.value)
-    const query = params.size ? `?${params}` : ''
-    const [listingsRes, sourcesRes] = await Promise.all([
-      fetch(`/api/listings${query}`),
-      fetch('/api/sources'),
-    ])
-    if (!listingsRes.ok) throw new Error(`API returned ${listingsRes.status}`)
-    listings.value = await listingsRes.json()
-    if (sourcesRes.ok) sources.value = await sourcesRes.json()
+    const res = await fetch(`/api/sites${params.size ? `?${params}` : ''}`)
+    if (!res.ok) throw new Error(`API returned ${res.status}`)
+    sites.value = await res.json()
   } catch (e) {
-    error.value = `Could not load listings — is the backend running? (${e.message})`
+    error.value = `Could not load sites — is the backend running? (${e.message})`
   } finally {
-    loading.value = false
+    loadingSites.value = false
   }
 }
 
-async function loadExtras() {
+async function loadListings() {
+  loadingListings.value = true
   try {
-    const [breedsRes, sitesRes] = await Promise.all([
-      fetch('/api/breeds'),
-      fetch('/api/sites'),
-    ])
-    if (breedsRes.ok) breeds.value = await breedsRes.json()
-    if (sitesRes.ok) sites.value = await sitesRes.json()
+    const params = new URLSearchParams()
+    if (selectedBreedName.value) params.set('breed', selectedBreedName.value)
+    if (selectedState.value) params.set('state', selectedState.value)
+    const res = await fetch(`/api/listings${params.size ? `?${params}` : ''}`)
+    if (res.ok) listings.value = await res.json()
   } catch {
-    // dropdowns/footer are progressive enhancements over the listing grid
+    listings.value = []
+  } finally {
+    loadingListings.value = false
   }
 }
 
-// The breed dropdown holds display names because listings carry free-text breed names.
-watch([selectedBreed, selectedState], loadListings)
-
-const rescueGroupsDisabled = computed(() =>
-  sources.value.some((s) => s.name === 'RescueGroups' && !s.enabled),
-)
-
-const sourceErrors = computed(() =>
-  sources.value.filter((s) => s.enabled && s.lastError),
-)
-
-function ageSex(listing) {
-  return [listing.age, listing.sex].filter(Boolean).join(' • ')
+async function loadBreeds() {
+  try {
+    const res = await fetch('/api/breeds')
+    if (res.ok) breeds.value = await res.json()
+  } catch {
+    // hub still works without the dropdown contents
+  }
 }
 
-function snippet(text) {
-  if (!text) return 'No description provided — see the full listing.'
-  return text.length > 140 ? `${text.slice(0, 140)}…` : text
+function openAll() {
+  for (const site of visibleSites.value) {
+    window.open(site.linkUrl, '_blank', 'noopener')
+  }
 }
 
-function markImageBroken(id) {
-  brokenImages.value = new Set(brokenImages.value).add(id)
+function pickQuizBreed(slug) {
+  selectedBreed.value = slug
+  quizOpen.value = false
 }
+
+watch([selectedBreed, selectedState], () => {
+  loadSites()
+  loadListings()
+})
 
 onMounted(() => {
+  loadBreeds()
+  loadSites()
   loadListings()
-  loadExtras()
 })
 </script>
 
@@ -87,78 +102,34 @@ onMounted(() => {
   <main class="page">
     <header class="header">
       <h1>🐶 PuppyFinder</h1>
-      <p>Every adoptable dog, one place — real listings aggregated live from source sites.</p>
+      <p>Search once — we point you to the right page on every legit puppy site.</p>
     </header>
 
-    <div class="controls">
-      <select v-model="selectedBreed">
-        <option value="">All breeds</option>
-        <option v-for="b in breeds" :key="b.slug" :value="b.displayName">{{ b.displayName }}</option>
-      </select>
-      <select v-model="selectedState">
-        <option value="">Anywhere in the US</option>
-        <option v-for="s in US_STATES" :key="s" :value="s">{{ s }}</option>
-      </select>
-    </div>
+    <SearchHub
+      v-model:breed="selectedBreed"
+      v-model:state="selectedState"
+      v-model:goal="goal"
+      :breeds="breeds"
+      :us-states="US_STATES"
+      :site-count="visibleSites.length"
+      @open-all="openAll"
+      @open-quiz="quizOpen = true"
+    />
 
-    <p v-if="loading" class="status">Fetching listings from source sites…</p>
+    <p v-if="loadingSites" class="status">Loading sites…</p>
     <p v-else-if="error" class="status error">{{ error }}</p>
+    <ul v-else class="site-grid">
+      <SiteCard v-for="site in visibleSites" :key="site.id" :site="site" />
+    </ul>
 
-    <template v-else>
-      <p v-for="s in sourceErrors" :key="s.name" class="status error">
-        {{ s.name }}: {{ s.lastError }}
-      </p>
-      <p v-if="listings.length === 0" class="status">No dogs match your filters.</p>
+    <ListingsSection :listings="listings" :loading="loadingListings" />
 
-      <ul v-else class="listing-grid">
-        <li v-for="dog in listings" :key="dog.id" class="card">
-          <a :href="dog.listingUrl" target="_blank" rel="noopener noreferrer" class="card-media">
-            <img
-              v-if="dog.imageUrl && !brokenImages.has(dog.id)"
-              :src="dog.imageUrl"
-              :alt="`${dog.name}, ${dog.breed}`"
-              loading="lazy"
-              @error="markImageBroken(dog.id)"
-            />
-            <div v-else class="media-fallback">🐾</div>
-            <span class="breed-badge">{{ dog.breed }}</span>
-          </a>
-          <div class="card-body">
-            <div class="card-title">
-              <a :href="dog.listingUrl" target="_blank" rel="noopener noreferrer">{{ dog.name }}</a>
-              <span v-if="ageSex(dog)" class="age-sex">{{ ageSex(dog) }}</span>
-            </div>
-            <p class="description">{{ snippet(dog.description) }}</p>
-            <div class="card-footer">
-              <span class="location">📍 {{ dog.city }}, {{ dog.state }}</span>
-              <a :href="dog.sourceUrl" target="_blank" rel="noopener noreferrer" class="source-chip">
-                {{ dog.source }} ↗
-              </a>
-            </div>
-          </div>
-        </li>
-      </ul>
-    </template>
-
-    <p v-if="rescueGroupsDisabled && !loading" class="coverage-note">
-      Want more coverage? Add a free
-      <a href="https://rescuegroups.org/services/adoptable-pet-data-api/" target="_blank" rel="noopener noreferrer">RescueGroups API key</a>
-      to <code>backend/appsettings.Development.json</code>.
+    <p class="footnote">
+      PuppyFinder links you directly to each site's own listings — always verify a breeder
+      or rescue yourself before sending money.
     </p>
 
-    <footer v-if="sites.length" class="sites-footer">
-      <span class="sites-label">Browse the source sites directly:</span>
-      <a
-        v-for="site in sites"
-        :key="site.id"
-        :href="site.linkUrl"
-        target="_blank"
-        rel="noopener noreferrer"
-        class="site-chip"
-      >
-        {{ site.name }} ↗
-      </a>
-    </footer>
+    <BreedQuiz v-if="quizOpen" @close="quizOpen = false" @select="pickQuizBreed" />
   </main>
 </template>
 
@@ -171,7 +142,7 @@ onMounted(() => {
 
 .header {
   text-align: center;
-  margin-bottom: 2.5rem;
+  margin-bottom: 2rem;
 }
 
 .header h1 {
@@ -185,31 +156,6 @@ onMounted(() => {
   font-size: 1.05rem;
 }
 
-.controls {
-  display: flex;
-  gap: 0.75rem;
-  max-width: 560px;
-  margin: 0 auto 2.5rem;
-}
-
-.controls select {
-  flex: 1;
-  padding: 0.7rem 1.1rem;
-  border: 1px solid var(--border);
-  border-radius: 999px;
-  font-size: 0.95rem;
-  font-family: inherit;
-  background: var(--surface);
-  color: var(--text-strong);
-  box-shadow: var(--shadow);
-  outline: none;
-  transition: border-color 0.2s;
-}
-
-.controls select:focus {
-  border-color: var(--accent);
-}
-
 .status {
   text-align: center;
   color: var(--text-muted);
@@ -219,177 +165,25 @@ onMounted(() => {
   color: var(--accent);
 }
 
-.coverage-note {
+.site-grid {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 1.5rem;
+}
+
+.footnote {
   text-align: center;
   color: var(--text-muted);
   font-size: 0.85rem;
   margin-top: 2.5rem;
 }
 
-.listing-grid {
-  list-style: none;
-  padding: 0;
-  margin: 0;
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-  gap: 1.5rem;
-}
-
-.card {
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  overflow: hidden;
-  box-shadow: var(--shadow);
-  transition: box-shadow 0.25s, transform 0.25s;
-  display: flex;
-  flex-direction: column;
-}
-
-.card:hover {
-  box-shadow: var(--shadow-hover);
-  transform: translateY(-3px);
-}
-
-.card-media {
-  position: relative;
-  display: block;
-  aspect-ratio: 3 / 2;
-  background: var(--accent-soft);
-}
-
-.card-media img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  display: block;
-}
-
-.media-fallback {
-  width: 100%;
-  height: 100%;
-  display: grid;
-  place-items: center;
-  font-size: 3rem;
-  background: linear-gradient(135deg, var(--accent-soft), #fdf6e3);
-}
-
-.breed-badge {
-  position: absolute;
-  left: 0.75rem;
-  bottom: 0.75rem;
-  padding: 0.3rem 0.8rem;
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.92);
-  color: var(--text-strong);
-  font-size: 0.8rem;
-  font-weight: 600;
-  backdrop-filter: blur(4px);
-  box-shadow: 0 1px 4px rgba(28, 24, 38, 0.15);
-}
-
-.card-body {
-  padding: 1.1rem 1.25rem 1.25rem;
-  display: flex;
-  flex-direction: column;
-  gap: 0.6rem;
-  flex: 1;
-}
-
-.card-title {
-  display: flex;
-  justify-content: space-between;
-  align-items: baseline;
-  gap: 0.5rem;
-}
-
-.card-title a {
-  font-size: 1.15rem;
-  font-weight: 650;
-  color: var(--text-strong);
-  text-decoration: none;
-}
-
-.card-title a:hover {
-  color: var(--accent);
-}
-
-.age-sex {
-  font-size: 0.8rem;
-  color: var(--text-muted);
-  white-space: nowrap;
-}
-
-.description {
-  margin: 0;
-  font-size: 0.9rem;
-  color: var(--text);
-  flex: 1;
-}
-
-.card-footer {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 0.5rem;
-  flex-wrap: wrap;
-}
-
-.location {
-  font-size: 0.85rem;
-  color: var(--text-muted);
-  white-space: nowrap;
-}
-
-.source-chip {
-  font-size: 0.72rem;
-  font-weight: 600;
-  padding: 0.2rem 0.65rem;
-  border-radius: 999px;
-  background: var(--accent-soft);
-  color: var(--accent);
-  text-decoration: none;
-}
-
-.sites-footer {
-  margin-top: 3rem;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.5rem;
-  justify-content: center;
-  align-items: center;
-}
-
-.sites-label {
-  font-size: 0.85rem;
-  color: var(--text-muted);
-  margin-right: 0.25rem;
-}
-
-.site-chip {
-  font-size: 0.8rem;
-  font-weight: 600;
-  padding: 0.3rem 0.8rem;
-  border-radius: 999px;
-  border: 1px solid var(--border);
-  background: var(--surface);
-  color: var(--text-strong);
-  text-decoration: none;
-  transition: border-color 0.2s;
-}
-
-.site-chip:hover {
-  border-color: var(--accent);
-  color: var(--accent);
-}
-
 @media (max-width: 640px) {
   .header h1 {
     font-size: 2rem;
-  }
-
-  .controls {
-    flex-direction: column;
   }
 }
 </style>

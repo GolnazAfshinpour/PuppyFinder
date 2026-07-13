@@ -1,6 +1,11 @@
 # PuppyFinder
 
-Every adoptable dog, one place: PuppyFinder shows real puppy/dog listings inside its own UI, aggregated live from public data sources — **no API keys required** — with each card linking back to the original listing.
+Search once — land on the right page of every legit puppy site. PuppyFinder is a central hub over the popular, legitimate US puppy websites:
+
+- **Universal search hub** — pick breed + state + adopt/buy, and every site card deep-links to that site's filtered results; "Open results on all sites" launches them all in tabs
+- **Breed finder quiz** — six lifestyle questions score against a breed-traits table and recommend your top 3 breeds (`POST /api/quiz`)
+- **Site guide** — each site card shows what actually differs: vetting level, typical prices, how the dog gets to you, and who the site is best for
+- **Real adoptable dogs** — live listings from keyless government open-data feeds (plus RescueGroups with a free key), shown right on the page
 
 ## Where the listings come from
 

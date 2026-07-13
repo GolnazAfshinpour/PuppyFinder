@@ -85,8 +85,26 @@ app.MapGet("/api/sources", (ListingAggregator aggregator) =>
 .WithName("GetSources");
 
 app.MapGet("/api/breeds", () =>
-    Results.Ok(SiteCatalog.Breeds.Select(b => new { b.Slug, b.DisplayName })))
+    Results.Ok(SiteCatalog.Breeds.Select(b => new
+    {
+        b.Slug,
+        b.DisplayName,
+        b.Size,
+        b.Energy,
+        b.Grooming,
+        b.Shedding,
+        b.KidFriendly,
+        b.ApartmentFriendly,
+        b.TypicalPrice,
+        b.Blurb,
+    })))
 .WithName("GetBreeds");
+
+app.MapPost("/api/quiz", (QuizAnswers answers) =>
+    BreedMatcher.Validate(answers) is { } problem
+        ? Results.BadRequest(problem)
+        : Results.Ok(BreedMatcher.TopMatches(answers)))
+.WithName("MatchBreeds");
 
 app.MapGet("/api/sites", (string? breed, string? state) =>
 {
@@ -107,6 +125,11 @@ app.MapGet("/api/sites", (string? breed, string? state) =>
         site.Name,
         site.Category,
         site.Description,
+        site.Kind,
+        site.Vetting,
+        site.PriceNote,
+        site.Delivery,
+        site.BestFor,
         LinkUrl = SiteCatalog.BuildLink(site, selected, state),
         LinkLabel = SiteCatalog.BuildLinkLabel(site, selected),
     });

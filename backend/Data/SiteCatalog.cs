@@ -2,7 +2,26 @@ using System.Net;
 
 namespace PuppyFinder.Api.Data;
 
-public record Breed(string Slug, string DisplayName, string AkcSlug);
+/// <summary>
+/// Breed with search slugs plus the traits the quiz scores against.
+/// Trait scales are 1–5; prices are typical US ranges (approximate by design).
+/// </summary>
+public record Breed(
+    string Slug,
+    string DisplayName,
+    string AkcSlug,
+    string Size,            // Small | Medium | Large
+    int Energy,             // 1 couch potato … 5 needs a job
+    int Grooming,           // 1 wash-and-go … 5 salon regular
+    int Shedding,           // 1 minimal … 5 fur everywhere
+    int KidFriendly,        // 1 poor … 5 great
+    int ApartmentFriendly,  // 1 needs space … 5 thrives in apartments
+    int PriceLow,
+    int PriceHigh,
+    string Blurb)
+{
+    public string TypicalPrice => $"${PriceLow:n0}–${PriceHigh:n0}";
+}
 
 public enum SiteCategory
 {
@@ -17,7 +36,12 @@ public record Site(
     string Name,
     SiteCategory Category,
     string Description,
-    string HomeUrl);
+    string HomeUrl,
+    string Kind,        // "Buy from breeders" | "Adopt"
+    string Vetting,     // what screening the site applies
+    string PriceNote,
+    string Delivery,    // how the dog gets to you
+    string BestFor);
 
 /// <summary>
 /// Static catalog of legitimate US puppy/dog sites and the URL patterns for
@@ -29,54 +53,134 @@ public static class SiteCatalog
 {
     public static readonly IReadOnlyList<Breed> Breeds =
     [
-        new("australian-shepherd", "Australian Shepherd", "australian-shepherd"),
-        new("beagle", "Beagle", "beagle"),
-        new("bernese-mountain-dog", "Bernese Mountain Dog", "bernese-mountain-dog"),
-        new("boxer", "Boxer", "boxer"),
-        new("bulldog", "Bulldog", "bulldog"),
-        new("cavalier-king-charles-spaniel", "Cavalier King Charles Spaniel", "cavalier-king-charles-spaniel"),
-        new("chihuahua", "Chihuahua", "chihuahua"),
-        new("dachshund", "Dachshund", "dachshund"),
-        new("french-bulldog", "French Bulldog", "french-bulldog"),
-        new("german-shepherd", "German Shepherd", "german-shepherd-dog"),
-        new("golden-retriever", "Golden Retriever", "golden-retriever"),
-        new("great-dane", "Great Dane", "great-dane"),
-        new("labrador-retriever", "Labrador Retriever", "labrador-retriever"),
-        new("pembroke-welsh-corgi", "Pembroke Welsh Corgi", "pembroke-welsh-corgi"),
-        new("pomeranian", "Pomeranian", "pomeranian"),
-        new("poodle", "Poodle", "poodle-standard"),
-        new("rottweiler", "Rottweiler", "rottweiler"),
-        new("shih-tzu", "Shih Tzu", "shih-tzu"),
-        new("siberian-husky", "Siberian Husky", "siberian-husky"),
-        new("yorkshire-terrier", "Yorkshire Terrier", "yorkshire-terrier"),
+        new("australian-shepherd", "Australian Shepherd", "australian-shepherd",
+            "Medium", 5, 3, 4, 4, 2, 800, 2000,
+            "Brilliant herding dog that needs a job — happiest with active owners and space to run."),
+        new("beagle", "Beagle", "beagle",
+            "Medium", 4, 1, 3, 5, 3, 500, 1200,
+            "Merry, nose-driven family dog; easygoing coat, loves company and kids."),
+        new("bernese-mountain-dog", "Bernese Mountain Dog", "bernese-mountain-dog",
+            "Large", 3, 4, 5, 5, 1, 1500, 3500,
+            "Gentle giant from the Swiss Alps; wonderful with kids, sheds heavily, needs room."),
+        new("boxer", "Boxer", "boxer",
+            "Large", 4, 1, 2, 4, 2, 1000, 2500,
+            "Playful, patient, and protective — a clownish athlete that adores its family."),
+        new("bulldog", "Bulldog", "bulldog",
+            "Medium", 1, 2, 2, 4, 5, 1500, 4000,
+            "Calm, low-key companion; happy with short strolls and a good couch."),
+        new("cavalier-king-charles-spaniel", "Cavalier King Charles Spaniel", "cavalier-king-charles-spaniel",
+            "Small", 2, 3, 3, 5, 5, 1800, 3500,
+            "Affectionate lap dog that gets along with everyone — kids, cats, city life."),
+        new("chihuahua", "Chihuahua", "chihuahua",
+            "Small", 2, 1, 2, 2, 5, 500, 1500,
+            "Tiny, devoted, and portable; best with gentle older kids and adults."),
+        new("dachshund", "Dachshund", "dachshund",
+            "Small", 2, 2, 2, 3, 4, 500, 1500,
+            "Curious, brave little hound; apartment-sized with a big personality."),
+        new("french-bulldog", "French Bulldog", "french-bulldog",
+            "Small", 2, 1, 2, 4, 5, 2500, 5000,
+            "The quintessential city dog — compact, low-exercise, and endlessly charming."),
+        new("german-shepherd", "German Shepherd", "german-shepherd-dog",
+            "Large", 5, 3, 5, 4, 1, 1000, 3000,
+            "Loyal, trainable working dog; thrives with structure, exercise, and space."),
+        new("golden-retriever", "Golden Retriever", "golden-retriever",
+            "Large", 4, 3, 4, 5, 2, 1000, 3000,
+            "The classic family dog — gentle, eager to please, and great with kids."),
+        new("great-dane", "Great Dane", "great-dane",
+            "Large", 2, 1, 3, 4, 2, 1000, 3000,
+            "Surprisingly mellow giant; short walks, big couch, bigger heart."),
+        new("labrador-retriever", "Labrador Retriever", "labrador-retriever",
+            "Large", 4, 2, 4, 5, 2, 800, 2500,
+            "America's favorite for a reason — friendly, sturdy, and up for anything."),
+        new("pembroke-welsh-corgi", "Pembroke Welsh Corgi", "pembroke-welsh-corgi",
+            "Small", 4, 2, 5, 4, 4, 1000, 2500,
+            "Big-dog brain on short legs; smart, vocal, and sheds more than you'd think."),
+        new("pomeranian", "Pomeranian", "pomeranian",
+            "Small", 3, 4, 3, 2, 5, 1000, 3000,
+            "Bold little fluffball; thrives in apartments with owners who enjoy grooming."),
+        new("poodle", "Poodle (Standard)", "poodle-standard",
+            "Large", 4, 5, 1, 4, 3, 1500, 3500,
+            "Whip-smart and nearly non-shedding — needs regular grooming and mental exercise."),
+        new("rottweiler", "Rottweiler", "rottweiler",
+            "Large", 4, 1, 3, 3, 1, 1000, 3000,
+            "Confident guardian; devoted to family, best with experienced owners and space."),
+        new("shih-tzu", "Shih Tzu", "shih-tzu",
+            "Small", 1, 5, 1, 4, 5, 800, 2000,
+            "Bred purely for companionship — minimal exercise, maximal lap time, daily brushing."),
+        new("siberian-husky", "Siberian Husky", "siberian-husky",
+            "Medium", 5, 3, 5, 4, 1, 800, 2000,
+            "Beautiful escape artist with marathon energy; needs cold-weather-level exercise."),
+        new("yorkshire-terrier", "Yorkshire Terrier", "yorkshire-terrier",
+            "Small", 3, 4, 1, 2, 5, 1200, 3000,
+            "Feisty toy terrier with a silky, low-shed coat; ideal for compact homes."),
     ];
 
     public static readonly IReadOnlyList<Site> Sites =
     [
         new("akc", "AKC Marketplace", SiteCategory.BreederMarketplace,
             "Puppies from AKC-registered litters, listed by the American Kennel Club.",
-            "https://marketplace.akc.org/puppies"),
+            "https://marketplace.akc.org/puppies",
+            Kind: "Buy from breeders",
+            Vetting: "All litters from AKC-registered parents; breeder programs badged (Breeder of Merit, etc.)",
+            PriceNote: "Breeder pricing — varies widely by breed and pedigree",
+            Delivery: "Arranged with each breeder (often pickup)",
+            BestFor: "Pedigreed puppies with verifiable registration"),
         new("gooddog", "Good Dog", SiteCategory.BreederMarketplace,
-            "Breeders screened against community health and care standards.",
-            "https://www.gooddog.com"),
+            "Marketplace that screens breeders against community health and care standards.",
+            "https://www.gooddog.com",
+            Kind: "Buy from breeders",
+            Vetting: "Breeders screened against Good Dog's health & care standards; secure payments",
+            PriceNote: "Breeder pricing — health-tested lines often cost more",
+            Delivery: "Arranged with each breeder",
+            BestFor: "Health-focused buyers who want screened breeders and safe payment"),
         new("puppyspot", "PuppySpot", SiteCategory.BreederMarketplace,
             "Nationwide puppy placement with a vetted, USDA-inspected breeder network.",
-            "https://www.puppyspot.com"),
+            "https://www.puppyspot.com",
+            Kind: "Buy from breeders",
+            Vetting: "Accepts <10% of breeder applicants; USDA-inspected network; health commitment",
+            PriceNote: "$$$ — premium, all-inclusive pricing",
+            Delivery: "Nationwide delivery coordinated by PuppySpot",
+            BestFor: "Hands-off buying with delivery handled for you"),
         new("petfinder", "Petfinder", SiteCategory.AdoptionPlatform,
             "The largest US adoption search engine — thousands of shelters and rescues.",
-            "https://www.petfinder.com/search/dogs-for-adoption/us/"),
+            "https://www.petfinder.com/search/dogs-for-adoption/us/",
+            Kind: "Adopt",
+            Vetting: "Listings come from registered shelters and rescue organizations",
+            PriceNote: "Adoption fees, typically $50–$500",
+            Delivery: "Local — you visit the shelter or rescue",
+            BestFor: "The widest adoption search in the country"),
         new("adoptapet", "Adopt a Pet", SiteCategory.AdoptionPlatform,
             "North America's largest non-profit pet adoption website.",
-            "https://www.adoptapet.com/dog-adoption"),
+            "https://www.adoptapet.com/dog-adoption",
+            Kind: "Adopt",
+            Vetting: "Non-profit; aggregates shelters and rescue groups",
+            PriceNote: "Adoption fees, typically $50–$500",
+            Delivery: "Local — coordinated with the shelter or rescue",
+            BestFor: "Breed-specific adoption pages that are easy to browse"),
         new("aspca", "ASPCA Adoption Center", SiteCategory.Shelter,
             "Adoption programs from the American Society for the Prevention of Cruelty to Animals.",
-            "https://www.aspca.org/adopt-pet"),
+            "https://www.aspca.org/adopt-pet",
+            Kind: "Adopt",
+            Vetting: "Animals in ASPCA care with health and behavior evaluations",
+            PriceNote: "Adoption fees; senior/special programs often discounted",
+            Delivery: "Local (NYC & LA adoption centers)",
+            BestFor: "Adopters near ASPCA centers wanting evaluated dogs"),
         new("bestfriends", "Best Friends Animal Society", SiteCategory.Rescue,
             "The nation's largest no-kill sanctuary with a nationwide adoption network.",
-            "https://bestfriends.org/adopt"),
+            "https://bestfriends.org/adopt",
+            Kind: "Adopt",
+            Vetting: "No-kill network; dogs in sanctuary and partner-shelter care",
+            PriceNote: "Adoption fees, often modest",
+            Delivery: "Local via centers and partner shelters",
+            BestFor: "Mission-driven adopters supporting no-kill rescue"),
         new("akcrescue", "AKC Rescue Network", SiteCategory.Rescue,
             "Directory of 450+ breed-specific rescue groups recognized by the AKC.",
-            "https://www.akc.org/akc-rescue-network"),
+            "https://www.akc.org/akc-rescue-network",
+            Kind: "Adopt",
+            Vetting: "Breed clubs' own rescue groups, recognized by the AKC",
+            PriceNote: "Rescue adoption fees, typically $150–$500",
+            Delivery: "Varies by rescue group",
+            BestFor: "Adopting a specific breed from people who know it best"),
     ];
 
     /// <summary>Builds the deepest listing link each site supports for the given breed/state.</summary>
