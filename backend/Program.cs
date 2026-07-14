@@ -144,3 +144,6 @@ app.MapGet("/api/sites", async (string? breed, string? state, string? city, Bree
 .WithName("GetSites");
 
 app.Run();
+
+// Exposes the implicit Program class to WebApplicationFactory in integration tests.
+public partial class Program;
