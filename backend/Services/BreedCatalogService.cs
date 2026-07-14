@@ -51,7 +51,7 @@ public sealed class BreedCatalogService(
                 var payload = await client.GetStringAsync(BreedsUrl, cancellationToken);
                 using var json = JsonDocument.Parse(payload);
 
-                foreach (var name in ExpandNames(json.RootElement.GetProperty("message")))
+                foreach (var (name, dogCeoPath) in ExpandNames(json.RootElement.GetProperty("message")))
                 {
                     var slug = name.ToLowerInvariant().Replace(". ", "-").Replace(' ', '-');
                     if (!merged.ContainsKey(slug))
@@ -60,7 +60,8 @@ public sealed class BreedCatalogService(
                             slug, name, slug,
                             Size: "Medium", Energy: 3, Grooming: 3, Shedding: 3,
                             KidFriendly: 3, ApartmentFriendly: 3,
-                            PriceLow: 0, PriceHigh: 0, Blurb: "");
+                            PriceLow: 0, PriceHigh: 0, Blurb: "",
+                            DogCeoPath: dogCeoPath);
                     }
                 }
 
@@ -84,21 +85,21 @@ public sealed class BreedCatalogService(
         (await GetBreedsAsync(cancellationToken))
             .FirstOrDefault(b => b.Slug.Equals(slug, StringComparison.OrdinalIgnoreCase));
 
-    private static IEnumerable<string> ExpandNames(JsonElement message)
+    private static IEnumerable<(string Name, string DogCeoPath)> ExpandNames(JsonElement message)
     {
         foreach (var breed in message.EnumerateObject())
         {
             var subBreeds = breed.Value.EnumerateArray().ToList();
             if (subBreeds.Count == 0)
             {
-                yield return Pretty(breed.Name);
+                yield return (Pretty(breed.Name), breed.Name);
             }
             else
             {
                 // Convention: sub-breed comes first ("retriever"/"golden" → "Golden Retriever").
                 foreach (var sub in subBreeds)
                 {
-                    yield return $"{Pretty(sub.GetString()!)} {Pretty(breed.Name)}";
+                    yield return ($"{Pretty(sub.GetString()!)} {Pretty(breed.Name)}", $"{breed.Name}/{sub.GetString()}");
                 }
             }
         }

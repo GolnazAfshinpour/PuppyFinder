@@ -75,6 +75,19 @@ public class ApiIntegrationTests(OfflineApiFactory factory) : IClassFixture<Offl
     }
 
     [Fact]
+    public async Task Sites_ExposeAppliedFilters_ForCardBadges()
+    {
+        var sites = await GetJson("/api/sites?breed=golden-retriever&state=TX&city=Houston");
+        var applied = sites.EnumerateArray().ToDictionary(
+            s => s.GetProperty("id").GetString()!,
+            s => s.GetProperty("appliedFilters").EnumerateArray().Select(f => f.GetString()).ToArray());
+
+        Assert.Equal(["breed", "state", "city"], applied["akc"]);
+        Assert.Equal(["breed"], applied["greenfield"]);
+        Assert.Empty(applied["aspca"]);
+    }
+
+    [Fact]
     public async Task Sites_UnknownBreed_Returns400()
     {
         var response = await _client.GetAsync("/api/sites?breed=not-a-real-breed");
@@ -118,6 +131,19 @@ public class ApiIntegrationTests(OfflineApiFactory factory) : IClassFixture<Offl
         Assert.Equal(5, golden.GetProperty("kidFriendly").GetInt32());
         Assert.Equal(2, golden.GetProperty("apartmentFriendly").GetInt32());
         Assert.Equal(4, golden.GetProperty("shedding").GetInt32());
+        Assert.Equal("retriever/golden", golden.GetProperty("imagePath").GetString());
+    }
+
+    [Fact]
+    public async Task Breeds_EveryCuratedBreed_HasADogCeoImagePath()
+    {
+        var breeds = await GetJson("/api/breeds");
+        foreach (var breed in breeds.EnumerateArray())
+        {
+            var path = breed.GetProperty("imagePath").GetString();
+            Assert.False(string.IsNullOrWhiteSpace(path), $"{breed.GetProperty("slug")} has no imagePath");
+            Assert.Matches("^[a-z]+(/[a-z]+)?$", path);
+        }
     }
 
     [Fact]
@@ -144,6 +170,7 @@ public class ApiIntegrationTests(OfflineApiFactory factory) : IClassFixture<Offl
         var matches = JsonDocument.Parse(await response.Content.ReadAsStringAsync()).RootElement;
         Assert.Equal(3, matches.GetArrayLength());
         Assert.True(matches[0].GetProperty("matchPercent").GetInt32() > 0);
+        Assert.False(string.IsNullOrWhiteSpace(matches[0].GetProperty("imagePath").GetString()));
     }
 
     [Fact]

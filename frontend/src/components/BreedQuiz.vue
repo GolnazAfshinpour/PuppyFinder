@@ -1,5 +1,6 @@
 <script setup>
 import { computed, ref } from 'vue'
+import { fetchBreedImage } from '../dogImages.js'
 import PuppyLogo from './PuppyLogo.vue'
 
 const emit = defineEmits(['close', 'select'])
@@ -61,6 +62,7 @@ const QUESTIONS = [
 
 const answers = ref({ home: '', activity: '', kids: '', grooming: '', size: '', budget: '' })
 const results = ref(null)
+const photos = ref({}) // slug → dog.ceo image url, filled in as fetches resolve
 const submitting = ref(false)
 const error = ref('')
 
@@ -79,6 +81,12 @@ async function submit() {
     })
     if (!res.ok) throw new Error(`API returned ${res.status}`)
     results.value = await res.json()
+    photos.value = {}
+    for (const m of results.value) {
+      fetchBreedImage(m.imagePath).then((url) => {
+        if (url) photos.value = { ...photos.value, [m.slug]: url }
+      })
+    }
   } catch (e) {
     error.value = `Could not score the quiz (${e.message})`
   } finally {
@@ -151,11 +159,22 @@ function reset() {
         <div class="flex flex-col gap-3">
           <div v-for="(m, i) in results" :key="m.slug" class="card bg-base-200">
             <div class="card-body gap-2 p-4">
-              <div class="flex items-baseline justify-between gap-2">
-                <span class="card-title text-base">{{ i === 0 ? '🏆 ' : '' }}{{ m.displayName }}</span>
-                <span class="badge badge-primary badge-soft font-bold">{{ m.matchPercent }}% match</span>
+              <div class="flex items-center gap-3">
+                <img
+                  v-if="photos[m.slug]"
+                  :src="photos[m.slug]"
+                  :alt="m.displayName"
+                  class="h-16 w-16 shrink-0 rounded-xl object-cover shadow-sm"
+                  loading="lazy"
+                />
+                <div class="min-w-0 flex-1">
+                  <div class="flex items-baseline justify-between gap-2">
+                    <span class="card-title text-base">{{ i === 0 ? '🏆 ' : '' }}{{ m.displayName }}</span>
+                    <span class="badge badge-primary badge-soft font-bold">{{ m.matchPercent }}% match</span>
+                  </div>
+                  <progress class="progress progress-primary w-full" :value="m.matchPercent" max="100" />
+                </div>
               </div>
-              <progress class="progress progress-primary w-full" :value="m.matchPercent" max="100" />
               <p class="text-sm">{{ m.blurb }}</p>
               <div class="flex flex-col justify-between gap-1 text-xs opacity-60 sm:flex-row">
                 <span>Typical price: {{ m.typicalPrice }}</span>

@@ -1,7 +1,12 @@
 <script setup>
 defineProps({
   site: { type: Object, required: true },
+  // Which filters the user set ('breed' | 'state' | 'city') — badged below so
+  // visitors know how much of their search this site's link carries.
+  wanted: { type: Array, default: () => [] },
 })
+
+const FILTER_LABELS = { breed: 'Breed', state: 'State', city: 'City' }
 </script>
 
 <template>
@@ -34,6 +39,20 @@ defineProps({
       </div>
       <div v-if="site.caution" role="alert" class="alert alert-warning alert-soft py-2 text-xs">
         <span>⚠️ {{ site.caution }}</span>
+      </div>
+      <div v-if="wanted.length" class="flex flex-wrap items-center gap-1">
+        <span class="text-xs opacity-60">This link carries:</span>
+        <span
+          v-for="f in wanted"
+          :key="f"
+          class="badge badge-sm"
+          :class="site.appliedFilters.includes(f) ? 'badge-success badge-soft' : 'badge-ghost opacity-50'"
+          :title="site.appliedFilters.includes(f)
+            ? `Opens a ${FILTER_LABELS[f].toLowerCase()}-filtered page`
+            : `This site has no ${FILTER_LABELS[f].toLowerCase()}-filtered pages`"
+        >
+          {{ site.appliedFilters.includes(f) ? '✓' : '✕' }} {{ FILTER_LABELS[f] }}
+        </span>
       </div>
       <a class="btn btn-primary btn-block" :href="site.linkUrl" target="_blank" rel="noopener noreferrer">
         {{ site.linkLabel }} ↗

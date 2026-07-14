@@ -191,6 +191,44 @@ public class SiteCatalogLinkTests
                 }
     }
 
+    // --- AppliedFilters (per-card badges) ---
+
+    private static IReadOnlyList<string> Applied(string siteId, string? breedSlug = null, string? state = null, string? city = null) =>
+        SiteCatalog.AppliedFilters(GetSite(siteId), breedSlug is null ? null : GetBreed(breedSlug), state, city);
+
+    [Fact]
+    public void AppliedFilters_FullSupport_ReportsAllThree() =>
+        Assert.Equal(["breed", "state", "city"], Applied("akc", "golden-retriever", "TX", "Houston"));
+
+    [Fact]
+    public void AppliedFilters_Greenfield_CarriesBreedOnly() =>
+        Assert.Equal(["breed"], Applied("greenfield", "golden-retriever", "TX", "Houston"));
+
+    [Fact]
+    public void AppliedFilters_Petfinder_CarriesBreedOnly() =>
+        Assert.Equal(["breed"], Applied("petfinder", "golden-retriever", "TX"));
+
+    [Fact]
+    public void AppliedFilters_HomepageOnlySites_ReportNothing() =>
+        Assert.Empty(Applied("aspca", "golden-retriever", "TX", "Houston"));
+
+    [Fact]
+    public void AppliedFilters_PawradeAndPuppySpot_CarryBreedAndState()
+    {
+        Assert.Equal(["breed", "state"], Applied("pawrade", "golden-retriever", "TX", "Houston"));
+        Assert.Equal(["breed", "state"], Applied("puppyspot", "golden-retriever", "TX", "Houston"));
+    }
+
+    [Fact]
+    public void AppliedFilters_NeverReportsUnsetFilters()
+    {
+        foreach (var site in SiteCatalog.Sites)
+        {
+            Assert.Empty(SiteCatalog.AppliedFilters(site, null, null));
+            Assert.DoesNotContain("city", SiteCatalog.AppliedFilters(site, GetBreed("golden-retriever"), "TX"));
+        }
+    }
+
     [Fact]
     public void Sites_AreOrderedBuyFirstThenAdopt()
     {

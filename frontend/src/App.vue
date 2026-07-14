@@ -1,6 +1,7 @@
 <script setup>
 import { computed, onMounted, ref, watch } from 'vue'
 import { breedMatches } from './breedFilters.js'
+import { fetchBreedImage } from './dogImages.js'
 import SearchHub from './components/SearchHub.vue'
 import SiteCard from './components/SiteCard.vue'
 import BreedQuiz from './components/BreedQuiz.vue'
@@ -35,6 +36,23 @@ const visibleSites = computed(() => {
   if (goal.value === 'adopt') return sites.value.filter((s) => s.kind === 'Adopt')
   if (goal.value === 'buy') return sites.value.filter((s) => s.kind !== 'Adopt')
   return sites.value
+})
+
+// Filters the user has set — each card badges which of these its link carries.
+const wantedFilters = computed(() => {
+  const wanted = []
+  if (selectedBreed.value) wanted.push('breed')
+  if (selectedState.value) wanted.push('state')
+  if (selectedCity.value.trim() && selectedState.value) wanted.push('city')
+  return wanted
+})
+
+const breedPhoto = ref(null)
+watch(selectedBreed, async (slug) => {
+  breedPhoto.value = null
+  const imagePath = breeds.value.find((b) => b.slug === slug)?.imagePath
+  const url = await fetchBreedImage(imagePath)
+  if (selectedBreed.value === slug) breedPhoto.value = url // ignore stale fetches
 })
 
 async function loadSites() {
@@ -141,16 +159,24 @@ onMounted(() => {
       </aside>
 
       <section>
-        <h2 class="mb-5 text-2xl font-bold">
-          Your matching sites
-          <span v-if="selectedBreedName" class="text-primary">for {{ selectedBreedName }}s</span>
+        <h2 class="mb-5 flex items-center gap-3 text-2xl font-bold">
+          <img
+            v-if="breedPhoto"
+            :src="breedPhoto"
+            :alt="selectedBreedName"
+            class="ring-primary/40 h-12 w-12 shrink-0 rounded-full object-cover shadow ring-2"
+          />
+          <span>
+            Your matching sites
+            <span v-if="selectedBreedName" class="text-primary">for {{ selectedBreedName }}s</span>
+          </span>
         </h2>
         <p v-if="loadingSites" class="text-center text-base-content/60">
           <span class="loading loading-dots loading-md" />
         </p>
         <div v-else-if="error" class="alert alert-error">{{ error }}</div>
         <ul v-else class="grid list-none gap-6 p-0 sm:grid-cols-2">
-          <SiteCard v-for="site in visibleSites" :key="site.id" :site="site" />
+          <SiteCard v-for="site in visibleSites" :key="site.id" :site="site" :wanted="wantedFilters" />
         </ul>
 
         <p class="mt-10 text-center text-sm text-base-content/60">

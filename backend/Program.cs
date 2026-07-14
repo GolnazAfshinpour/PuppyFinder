@@ -102,6 +102,7 @@ app.MapGet("/api/breeds", async (BreedCatalogService catalog, CancellationToken 
         KidFriendly = b.PriceHigh > 0 ? b.KidFriendly : (int?)null,
         ApartmentFriendly = b.PriceHigh > 0 ? b.ApartmentFriendly : (int?)null,
         Shedding = b.PriceHigh > 0 ? b.Shedding : (int?)null,
+        ImagePath = b.DogCeoPath,
     })))
 .WithName("GetBreeds");
 
@@ -137,6 +138,7 @@ app.MapGet("/api/sites", async (string? breed, string? state, string? city, Bree
         site.Caution,
         LinkUrl = SiteCatalog.BuildLink(site, selected, state, city),
         LinkLabel = SiteCatalog.BuildLinkLabel(site, selected),
+        AppliedFilters = SiteCatalog.AppliedFilters(site, selected, state, city),
     });
 
     return Results.Ok(cards);

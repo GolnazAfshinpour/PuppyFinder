@@ -16,7 +16,8 @@ public record BreedMatch(
     string TypicalPrice,
     string Blurb,
     int MatchPercent,
-    IReadOnlyList<string> Reasons);
+    IReadOnlyList<string> Reasons,
+    string? ImagePath = null); // dog.ceo photo path for the result card
 
 /// <summary>
 /// Scores quiz answers against breed traits. Each of the six dimensions
@@ -115,7 +116,8 @@ public static class BreedMatcher
                 .Select(r => r.Text)
                 .Distinct()
                 .Take(3)
-                .ToList());
+                .ToList(),
+            ImagePath: breed.DogCeoPath);
     }
 
     private static bool IsAdjacentSize(string breedSize, string wanted) =>

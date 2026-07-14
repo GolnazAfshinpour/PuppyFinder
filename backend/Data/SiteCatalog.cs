@@ -23,7 +23,10 @@ public record Breed(
     // the parent breed, so links search the parent while the display name stays as typed.
     string? LinkSlugOverride = null,
     string? SearchNameOverride = null,
-    bool IncludeInQuiz = true)
+    bool IncludeInQuiz = true,
+    // dog.ceo photo API path ("breed" or "breed/subbreed"), verified July 2026;
+    // null = no photos available for this breed.
+    string? DogCeoPath = null)
 {
     public string TypicalPrice => $"${PriceLow:n0}–${PriceHigh:n0}";
     public string LinkSlug => LinkSlugOverride ?? Slug;
@@ -63,87 +66,87 @@ public static class SiteCatalog
     [
         new("australian-shepherd", "Australian Shepherd", "australian-shepherd",
             "Medium", 5, 3, 4, 4, 2, 800, 2000,
-            "Brilliant herding dog that needs a job — happiest with active owners and space to run."),
+            "Brilliant herding dog that needs a job — happiest with active owners and space to run.", DogCeoPath: "australian/shepherd"),
         new("beagle", "Beagle", "beagle",
             "Medium", 4, 1, 3, 5, 3, 500, 1200,
-            "Merry, nose-driven family dog; easygoing coat, loves company and kids."),
+            "Merry, nose-driven family dog; easygoing coat, loves company and kids.", DogCeoPath: "beagle"),
         new("bernese-mountain-dog", "Bernese Mountain Dog", "bernese-mountain-dog",
             "Large", 3, 4, 5, 5, 1, 1500, 3500,
-            "Gentle giant from the Swiss Alps; wonderful with kids, sheds heavily, needs room."),
+            "Gentle giant from the Swiss Alps; wonderful with kids, sheds heavily, needs room.", DogCeoPath: "mountain/bernese"),
         new("boxer", "Boxer", "boxer",
             "Large", 4, 1, 2, 4, 2, 1000, 2500,
-            "Playful, patient, and protective — a clownish athlete that adores its family."),
+            "Playful, patient, and protective — a clownish athlete that adores its family.", DogCeoPath: "boxer"),
         new("bulldog", "Bulldog", "bulldog",
             "Medium", 1, 2, 2, 4, 5, 1500, 4000,
-            "Calm, low-key companion; happy with short strolls and a good couch."),
+            "Calm, low-key companion; happy with short strolls and a good couch.", DogCeoPath: "bulldog/english"),
         new("cavalier-king-charles-spaniel", "Cavalier King Charles Spaniel", "cavalier-king-charles-spaniel",
             "Small", 2, 3, 3, 5, 5, 1800, 3500,
-            "Affectionate lap dog that gets along with everyone — kids, cats, city life."),
+            "Affectionate lap dog that gets along with everyone — kids, cats, city life.", DogCeoPath: "spaniel/blenheim"),
         new("chihuahua", "Chihuahua", "chihuahua",
             "Small", 2, 1, 2, 2, 5, 500, 1500,
-            "Tiny, devoted, and portable; best with gentle older kids and adults."),
+            "Tiny, devoted, and portable; best with gentle older kids and adults.", DogCeoPath: "chihuahua"),
         new("dachshund", "Dachshund", "dachshund",
             "Small", 2, 2, 2, 3, 4, 500, 1500,
-            "Curious, brave little hound; apartment-sized with a big personality."),
+            "Curious, brave little hound; apartment-sized with a big personality.", DogCeoPath: "dachshund"),
         new("french-bulldog", "French Bulldog", "french-bulldog",
             "Small", 2, 1, 2, 4, 5, 2500, 5000,
-            "The quintessential city dog — compact, low-exercise, and endlessly charming."),
+            "The quintessential city dog — compact, low-exercise, and endlessly charming.", DogCeoPath: "bulldog/french"),
         new("german-shepherd", "German Shepherd", "german-shepherd-dog",
             "Large", 5, 3, 5, 4, 1, 1000, 3000,
-            "Loyal, trainable working dog; thrives with structure, exercise, and space."),
+            "Loyal, trainable working dog; thrives with structure, exercise, and space.", DogCeoPath: "german/shepherd"),
         new("golden-retriever", "Golden Retriever", "golden-retriever",
             "Large", 4, 3, 4, 5, 2, 1000, 3000,
-            "The classic family dog — gentle, eager to please, and great with kids."),
+            "The classic family dog — gentle, eager to please, and great with kids.", DogCeoPath: "retriever/golden"),
         new("great-dane", "Great Dane", "great-dane",
             "Large", 2, 1, 3, 4, 2, 1000, 3000,
-            "Surprisingly mellow giant; short walks, big couch, bigger heart."),
+            "Surprisingly mellow giant; short walks, big couch, bigger heart.", DogCeoPath: "dane/great"),
         new("labrador-retriever", "Labrador Retriever", "labrador-retriever",
             "Large", 4, 2, 4, 5, 2, 800, 2500,
-            "America's favorite for a reason — friendly, sturdy, and up for anything."),
+            "America's favorite for a reason — friendly, sturdy, and up for anything.", DogCeoPath: "labrador"),
         new("pembroke-welsh-corgi", "Pembroke Welsh Corgi", "pembroke-welsh-corgi",
             "Small", 4, 2, 5, 4, 4, 1000, 2500,
-            "Big-dog brain on short legs; smart, vocal, and sheds more than you'd think."),
+            "Big-dog brain on short legs; smart, vocal, and sheds more than you'd think.", DogCeoPath: "pembroke"),
         new("pomeranian", "Pomeranian", "pomeranian",
             "Small", 3, 4, 3, 2, 5, 1000, 3000,
-            "Bold little fluffball; thrives in apartments with owners who enjoy grooming."),
+            "Bold little fluffball; thrives in apartments with owners who enjoy grooming.", DogCeoPath: "pomeranian"),
         new("poodle", "Poodle (Standard)", "poodle-standard",
             "Large", 4, 5, 1, 4, 3, 1500, 3500,
-            "Whip-smart and nearly non-shedding — needs regular grooming and mental exercise."),
+            "Whip-smart and nearly non-shedding — needs regular grooming and mental exercise.", DogCeoPath: "poodle/standard"),
         new("rottweiler", "Rottweiler", "rottweiler",
             "Large", 4, 1, 3, 3, 1, 1000, 3000,
-            "Confident guardian; devoted to family, best with experienced owners and space."),
+            "Confident guardian; devoted to family, best with experienced owners and space.", DogCeoPath: "rottweiler"),
         new("shih-tzu", "Shih Tzu", "shih-tzu",
             "Small", 1, 5, 1, 4, 5, 800, 2000,
-            "Bred purely for companionship — minimal exercise, maximal lap time, daily brushing."),
+            "Bred purely for companionship — minimal exercise, maximal lap time, daily brushing.", DogCeoPath: "shihtzu"),
         new("siberian-husky", "Siberian Husky", "siberian-husky",
             "Medium", 5, 3, 5, 4, 1, 800, 2000,
-            "Beautiful escape artist with marathon energy; needs cold-weather-level exercise."),
+            "Beautiful escape artist with marathon energy; needs cold-weather-level exercise.", DogCeoPath: "husky"),
         new("yorkshire-terrier", "Yorkshire Terrier", "yorkshire-terrier",
             "Small", 3, 4, 1, 2, 5, 1200, 3000,
-            "Feisty toy terrier with a silky, low-shed coat; ideal for compact homes."),
+            "Feisty toy terrier with a silky, low-shed coat; ideal for compact homes.", DogCeoPath: "terrier/yorkshire"),
 
         // Teacup searches — not a recognized breed; sites list these under the parent
         // breed, so links target the parent. Kept out of the quiz (traits mirror parents).
         new("teacup-poodle", "Teacup Poodle", "poodle-toy",
             "Teacup", 2, 5, 1, 2, 5, 2000, 5000,
             "Extra-small Toy Poodle. \"Teacup\" is a size label, not a breed — vet the breeder's health practices extra carefully.",
-            LinkSlugOverride: "poodle", SearchNameOverride: "Poodle", IncludeInQuiz: false),
+            LinkSlugOverride: "poodle", SearchNameOverride: "Poodle", IncludeInQuiz: false, DogCeoPath: "poodle/toy"),
         new("teacup-yorkie", "Teacup Yorkie", "yorkshire-terrier",
             "Teacup", 2, 4, 1, 1, 5, 1500, 4500,
             "Extra-small Yorkshire Terrier. \"Teacup\" is a size label, not a breed — vet the breeder's health practices extra carefully.",
-            LinkSlugOverride: "yorkshire-terrier", SearchNameOverride: "Yorkshire Terrier", IncludeInQuiz: false),
+            LinkSlugOverride: "yorkshire-terrier", SearchNameOverride: "Yorkshire Terrier", IncludeInQuiz: false, DogCeoPath: "terrier/yorkshire"),
         new("teacup-chihuahua", "Teacup Chihuahua", "chihuahua",
             "Teacup", 2, 1, 2, 1, 5, 1200, 3500,
             "Extra-small Chihuahua. \"Teacup\" is a size label, not a breed — vet the breeder's health practices extra carefully.",
-            LinkSlugOverride: "chihuahua", SearchNameOverride: "Chihuahua", IncludeInQuiz: false),
+            LinkSlugOverride: "chihuahua", SearchNameOverride: "Chihuahua", IncludeInQuiz: false, DogCeoPath: "chihuahua"),
         new("teacup-pomeranian", "Teacup Pomeranian", "pomeranian",
             "Teacup", 2, 4, 3, 1, 5, 1500, 5000,
             "Extra-small Pomeranian. \"Teacup\" is a size label, not a breed — vet the breeder's health practices extra carefully.",
-            LinkSlugOverride: "pomeranian", SearchNameOverride: "Pomeranian", IncludeInQuiz: false),
+            LinkSlugOverride: "pomeranian", SearchNameOverride: "Pomeranian", IncludeInQuiz: false, DogCeoPath: "pomeranian"),
         new("teacup-maltese", "Teacup Maltese", "maltese",
             "Teacup", 2, 4, 1, 1, 5, 1500, 4500,
             "Extra-small Maltese. \"Teacup\" is a size label, not a breed — vet the breeder's health practices extra carefully.",
-            LinkSlugOverride: "maltese", SearchNameOverride: "Maltese", IncludeInQuiz: false),
+            LinkSlugOverride: "maltese", SearchNameOverride: "Maltese", IncludeInQuiz: false, DogCeoPath: "maltese"),
     ];
 
     private static readonly IReadOnlyList<Site> AllSites =
@@ -378,6 +381,22 @@ public static class SiteCatalog
                 $"https://dog.rescueme.org/{stateName.Replace("-", "")}",
             _ => site.HomeUrl,
         };
+    }
+
+    /// <summary>
+    /// Which of the requested filters actually changed this site's link — shown per
+    /// card so visitors know what carries through before they click. Derived by
+    /// rebuilding the link without each filter, so it can never drift from
+    /// BuildLink's per-site rules.
+    /// </summary>
+    public static IReadOnlyList<string> AppliedFilters(Site site, Breed? breed, string? state, string? city = null)
+    {
+        var full = BuildLink(site, breed, state, city);
+        var applied = new List<string>(3);
+        if (breed is not null && full != BuildLink(site, null, state, city)) applied.Add("breed");
+        if (state is not null && full != BuildLink(site, breed, null)) applied.Add("state");
+        if (city is not null && full != BuildLink(site, breed, state)) applied.Add("city");
+        return applied;
     }
 
     public static string BuildLinkLabel(Site site, Breed? breed) =>
