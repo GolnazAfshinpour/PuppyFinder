@@ -50,13 +50,15 @@ public class ApiIntegrationTests(OfflineApiFactory factory) : IClassFixture<Offl
     // --- /api/sites ---
 
     [Fact]
-    public async Task Sites_ReturnsAllThirteen_BuyFirstInTrustOrder()
+    public async Task Sites_ReturnsAllFourteen_BuyFirstInTrustOrder()
     {
         var sites = await GetJson("/api/sites");
-        Assert.Equal(13, sites.GetArrayLength());
+        Assert.Equal(14, sites.GetArrayLength());
         Assert.Equal("gooddog", sites[0].GetProperty("id").GetString());
         Assert.Equal("Buy from breeders", sites[0].GetProperty("kind").GetString());
-        Assert.Equal("aspca", sites[12].GetProperty("id").GetString());
+        // Craigslist is last by design — weakest vetting in the catalog.
+        Assert.Equal("craigslist", sites[13].GetProperty("id").GetString());
+        Assert.False(string.IsNullOrWhiteSpace(sites[13].GetProperty("caution").GetString()));
     }
 
     [Fact]

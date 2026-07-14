@@ -146,6 +146,49 @@ public class SiteCatalogLinkTests
             SiteCatalog.BuildLink(GetSite("rescueme"), externalBreed, "TX"));
     }
 
+    // --- Craigslist (metro search only; state chooser as fallback) ---
+
+    [Fact]
+    public void Craigslist_VerifiedMetroCity_GetsBreedFilteredSearch() =>
+        Assert.Equal("https://www.craigslist.org/search/area/houston?cat=pet&query=golden%20retriever",
+            Link("craigslist", "golden-retriever", "TX", "Houston"));
+
+    [Fact]
+    public void Craigslist_SisterCity_MapsToItsMetroSubdomain() =>
+        Assert.Equal("https://www.craigslist.org/search/area/dallas?cat=pet",
+            Link("craigslist", state: "TX", city: "Fort Worth"));
+
+    [Fact]
+    public void Craigslist_TeacupBreed_SearchesParentBreedName() =>
+        Assert.Equal("https://www.craigslist.org/search/area/houston?cat=pet&query=poodle",
+            Link("craigslist", "teacup-poodle", "TX", "Houston"));
+
+    [Fact]
+    public void Craigslist_SameNameCityInWrongState_FallsBackToStateChooser() =>
+        // Portland ME must not land on Oregon's craigslist.
+        Assert.Equal("https://geo.craigslist.org/iso/us/me", Link("craigslist", "golden-retriever", "ME", "Portland"));
+
+    [Fact]
+    public void Craigslist_UnknownCity_FallsBackToStateChooser() =>
+        Assert.Equal("https://geo.craigslist.org/iso/us/tx", Link("craigslist", "golden-retriever", "TX", "Katy"));
+
+    [Fact]
+    public void Craigslist_StateOnly_UsesStateChooser() =>
+        Assert.Equal("https://geo.craigslist.org/iso/us/tx", Link("craigslist", state: "TX"));
+
+    [Fact]
+    public void Craigslist_NoLocation_UsesNationwideChooser() =>
+        // No nationwide search exists, even with a breed set.
+        Assert.Equal("https://geo.craigslist.org/iso/us", Link("craigslist", "golden-retriever"));
+
+    [Fact]
+    public void Craigslist_AppliedFilters_ReflectMetroMatch()
+    {
+        Assert.Equal(["breed", "state", "city"], Applied("craigslist", "golden-retriever", "TX", "Houston"));
+        Assert.Equal(["state"], Applied("craigslist", "golden-retriever", "TX", "Katy"));
+        Assert.Empty(Applied("craigslist", "golden-retriever"));
+    }
+
     // --- Cross-cutting rules ---
 
     [Fact]

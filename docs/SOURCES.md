@@ -76,8 +76,17 @@ Traffic/reputation research added the remaining most-used sites, per the policy 
 | [Greenfield Puppies](https://www.greenfieldpuppies.com) | High-traffic East-coast sibling of Lancaster | ⚠⚠ same model |
 | [Rescue Me!](https://www.rescueme.org) | 1M+ adoptions, breed-by-state rescue browsing | none |
 
-Deliberately excluded: **Craigslist** (68% of puppy-scam reports originate there), **Petland**
-(retail chain, longstanding welfare controversy), NextDayPets/CKC marketplace (low reputation/relevance).
+Deliberately excluded: **Petland** (retail chain, longstanding welfare controversy),
+NextDayPets/CKC marketplace (low reputation/relevance).
+
+**Craigslist** was initially excluded (68% of puppy-scam reports originate there) but added
+July 2026 by owner decision, under the same include-with-honest-caution policy: listed last,
+strongest caution label, adopt/rehoming framing (pet *sales* violate Craigslist's rules).
+Verified URL patterns: metro search `www.craigslist.org/search/area/{subdomain}?cat=pet&query={q}`
+(server-side filtering confirmed; legacy `{subdomain}.craigslist.org/search/pet?query=` 301s there),
+state chooser `geo.craigslist.org/iso/us/{state}`, metro subdomains from craigslist.org/about/sites
+(verified map in `SiteCatalog.CraigslistMetros`, state-guarded so e.g. Portland ME never lands on
+Oregon's site).
 
 Deep-link patterns (search-index verified): `puppies.com/find-a-puppy/{breed}[/{state-name}]`,
 `lancasterpuppies.com/breeds/{breed}/puppy[?state=XX]`, `greenfieldpuppies.com/{breed}-puppies-for-sale/`,

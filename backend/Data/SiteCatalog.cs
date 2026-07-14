@@ -250,6 +250,15 @@ public static class SiteCatalog
             Delivery: "Arranged directly with the seller",
             BestFor: "East-coast buyers willing to visit breeders in person",
             Caution: "Same Amish-country classifieds model as Lancaster — do your own vetting, in person, before paying anything."),
+        new("craigslist", "Craigslist Pets", SiteCategory.AdoptionPlatform,
+            "Local classifieds rehoming section. Included because people use it — read the caution first.",
+            "https://geo.craigslist.org/iso/us",
+            Kind: "Adopt",
+            Vetting: "None — anonymous classifieds. Pet sales violate Craigslist's own rules (rehoming with a small adoption fee only)",
+            PriceNote: "Rehoming fees only; a priced 'sale' listing is already breaking site rules",
+            Delivery: "Local only — meet in person",
+            BestFor: "Local rehoming finds, if you exercise maximum caution",
+            Caution: "The single most-reported source of puppy scams (68% of reports). Never wire money, never pay a deposit sight-unseen, and only hand over anything in person after meeting the puppy."),
         new("rescueme", "Rescue Me!", SiteCategory.Rescue,
             "Volunteer-run network with over 1 million animals adopted; browse rescues breed-by-breed and state-by-state.",
             "https://www.rescueme.org",
@@ -265,7 +274,7 @@ public static class SiteCatalog
     private static readonly string[] TrustOrder =
     [
         "gooddog", "akc", "puppyspot", "pawrade", "puppies", "greenfield", "lancaster",
-        "petfinder", "adoptapet", "rescueme", "akcrescue", "bestfriends", "aspca",
+        "petfinder", "adoptapet", "rescueme", "akcrescue", "bestfriends", "aspca", "craigslist",
     ];
 
     public static readonly IReadOnlyList<Site> Sites =
@@ -312,6 +321,30 @@ public static class SiteCatalog
         ["shih-tzu"] = "shihtzu",
         ["siberian-husky"] = "husky",
         ["yorkshire-terrier"] = "yorkie",
+    };
+
+    // Craigslist metro subdomains, verified July 2026 against craigslist.org/about/sites.
+    // Keyed by normalized city name; the state guards against same-name cities in other
+    // states (Portland ME must not land on Oregon's site). Unknown cities fall back to
+    // the state chooser page. Verified entries only — same policy as RescueMeSubdomains.
+    private static readonly Dictionary<string, (string Subdomain, string State)> CraigslistMetros = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["houston"] = ("houston", "TX"), ["dallas"] = ("dallas", "TX"), ["fortworth"] = ("dallas", "TX"),
+        ["austin"] = ("austin", "TX"), ["sanantonio"] = ("sanantonio", "TX"),
+        ["newyork"] = ("newyork", "NY"), ["newyorkcity"] = ("newyork", "NY"),
+        ["losangeles"] = ("losangeles", "CA"), ["sanfrancisco"] = ("sfbay", "CA"), ["sanjose"] = ("sfbay", "CA"),
+        ["sandiego"] = ("sandiego", "CA"), ["sacramento"] = ("sacramento", "CA"), ["orangecounty"] = ("orangecounty", "CA"),
+        ["chicago"] = ("chicago", "IL"), ["seattle"] = ("seattle", "WA"), ["tacoma"] = ("seattle", "WA"),
+        ["denver"] = ("denver", "CO"), ["phoenix"] = ("phoenix", "AZ"), ["miami"] = ("miami", "FL"),
+        ["tampa"] = ("tampa", "FL"), ["orlando"] = ("orlando", "FL"), ["atlanta"] = ("atlanta", "GA"),
+        ["boston"] = ("boston", "MA"), ["philadelphia"] = ("philadelphia", "PA"), ["pittsburgh"] = ("pittsburgh", "PA"),
+        ["minneapolis"] = ("minneapolis", "MN"), ["stpaul"] = ("minneapolis", "MN"),
+        ["detroit"] = ("detroit", "MI"), ["portland"] = ("portland", "OR"), ["lasvegas"] = ("lasvegas", "NV"),
+        ["stlouis"] = ("stlouis", "MO"), ["kansascity"] = ("kansascity", "MO"), ["baltimore"] = ("baltimore", "MD"),
+        ["charlotte"] = ("charlotte", "NC"), ["raleigh"] = ("raleigh", "NC"), ["durham"] = ("raleigh", "NC"),
+        ["cleveland"] = ("cleveland", "OH"), ["columbus"] = ("columbus", "OH"),
+        ["nashville"] = ("nashville", "TN"), ["indianapolis"] = ("indianapolis", "IN"),
+        ["saltlakecity"] = ("saltlakecity", "UT"),
     };
 
     /// <summary>
@@ -375,6 +408,15 @@ public static class SiteCatalog
                 $"https://www.pawrade.com/puppies/{breed.LinkSlug}/",
             "pawrade" when stateName is not null =>
                 $"https://www.pawrade.com/puppies-for-sale/{stateName.Replace("-", "")}/",
+            // Craigslist search only exists per metro; a breed query carries only when the
+            // typed city maps to a verified metro in the selected state. Otherwise the
+            // state chooser page is the deepest safe landing (no nationwide search exists).
+            "craigslist" when city is not null && state is not null
+                && CraigslistMetros.TryGetValue(NormalizeCityKey(city), out var metro)
+                && metro.State.Equals(state, StringComparison.OrdinalIgnoreCase) =>
+                $"https://www.craigslist.org/search/area/{metro.Subdomain}?cat=pet{(breed is null ? "" : $"&query={Uri.EscapeDataString(breed.SearchName.ToLowerInvariant())}")}",
+            "craigslist" when stateSegment is not null =>
+                $"https://geo.craigslist.org/iso/us/{stateSegment}",
             "rescueme" when breed is not null && RescueMeSubdomains.TryGetValue(breed.LinkSlug, out var subdomain) =>
                 $"https://{subdomain}.rescueme.org/{(stateName is null ? "" : stateName.Replace("-", ""))}",
             "rescueme" when stateName is not null =>
@@ -382,6 +424,10 @@ public static class SiteCatalog
             _ => site.HomeUrl,
         };
     }
+
+    // "St. Louis" / "Fort Worth" → "stlouis" / "fortworth", matching Craigslist's naming.
+    private static string NormalizeCityKey(string city) =>
+        string.Concat(city.Where(char.IsLetter)).ToLowerInvariant();
 
     /// <summary>
     /// Which of the requested filters actually changed this site's link — shown per
@@ -405,6 +451,7 @@ public static class SiteCatalog
             : site.Id switch
             {
                 "aspca" or "bestfriends" => $"Browse dogs on {site.Name}",
+                "craigslist" => "Browse local rehoming posts on Craigslist",
                 "akcrescue" or "rescueme" => $"Find {breed.DisplayName} rescues on {site.Name}",
                 _ => $"See {breed.DisplayName}s on {site.Name}",
             };
