@@ -1,5 +1,6 @@
 <script setup>
 import { computed } from 'vue'
+import { TRAITS, breedMatches } from '../breedFilters.js'
 
 const props = defineProps({
   breeds: { type: Array, required: true },
@@ -8,12 +9,14 @@ const props = defineProps({
   state: { type: String, default: '' },
   city: { type: String, default: '' },
   size: { type: String, default: '' },
+  traits: { type: Array, default: () => [] },
   goal: { type: String, default: 'both' },
   siteCount: { type: Number, default: 0 },
 })
 
 const emit = defineEmits([
-  'update:breed', 'update:state', 'update:city', 'update:size', 'update:goal',
+  'update:breed', 'update:state', 'update:city', 'update:size', 'update:traits',
+  'update:goal',
   'open-all', 'open-quiz',
 ])
 
@@ -25,10 +28,20 @@ const GOALS = [
 
 const SIZES = ['Teacup', 'Small', 'Medium', 'Large']
 
-// Size narrows the breed list; sizes are known for the curated breeds only.
+// Size and must-have traits narrow the breed list; trait data exist for the
+// curated breeds only.
 const filteredBreeds = computed(() =>
-  props.size ? props.breeds.filter((b) => b.size === props.size) : props.breeds,
+  props.breeds.filter((b) => breedMatches(b, { size: props.size, traits: props.traits })),
 )
+
+const narrowed = computed(() => props.size || props.traits.length > 0)
+
+function toggleTrait(key) {
+  emit(
+    'update:traits',
+    props.traits.includes(key) ? props.traits.filter((t) => t !== key) : [...props.traits, key],
+  )
+}
 </script>
 
 <template>
@@ -58,9 +71,22 @@ const filteredBreeds = computed(() =>
             {{ s }}
           </button>
         </div>
-        <p v-if="size" class="mt-1 text-xs opacity-60">
-          Showing {{ filteredBreeds.length }} {{ size.toLowerCase() }} breeds (from our curated list).
-        </p>
+      </div>
+
+      <div>
+        <span class="label-text mb-1 block text-xs font-bold tracking-wide uppercase opacity-60">Must-haves</span>
+        <div class="flex flex-wrap gap-1.5">
+          <button
+            v-for="t in TRAITS"
+            :key="t.key"
+            type="button"
+            class="btn btn-xs"
+            :class="traits.includes(t.key) ? 'btn-primary' : 'btn-outline'"
+            @click="toggleTrait(t.key)"
+          >
+            {{ t.label }}
+          </button>
+        </div>
       </div>
 
       <label class="form-control">
@@ -73,6 +99,9 @@ const filteredBreeds = computed(() =>
           <option value="">Any breed</option>
           <option v-for="b in filteredBreeds" :key="b.slug" :value="b.slug">{{ b.displayName }}</option>
         </select>
+        <p v-if="narrowed" class="mt-1 text-xs opacity-60">
+          Showing {{ filteredBreeds.length }} breeds matching your filters (from our curated list).
+        </p>
       </label>
 
       <label class="form-control">

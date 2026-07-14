@@ -83,6 +83,30 @@ Deep-link patterns (search-index verified): `puppies.com/find-a-puppy/{breed}[/{
 `lancasterpuppies.com/breeds/{breed}/puppy[?state=XX]`, `greenfieldpuppies.com/{breed}-puppies-for-sale/`,
 `pawrade.com/puppies/{breed}/`, `{breed-no-hyphens}.rescueme.org/{state-name-no-hyphens}`.
 
+## Filter deep-link audit (July 2026)
+
+Which listing filters are URL-addressable per site (everything else is JS/UI-only and
+cannot be deep-linked — notably **age**, which no site exposes in URLs):
+
+| Site | Sex | Price | Other verified |
+|---|---|---|---|
+| AKC Marketplace | ✅ `?gender=male\|female` (verified live: results filter) | — | — |
+| Lancaster Puppies | ✅ `?sex=` | ✅ `?price={min}%2C{max}` (blank min = under-$X); combinable with sex + breed/state paths; all-breeds base `/sale/puppies/[near-me/united-states/{state}/]` | `?keyword=` free-text (color workaround) |
+| Greenfield Puppies | UI-only | fixed all-breed tiers `/puppies-for-sale-under-{300\|500}/` only | `/find-puppy/` rejects all query params (404) |
+| PuppySpot | ⚠ `?gender=` on `/puppies-for-sale` (Google-indexed; unverifiable behind Cloudflare) | — | breed+state `/find-puppies/{breed}/{state-name}` (indexed) |
+| Good Dog | ✗ (`/{breed}/male` 404s) | UI-only | size pages `/{breed}/size/{toy\|miniature\|standard}`; size+location can't combine (404) |
+| Pawrade | UI-only — **never append query params** (degrades to empty search) | — | state+breed `/puppies-for-sale/{statenoword-gaps}/{breed}/` (state slugs concatenated: `newyork`; verified live + sitemap) |
+| Puppies.com | UI-only (params echoed but ignored server-side) | UI-only | — |
+| Adopt-a-Pet / Petfinder / Rescue Me / AKC Rescue | UI-only or absent | — | Petfinder search URLs render filter chips but always "0 results / set location" — never link to `/search/` |
+
+**App decision (July 2026):** the UI offers only the near-universal filters
+(breed / state / city) so that what a user sets always carries to the site they open.
+Sex and price were prototyped and reverted — they carry to only 2–3 of 13 sites (table
+above), which reads as "the filter didn't work" everywhere else. Size and trait toggles
+(kids/apartment/low-shed) remain, but they only narrow the app's own breed dropdown via
+the quiz trait scores — no site-side filtering implied. Revisit sex/price only with
+per-card "filters applied here" transparency in the UI.
+
 ## Roadmap
 
 1. **Phase 1 (now):** Add the free Petfinder key → live adoption listings flow.

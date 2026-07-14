@@ -1,5 +1,6 @@
 <script setup>
 import { computed, onMounted, ref, watch } from 'vue'
+import { breedMatches } from './breedFilters.js'
 import SearchHub from './components/SearchHub.vue'
 import SiteCard from './components/SiteCard.vue'
 import BreedQuiz from './components/BreedQuiz.vue'
@@ -20,6 +21,7 @@ const selectedBreed = ref('') // breed slug
 const selectedState = ref('')
 const selectedCity = ref('')
 const selectedSize = ref('')
+const traits = ref([])
 const goal = ref('both')
 const quizOpen = ref(false)
 const loadingSites = ref(true)
@@ -82,11 +84,13 @@ watch(selectedCity, () => {
   cityTimer = setTimeout(loadSites, 450)
 })
 
-// Clear a breed that the newly chosen size filter excludes.
-watch(selectedSize, () => {
-  if (!selectedSize.value || !selectedBreed.value) return
+// Clear a breed that newly chosen size/trait filters exclude.
+watch([selectedSize, traits], () => {
+  if (!selectedBreed.value) return
   const current = breeds.value.find((b) => b.slug === selectedBreed.value)
-  if (current && current.size !== selectedSize.value) selectedBreed.value = ''
+  if (current && !breedMatches(current, { size: selectedSize.value, traits: traits.value })) {
+    selectedBreed.value = ''
+  }
 })
 
 onMounted(() => {
@@ -126,6 +130,7 @@ onMounted(() => {
           v-model:state="selectedState"
           v-model:city="selectedCity"
           v-model:size="selectedSize"
+          v-model:traits="traits"
           v-model:goal="goal"
           :breeds="breeds"
           :us-states="US_STATES"

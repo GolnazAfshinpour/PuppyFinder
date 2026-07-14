@@ -311,7 +311,12 @@ public static class SiteCatalog
         ["yorkshire-terrier"] = "yorkie",
     };
 
-    /// <summary>Builds the deepest listing link each site supports for the given breed/state/city.</summary>
+    /// <summary>
+    /// Builds the deepest listing link each site supports for the given breed/state/city.
+    /// Only these near-universal filters are offered: per-site filters like sex or price
+    /// carry to so few sites that they read as broken everywhere else (and unknown query
+    /// params actively break some sites — Pawrade degrades to an empty search).
+    /// </summary>
     public static string BuildLink(Site site, Breed? breed, string? state, string? city = null)
     {
         var stateSegment = string.IsNullOrWhiteSpace(state) ? null : state.ToLowerInvariant();
@@ -331,10 +336,18 @@ public static class SiteCatalog
             // is the listings page; /breeds/{breed} is only a profile page.
             "gooddog" when breed is not null && citySlug is not null =>
                 $"https://www.gooddog.com/{breed.LinkSlug}/{citySlug}-{stateSegment}",
+            // Good Dog has real toy-size listing pages for Poodles; size and location
+            // can't combine (/{breed}/toy/{city} 404s), so location wins when set.
+            "gooddog" when breed is { Size: "Teacup", LinkSlug: "poodle" } && stateSegment is null =>
+                "https://www.gooddog.com/poodle/size/toy",
             "gooddog" when breed is not null =>
                 $"https://www.gooddog.com/{breed.LinkSlug}{(stateSegment is null ? "" : $"/{stateSegment}")}",
+            "puppyspot" when breed is not null && stateName is not null =>
+                $"https://www.puppyspot.com/find-puppies/{breed.LinkSlug}/{stateName}",
             "puppyspot" when breed is not null =>
                 $"https://www.puppyspot.com/puppies-for-sale-by-breeders/breed/{breed.LinkSlug}",
+            "puppyspot" when stateName is not null =>
+                $"https://www.puppyspot.com/find-puppies/{stateName}",
             // Petfinder's Dec-2025 rebuild dropped URL-driven search filters (any search URL
             // renders "0 results" until the visitor sets a location), so breed searches land
             // on their breed adoption page instead.
@@ -348,10 +361,17 @@ public static class SiteCatalog
                 $"https://www.puppies.com/find-a-puppy/{breed.LinkSlug}{(stateName is null ? "" : $"/{stateName}")}{(citySlug is null ? "" : $"/{citySlug}")}",
             "lancaster" when breed is not null =>
                 $"https://www.lancasterpuppies.com/sale/puppies/{breed.LinkSlug}/{(stateName is null ? "" : $"united-states/{stateName}/")}",
+            "lancaster" when stateName is not null =>
+                $"https://www.lancasterpuppies.com/sale/puppies/near-me/united-states/{stateName}/",
             "greenfield" when breed is not null =>
                 $"https://www.greenfieldpuppies.com/{breed.LinkSlug}-puppies-for-sale/",
+            // Pawrade state slugs concatenate words ("newyork") — verified via their sitemap.
+            "pawrade" when breed is not null && stateName is not null =>
+                $"https://www.pawrade.com/puppies-for-sale/{stateName.Replace("-", "")}/{breed.LinkSlug}/",
             "pawrade" when breed is not null =>
                 $"https://www.pawrade.com/puppies/{breed.LinkSlug}/",
+            "pawrade" when stateName is not null =>
+                $"https://www.pawrade.com/puppies-for-sale/{stateName.Replace("-", "")}/",
             "rescueme" when breed is not null && RescueMeSubdomains.TryGetValue(breed.LinkSlug, out var subdomain) =>
                 $"https://{subdomain}.rescueme.org/{(stateName is null ? "" : stateName.Replace("-", ""))}",
             "rescueme" when stateName is not null =>

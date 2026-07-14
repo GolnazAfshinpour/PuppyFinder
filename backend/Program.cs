@@ -95,9 +95,13 @@ app.MapGet("/api/breeds", async (BreedCatalogService catalog, CancellationToken 
     {
         b.Slug,
         b.DisplayName,
-        // Size is only meaningful for curated breeds; external catalog entries default
-        // to "Medium" without real data, so they're reported as unknown for filtering.
+        // Size and traits are only meaningful for curated breeds; external
+        // catalog entries default to neutral values without real data, so they're
+        // reported as unknown for filtering.
         Size = b.PriceHigh > 0 ? b.Size : null,
+        KidFriendly = b.PriceHigh > 0 ? b.KidFriendly : (int?)null,
+        ApartmentFriendly = b.PriceHigh > 0 ? b.ApartmentFriendly : (int?)null,
+        Shedding = b.PriceHigh > 0 ? b.Shedding : (int?)null,
     })))
 .WithName("GetBreeds");
 
