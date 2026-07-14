@@ -285,6 +285,32 @@ public static class SiteCatalog
         ["WI"] = "wisconsin", ["WY"] = "wyoming",
     };
 
+    // Rescue Me! uses nickname subdomains (yorkie, lab, corgi…) that can't be derived
+    // mechanically — verified entries only; unknown breeds fall back to dog.rescueme.org.
+    private static readonly Dictionary<string, string> RescueMeSubdomains = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["australian-shepherd"] = "australianshepherd",
+        ["beagle"] = "beagle",
+        ["bernese-mountain-dog"] = "bernesemountaindog",
+        ["boxer"] = "boxer",
+        ["bulldog"] = "bulldog",
+        ["cavalier-king-charles-spaniel"] = "cavalier",
+        ["chihuahua"] = "chihuahua",
+        ["dachshund"] = "dachshund",
+        ["french-bulldog"] = "frenchbulldog",
+        ["german-shepherd"] = "germanshepherd",
+        ["golden-retriever"] = "goldenretriever",
+        ["great-dane"] = "greatdane",
+        ["labrador-retriever"] = "lab",
+        ["pembroke-welsh-corgi"] = "corgi",
+        ["pomeranian"] = "pomeranian",
+        ["poodle"] = "poodle",
+        ["rottweiler"] = "rottweiler",
+        ["shih-tzu"] = "shihtzu",
+        ["siberian-husky"] = "husky",
+        ["yorkshire-terrier"] = "yorkie",
+    };
+
     /// <summary>Builds the deepest listing link each site supports for the given breed/state.</summary>
     public static string BuildLink(Site site, Breed? breed, string? state)
     {
@@ -294,7 +320,7 @@ public static class SiteCatalog
         return site.Id switch
         {
             "akc" when breed is not null =>
-                $"https://marketplace.akc.org/puppies/{breed.AkcSlug}",
+                $"https://marketplace.akc.org/puppies/{breed.AkcSlug}{(stateName is null ? "" : $"/{stateName}")}",
             // Good Dog and PuppySpot URL patterns discovered via search-engine indexes
             // (their bot protection blocks direct verification): gooddog.com/{breed}[/{state}]
             // is the listings page; /breeds/{breed} is only a profile page.
@@ -319,9 +345,10 @@ public static class SiteCatalog
                 $"https://www.greenfieldpuppies.com/{breed.LinkSlug}-puppies-for-sale/",
             "pawrade" when breed is not null =>
                 $"https://www.pawrade.com/puppies/{breed.LinkSlug}/",
-            // Rescue Me! uses breed subdomains without hyphens: goldenretriever.rescueme.org/newyork
-            "rescueme" when breed is not null =>
-                $"https://{breed.LinkSlug.Replace("-", "")}.rescueme.org/{(stateName is null ? "" : stateName.Replace("-", ""))}",
+            "rescueme" when breed is not null && RescueMeSubdomains.TryGetValue(breed.LinkSlug, out var subdomain) =>
+                $"https://{subdomain}.rescueme.org/{(stateName is null ? "" : stateName.Replace("-", ""))}",
+            "rescueme" when stateName is not null =>
+                $"https://dog.rescueme.org/{stateName.Replace("-", "")}",
             _ => site.HomeUrl,
         };
     }
