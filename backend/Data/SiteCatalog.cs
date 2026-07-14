@@ -314,7 +314,7 @@ public static class SiteCatalog
             "puppies" when breed is not null =>
                 $"https://www.puppies.com/find-a-puppy/{breed.LinkSlug}{(stateName is null ? "" : $"/{stateName}")}",
             "lancaster" when breed is not null =>
-                $"https://www.lancasterpuppies.com/breeds/{breed.LinkSlug}/puppy{(state is null ? "" : $"?state={state.ToUpperInvariant()}")}",
+                $"https://www.lancasterpuppies.com/sale/puppies/{breed.LinkSlug}/{(stateName is null ? "" : $"united-states/{stateName}/")}",
             "greenfield" when breed is not null =>
                 $"https://www.greenfieldpuppies.com/{breed.LinkSlug}-puppies-for-sale/",
             "pawrade" when breed is not null =>
