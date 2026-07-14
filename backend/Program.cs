@@ -95,6 +95,9 @@ app.MapGet("/api/breeds", async (BreedCatalogService catalog, CancellationToken 
     {
         b.Slug,
         b.DisplayName,
+        // Size is only meaningful for curated breeds; external catalog entries default
+        // to "Medium" without real data, so they're reported as unknown for filtering.
+        Size = b.PriceHigh > 0 ? b.Size : null,
     })))
 .WithName("GetBreeds");
 
@@ -104,7 +107,7 @@ app.MapPost("/api/quiz", (QuizAnswers answers) =>
         : Results.Ok(BreedMatcher.TopMatches(answers)))
 .WithName("MatchBreeds");
 
-app.MapGet("/api/sites", async (string? breed, string? state, BreedCatalogService catalog, CancellationToken ct) =>
+app.MapGet("/api/sites", async (string? breed, string? state, string? city, BreedCatalogService catalog, CancellationToken ct) =>
 {
     Breed? selected = null;
     if (!string.IsNullOrWhiteSpace(breed))
@@ -128,7 +131,7 @@ app.MapGet("/api/sites", async (string? breed, string? state, BreedCatalogServic
         site.Delivery,
         site.BestFor,
         site.Caution,
-        LinkUrl = SiteCatalog.BuildLink(site, selected, state),
+        LinkUrl = SiteCatalog.BuildLink(site, selected, state, city),
         LinkLabel = SiteCatalog.BuildLinkLabel(site, selected),
     });
 

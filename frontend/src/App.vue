@@ -18,6 +18,8 @@ const breeds = ref([])
 const sites = ref([])
 const selectedBreed = ref('') // breed slug
 const selectedState = ref('')
+const selectedCity = ref('')
+const selectedSize = ref('')
 const goal = ref('both')
 const quizOpen = ref(false)
 const loadingSites = ref(true)
@@ -40,6 +42,7 @@ async function loadSites() {
     const params = new URLSearchParams()
     if (selectedBreed.value) params.set('breed', selectedBreed.value)
     if (selectedState.value) params.set('state', selectedState.value)
+    if (selectedCity.value.trim() && selectedState.value) params.set('city', selectedCity.value.trim())
     const res = await fetch(`/api/sites${params.size ? `?${params}` : ''}`)
     if (!res.ok) throw new Error(`API returned ${res.status}`)
     sites.value = await res.json()
@@ -71,6 +74,20 @@ function pickQuizBreed(slug) {
 }
 
 watch([selectedBreed, selectedState], loadSites)
+
+// City is free text — debounce so we don't refetch per keystroke.
+let cityTimer = null
+watch(selectedCity, () => {
+  clearTimeout(cityTimer)
+  cityTimer = setTimeout(loadSites, 450)
+})
+
+// Clear a breed that the newly chosen size filter excludes.
+watch(selectedSize, () => {
+  if (!selectedSize.value || !selectedBreed.value) return
+  const current = breeds.value.find((b) => b.slug === selectedBreed.value)
+  if (current && current.size !== selectedSize.value) selectedBreed.value = ''
+})
 
 onMounted(() => {
   loadBreeds()
@@ -107,6 +124,8 @@ onMounted(() => {
         <SearchHub
           v-model:breed="selectedBreed"
           v-model:state="selectedState"
+          v-model:city="selectedCity"
+          v-model:size="selectedSize"
           v-model:goal="goal"
           :breeds="breeds"
           :us-states="US_STATES"

@@ -311,19 +311,26 @@ public static class SiteCatalog
         ["yorkshire-terrier"] = "yorkie",
     };
 
-    /// <summary>Builds the deepest listing link each site supports for the given breed/state.</summary>
-    public static string BuildLink(Site site, Breed? breed, string? state)
+    /// <summary>Builds the deepest listing link each site supports for the given breed/state/city.</summary>
+    public static string BuildLink(Site site, Breed? breed, string? state, string? city = null)
     {
         var stateSegment = string.IsNullOrWhiteSpace(state) ? null : state.ToLowerInvariant();
         var stateName = state is not null && StateNames.TryGetValue(state, out var name) ? name : null;
 
+        // City-level pages only exist under a state, so a city without a state is ignored.
+        var citySlug = stateName is not null && !string.IsNullOrWhiteSpace(city)
+            ? string.Join('-', city.Trim().ToLowerInvariant().Split(' ', StringSplitOptions.RemoveEmptyEntries))
+            : null;
+
         return site.Id switch
         {
             "akc" when breed is not null =>
-                $"https://marketplace.akc.org/puppies/{breed.AkcSlug}{(stateName is null ? "" : $"/{stateName}")}",
+                $"https://marketplace.akc.org/puppies/{breed.AkcSlug}{(stateName is null ? "" : $"/{stateName}")}{(citySlug is null ? "" : $"/{citySlug}")}",
             // Good Dog and PuppySpot URL patterns discovered via search-engine indexes
             // (their bot protection blocks direct verification): gooddog.com/{breed}[/{state}]
             // is the listings page; /breeds/{breed} is only a profile page.
+            "gooddog" when breed is not null && citySlug is not null =>
+                $"https://www.gooddog.com/{breed.LinkSlug}/{citySlug}-{stateSegment}",
             "gooddog" when breed is not null =>
                 $"https://www.gooddog.com/{breed.LinkSlug}{(stateSegment is null ? "" : $"/{stateSegment}")}",
             "puppyspot" when breed is not null =>
@@ -336,9 +343,9 @@ public static class SiteCatalog
             "petfinder" =>
                 "https://www.petfinder.com/search/dogs-for-adoption/us/",
             "adoptapet" when breed is not null =>
-                $"https://www.adoptapet.com/s/adopt-a-{breed.LinkSlug}{(stateName is null ? "" : $"/{stateName}")}",
+                $"https://www.adoptapet.com/s/adopt-a-{breed.LinkSlug}{(stateName is null ? "" : $"/{stateName}")}{(citySlug is null ? "" : $"/{citySlug}")}",
             "puppies" when breed is not null =>
-                $"https://www.puppies.com/find-a-puppy/{breed.LinkSlug}{(stateName is null ? "" : $"/{stateName}")}",
+                $"https://www.puppies.com/find-a-puppy/{breed.LinkSlug}{(stateName is null ? "" : $"/{stateName}")}{(citySlug is null ? "" : $"/{citySlug}")}",
             "lancaster" when breed is not null =>
                 $"https://www.lancasterpuppies.com/sale/puppies/{breed.LinkSlug}/{(stateName is null ? "" : $"united-states/{stateName}/")}",
             "greenfield" when breed is not null =>
