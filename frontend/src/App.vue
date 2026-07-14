@@ -2,9 +2,11 @@
 import { computed, onMounted, ref, watch } from 'vue'
 import { breedMatches } from './breedFilters.js'
 import { fetchBreedImage } from './dogImages.js'
+import { buildSearchQuery, parseSearchUrl } from './searchUrl.js'
 import SearchHub from './components/SearchHub.vue'
 import SiteCard from './components/SiteCard.vue'
 import BreedQuiz from './components/BreedQuiz.vue'
+import SafetyGuide from './components/SafetyGuide.vue'
 import ThemePicker from './components/ThemePicker.vue'
 import PuppyLogo from './components/PuppyLogo.vue'
 
@@ -18,13 +20,17 @@ const US_STATES = [
 
 const breeds = ref([])
 const sites = ref([])
-const selectedBreed = ref('') // breed slug
-const selectedState = ref('')
-const selectedCity = ref('')
-const selectedSize = ref('')
-const traits = ref([])
-const goal = ref('both')
+
+// Searches are shareable: filters initialize from the page URL and sync back to it.
+const fromUrl = parseSearchUrl(window.location.search, US_STATES)
+const selectedBreed = ref(fromUrl.breed) // breed slug
+const selectedState = ref(fromUrl.state)
+const selectedCity = ref(fromUrl.city)
+const selectedSize = ref(fromUrl.size)
+const traits = ref(fromUrl.traits)
+const goal = ref(fromUrl.goal)
 const quizOpen = ref(false)
+const guideOpen = ref(false)
 const loadingSites = ref(true)
 const error = ref('')
 
@@ -77,6 +83,10 @@ async function loadBreeds() {
   try {
     const res = await fetch('/api/breeds')
     if (res.ok) breeds.value = await res.json()
+    // A shared URL can carry a breed we don't know — drop it instead of erroring.
+    if (selectedBreed.value && !breeds.value.some((b) => b.slug === selectedBreed.value)) {
+      selectedBreed.value = ''
+    }
   } catch {
     // hub still works without the dropdown contents
   }
@@ -94,6 +104,19 @@ function pickQuizBreed(slug) {
 }
 
 watch([selectedBreed, selectedState], loadSites)
+
+// Keep the address bar in sync (replace, not push — no history spam).
+watch([selectedBreed, selectedState, selectedCity, selectedSize, traits, goal], () => {
+  const query = buildSearchQuery({
+    breed: selectedBreed.value,
+    state: selectedState.value,
+    city: selectedCity.value,
+    size: selectedSize.value,
+    traits: traits.value,
+    goal: goal.value,
+  })
+  history.replaceState(null, '', query ? `?${query}` : window.location.pathname)
+})
 
 // City is free text — debounce so we don't refetch per keystroke.
 let cityTimer = null
@@ -132,7 +155,12 @@ onMounted(() => {
             </p>
           </div>
         </div>
-        <ThemePicker />
+        <div class="flex items-center gap-2">
+          <button type="button" class="btn btn-ghost btn-sm" @click="guideOpen = true">
+            🛡️ <span class="hidden sm:inline">Buy safely</span>
+          </button>
+          <ThemePicker />
+        </div>
       </div>
       <ul class="steps mt-3 hidden w-full text-xs sm:grid">
         <li class="step step-primary">Pick a breed — or take the quiz</li>
@@ -176,7 +204,13 @@ onMounted(() => {
         </p>
         <div v-else-if="error" class="alert alert-error">{{ error }}</div>
         <ul v-else class="grid list-none gap-6 p-0 sm:grid-cols-2">
-          <SiteCard v-for="site in visibleSites" :key="site.id" :site="site" :wanted="wantedFilters" />
+          <SiteCard
+            v-for="site in visibleSites"
+            :key="site.id"
+            :site="site"
+            :wanted="wantedFilters"
+            @open-guide="guideOpen = true"
+          />
         </ul>
 
         <p class="mt-10 text-center text-sm text-base-content/60">
@@ -187,5 +221,6 @@ onMounted(() => {
     </div>
 
     <BreedQuiz v-if="quizOpen" @close="quizOpen = false" @select="pickQuizBreed" />
+    <SafetyGuide v-if="guideOpen" @close="guideOpen = false" />
   </main>
 </template>

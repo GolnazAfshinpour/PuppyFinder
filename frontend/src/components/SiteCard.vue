@@ -6,6 +6,8 @@ defineProps({
   wanted: { type: Array, default: () => [] },
 })
 
+defineEmits(['open-guide'])
+
 const FILTER_LABELS = { breed: 'Breed', state: 'State', city: 'City' }
 </script>
 
@@ -38,7 +40,12 @@ const FILTER_LABELS = { breed: 'Breed', state: 'State', city: 'City' }
         </div>
       </div>
       <div v-if="site.caution" role="alert" class="alert alert-warning alert-soft py-2 text-xs">
-        <span>⚠️ {{ site.caution }}</span>
+        <span>
+          ⚠️ {{ site.caution }}
+          <button type="button" class="link font-semibold" @click="$emit('open-guide')">
+            Safety guide →
+          </button>
+        </span>
       </div>
       <div v-if="wanted.length" class="flex flex-wrap items-center gap-1">
         <span class="text-xs opacity-60">This link carries:</span>
