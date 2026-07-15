@@ -21,7 +21,9 @@ public record SocrataDataset(
     string DefaultCity,
     string State,
     string? AnimalTypeField,
-    string FallbackListingUrl);
+    string FallbackListingUrl,
+    string? SizeField = null,   // e.g. Montgomery's "petsize" (SMALL/MED/LARGE)
+    string? MemoField = null);  // free-text bio; also mined for weight when SizeField is absent
 
 /// <summary>
 /// Pulls adoptable-dog listings from a government open-data (Socrata) feed.
@@ -61,6 +63,7 @@ public sealed class SocrataProvider(
 
             var image = dataset.ImageField is null ? null : GetUrl(row, dataset.ImageField);
             var link = dataset.LinkField is null ? null : GetUrl(row, dataset.LinkField);
+            var memo = dataset.MemoField is null ? null : Get(row, dataset.MemoField);
 
             listings.Add(new Listing(
                 Id: $"{dataset.SourceName}-{listings.Count}-{name}".Replace(' ', '-').ToLowerInvariant(),
@@ -68,9 +71,9 @@ public sealed class SocrataProvider(
                 Breed: ExpandBreedAbbreviations(ToTitleCase(Get(row, dataset.BreedField))) ?? "Mixed Breed",
                 Age: ToTitleCase(Get(row, dataset.AgeField)),
                 Sex: NormalizeSex(Get(row, dataset.SexField)),
-                // No prose in the feeds; the UI already attributes the source, so a
-                // generated "Adoptable through X" blurb would just duplicate it.
-                Description: "",
+                // Real shelter bios only (King County's memo); no generated filler —
+                // the UI already attributes the source.
+                Description: Truncate(CleanMemo(memo), 240),
                 City: ToTitleCase(dataset.CityField is null ? null : Get(row, dataset.CityField)) ?? dataset.DefaultCity,
                 State: dataset.State,
                 ImageUrl: IsImageUrl(image) ? UpgradeToHttps(image!) : null,
@@ -80,7 +83,9 @@ public sealed class SocrataProvider(
                 // fallback links before — Montgomery's old adoptdog.html 404s.
                 ListingUrl: PetHarborDetailUrl(image) ?? link ?? dataset.FallbackListingUrl,
                 Source: dataset.SourceName,
-                SourceUrl: dataset.SourceUrl));
+                SourceUrl: dataset.SourceUrl,
+                Size: NormalizeSize(dataset.SizeField is null ? null : Get(row, dataset.SizeField))
+                      ?? SizeFromWeightText(memo)));
         }
 
         logger.LogInformation("{Source} returned {Count} dog listings", dataset.SourceName, listings.Count);
@@ -179,6 +184,72 @@ public sealed class SocrataProvider(
             ? null
             : string.Join(' ', breed.Split(' ', StringSplitOptions.RemoveEmptyEntries)
                 .Select(word => BreedWordFixes.GetValueOrDefault(word, word)));
+
+    // Buckets match the app's Size filter. Values verified against the live feeds
+    // (Montgomery petsize: SMALL/MED/LARGE; KITTE is cats and never reaches dogs).
+    public static string? NormalizeSize(string? raw) => raw?.Trim().ToUpperInvariant() switch
+    {
+        "TOY" or "SM" or "SMALL" => "Small",
+        "MED" or "MEDIUM" => "Medium",
+        "LG" or "LARGE" or "X-LRG" or "XLRG" => "Large",
+        _ => null,
+    };
+
+    /// <summary>
+    /// King County has no size field, but its bios state the weight ("… 92.0 lbs …").
+    /// Derive the bucket from the first weight mentioned; null when none appears.
+    /// </summary>
+    public static string? SizeFromWeightText(string? text)
+    {
+        if (text is null)
+        {
+            return null;
+        }
+
+        var match = System.Text.RegularExpressions.Regex.Match(
+            text, @"(\d+(?:\.\d+)?)\s*(?:lbs?|pounds)\b",
+            System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        if (!match.Success || !double.TryParse(match.Groups[1].Value, out var pounds))
+        {
+            return null;
+        }
+
+        return pounds switch
+        {
+            < 25 => "Small",
+            <= 60 => "Medium",
+            _ => "Large",
+        };
+    }
+
+    // King County memos are "</p>"-separated: metadata blocks (Received on / Description /
+    // Age / Adoption Fee / Current Location) followed by the actual bio. The card already
+    // shows the metadata as structured fields, so keep only the bio text.
+    private static readonly string[] MemoMetadataPrefixes =
+        ["Received on:", "Description:", "Age:", "Adoption Fee:", "Current Location:"];
+
+    public static string CleanMemo(string? memo)
+    {
+        if (string.IsNullOrWhiteSpace(memo))
+        {
+            return "";
+        }
+
+        var segments = memo.Split("</p>", StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
+        var lastMetadata = Array.FindLastIndex(segments, s =>
+            MemoMetadataPrefixes.Any(p => s.StartsWith(p, StringComparison.OrdinalIgnoreCase)));
+        var bio = string.Join(' ', segments.Skip(lastMetadata + 1));
+
+        // Drop any residual markup and collapse the leftover whitespace.
+        bio = System.Text.RegularExpressions.Regex.Replace(bio, "<[^>]*>", " ");
+        return System.Text.RegularExpressions.Regex.Replace(bio, @"\s+", " ").Trim();
+    }
+
+    private static string Truncate(string? text, int max)
+    {
+        var trimmed = text?.Trim() ?? "";
+        return trimmed.Length <= max ? trimmed : trimmed[..max].TrimEnd() + "…";
+    }
 
     private static string? NormalizeSex(string? raw) => raw?.Trim().ToUpperInvariant() switch
     {

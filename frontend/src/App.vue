@@ -96,6 +96,8 @@ async function loadListings() {
     const params = new URLSearchParams()
     if (selectedBreed.value) params.set('breed', selectedBreed.value)
     if (selectedState.value) params.set('state', selectedState.value)
+    if (selectedCity.value.trim() && selectedState.value) params.set('city', selectedCity.value.trim())
+    if (selectedSize.value) params.set('size', selectedSize.value)
     const [listRes, srcRes] = await Promise.all([
       fetch(`/api/listings${params.size ? `?${params}` : ''}`),
       sources.value.length ? Promise.resolve(null) : fetch('/api/sources'),
@@ -143,7 +145,7 @@ watch([selectedBreed, selectedState], loadSites)
 
 // Refresh listings when their filters change — immediately if the adopt tab is
 // open, otherwise lazily on the next tab switch.
-watch([selectedBreed, selectedState], () => {
+watch([selectedBreed, selectedState, selectedSize], () => {
   listingsStale.value = true
   if (tab.value === 'adopt') loadListings()
 })
@@ -169,7 +171,11 @@ watch([selectedBreed, selectedState, selectedCity, selectedSize, traits, goal, t
 let cityTimer = null
 watch(selectedCity, () => {
   clearTimeout(cityTimer)
-  cityTimer = setTimeout(loadSites, 450)
+  cityTimer = setTimeout(() => {
+    loadSites()
+    listingsStale.value = true
+    if (tab.value === 'adopt') loadListings()
+  }, 450)
 })
 
 // Clear a breed that newly chosen size/trait filters exclude.
@@ -292,10 +298,15 @@ onMounted(() => {
             Adoptable dogs right now
             <span v-if="selectedBreedName" class="text-primary">— {{ selectedBreedName }}s</span>
           </h2>
-          <p class="mb-5 text-sm text-base-content/60">
+          <p class="mb-1 text-sm text-base-content/60">
             Live from public shelter feeds{{ activeSources.length ? ` (${activeSources.join(', ')})` : '' }}
             — refreshed every few minutes. Coverage grows as more open-data feeds are added.
           </p>
+          <p v-if="traits.length" class="mb-5 text-xs text-base-content/50">
+            ℹ️ Must-have traits narrow the breed picker only — shelter feeds don't include
+            temperament data, so they aren't applied here.
+          </p>
+          <div v-else class="mb-5" />
           <p v-if="loadingListings" class="text-center text-base-content/60">
             <span class="loading loading-dots loading-md" />
           </p>

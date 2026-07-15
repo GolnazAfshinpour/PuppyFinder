@@ -43,4 +43,42 @@ public class SocrataProviderTests
     [InlineData(null, null)]
     public void ExpandBreedAbbreviations_FixesPetHarborTruncations(string? raw, string? expected) =>
         Assert.Equal(expected, SocrataProvider.ExpandBreedAbbreviations(raw));
+
+    [Theory]
+    [InlineData("SMALL", "Small")]
+    [InlineData("MED", "Medium")]
+    [InlineData("LARGE", "Large")]
+    [InlineData("med ", "Medium")]
+    [InlineData("KITTE", null)] // cats-only value never maps to a dog size
+    [InlineData(null, null)]
+    public void NormalizeSize_MapsFeedValuesToAppBuckets(string? raw, string? expected) =>
+        Assert.Equal(expected, SocrataProvider.NormalizeSize(raw));
+
+    [Theory]
+    [InlineData("Bentley is a friendly boy at 92.0 lbs who loves walks.", "Large")]
+    [InlineData("She weighs about 45.5 lbs.", "Medium")]
+    [InlineData("A tiny 12 lb lapdog.", "Small")]
+    [InlineData("Weighs 30 pounds soaking wet.", "Medium")]
+    [InlineData("A very good dog with no weight mentioned.", null)]
+    [InlineData(null, null)]
+    public void SizeFromWeightText_DerivesBucketFromBioWeight(string? memo, string? expected) =>
+        Assert.Equal(expected, SocrataProvider.SizeFromWeightText(memo));
+
+    [Fact]
+    public void CleanMemo_KeepsOnlyTheBioAfterMetadataBlocks()
+    {
+        const string memo = "Received on: 2026-06-22</p> Description: Tan Neutered Male German Shepherd / Mix Dog</p> "
+            + "Age: 2 YEARS</p> Adoption Fee: $50</p> Current Location: In RASKC Foster Home </p>"
+            + "Hi there, my name is Milo and I'm ready for adoption!</p></p>I weigh 60 lbs.";
+        Assert.Equal("Hi there, my name is Milo and I'm ready for adoption! I weigh 60 lbs.",
+            SocrataProvider.CleanMemo(memo));
+    }
+
+    [Theory]
+    [InlineData(null, "")]
+    [InlineData("   ", "")]
+    [InlineData("Just a plain bio with no markup.", "Just a plain bio with no markup.")]
+    [InlineData("<b>Bold</b> bio  text", "Bold bio text")]
+    public void CleanMemo_HandlesPlainAndMarkupText(string? memo, string expected) =>
+        Assert.Equal(expected, SocrataProvider.CleanMemo(memo));
 }

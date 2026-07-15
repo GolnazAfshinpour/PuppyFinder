@@ -32,10 +32,11 @@ const sexQualifier = computed(() => {
     </figure>
     <div class="card-body gap-2 p-4">
       <h3 class="card-title text-lg">{{ listing.name }}</h3>
-      <div v-if="sexBase || listing.age" class="flex flex-wrap gap-1">
+      <div v-if="sexBase || listing.age || listing.size" class="flex flex-wrap gap-1">
         <span v-if="sexBase" class="badge badge-soft badge-secondary whitespace-nowrap">{{ sexBase }}</span>
         <span v-if="sexQualifier" class="badge badge-ghost whitespace-nowrap">{{ sexQualifier }}</span>
         <span v-if="listing.age" class="badge badge-ghost whitespace-nowrap">{{ listing.age }}</span>
+        <span v-if="listing.size" class="badge badge-ghost whitespace-nowrap">{{ listing.size }}</span>
       </div>
       <p class="text-sm font-medium">{{ listing.breed }}</p>
       <p class="text-sm opacity-70">📍 {{ listing.city }}, {{ listing.state }}</p>

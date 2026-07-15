@@ -16,4 +16,5 @@ public record Listing(
     string? ImageUrl,
     string ListingUrl,
     string Source,
-    string SourceUrl);
+    string SourceUrl,
+    string? Size = null); // Teacup | Small | Medium | Large — null when the feed has no size data

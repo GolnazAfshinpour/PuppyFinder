@@ -36,7 +36,8 @@ var montgomeryCounty = new SocrataDataset(
     DefaultCity: "Derwood", State: "MD",
     AnimalTypeField: "animaltype",
     // Their old adoption/adoptdog.html path 404s after a site restructure (July 2026).
-    FallbackListingUrl: "https://www.montgomerycountymd.gov/animal-services-adoption-center/adopt-pet");
+    FallbackListingUrl: "https://www.montgomerycountymd.gov/animal-services-adoption-center/adopt-pet",
+    SizeField: "petsize");
 
 var kingCounty = new SocrataDataset(
     SourceName: "King County Pet Adoption",
@@ -46,7 +47,8 @@ var kingCounty = new SocrataDataset(
     ImageField: "image", LinkField: "link", CityField: "city",
     DefaultCity: "Kent", State: "WA",
     AnimalTypeField: null,
-    FallbackListingUrl: "https://kingcounty.gov/en/dept/executive-services/animals-pets-pests/regional-animal-services/adopt-a-pet");
+    FallbackListingUrl: "https://kingcounty.gov/en/dept/executive-services/animals-pets-pests/regional-animal-services/adopt-a-pet",
+    MemoField: "memo");
 
 builder.Services.AddSingleton<IListingProvider>(sp => new SocrataProvider(
     montgomeryCounty, sp.GetRequiredService<IHttpClientFactory>(), sp.GetRequiredService<ILogger<SocrataProvider>>()));
@@ -69,7 +71,7 @@ if (app.Environment.IsDevelopment())
 
 app.UseCors(FrontendCors);
 
-app.MapGet("/api/listings", async (string? breed, string? state, ListingAggregator aggregator, BreedCatalogService catalog, CancellationToken ct) =>
+app.MapGet("/api/listings", async (string? breed, string? state, string? city, string? size, ListingAggregator aggregator, BreedCatalogService catalog, CancellationToken ct) =>
 {
     var listings = (await aggregator.GetListingsAsync(ct)).AsEnumerable();
 
@@ -86,6 +88,18 @@ app.MapGet("/api/listings", async (string? breed, string? state, ListingAggregat
     if (!string.IsNullOrWhiteSpace(state))
     {
         listings = listings.Where(l => l.State.Equals(state, StringComparison.OrdinalIgnoreCase));
+    }
+
+    if (!string.IsNullOrWhiteSpace(city))
+    {
+        listings = listings.Where(l => l.City.Contains(city.Trim(), StringComparison.OrdinalIgnoreCase));
+    }
+
+    if (!string.IsNullOrWhiteSpace(size))
+    {
+        // Known-size mismatches drop; listings without size data drop too — a Small
+        // filter that still shows 90-lb dogs reads as broken.
+        listings = listings.Where(l => size.Equals(l.Size, StringComparison.OrdinalIgnoreCase));
     }
 
     return Results.Ok(listings);
