@@ -23,4 +23,24 @@ public class SocrataProviderTests
     [InlineData("https://petharbor.com/get_image.asp?location=MONT")] // no id
     public void PetHarborDetailUrl_ReturnsNullWhenNotDerivable(string? imageUrl) =>
         Assert.Null(SocrataProvider.PetHarborDetailUrl(imageUrl));
+
+    [Theory]
+    [InlineData("*BELLARINA", "BELLARINA")] // shelter bookkeeping marker
+    [InlineData("** Rex", "Rex")]
+    [InlineData("  Sashi ", "Sashi")]
+    [InlineData("Dior", "Dior")]
+    [InlineData("*#42*", "*#42*")] // nothing lettered to salvage — keep as-is
+    public void CleanName_StripsLeadingMarkers(string raw, string expected) =>
+        Assert.Equal(expected, SocrataProvider.CleanName(raw));
+
+    [Theory]
+    [InlineData("Labrador Retr", "Labrador Retriever")]
+    [InlineData("Germ Shepherd", "German Shepherd")]
+    [InlineData("Beagle / Labrador Retr", "Beagle / Labrador Retriever")]
+    [InlineData("Bull Terr Mix", "Bull Terrier Mix")]
+    [InlineData("Am Pit Bull Ter", "American Pit Bull Terrier")]
+    [InlineData("Siberian Husky", "Siberian Husky")] // untouched when nothing abbreviated
+    [InlineData(null, null)]
+    public void ExpandBreedAbbreviations_FixesPetHarborTruncations(string? raw, string? expected) =>
+        Assert.Equal(expected, SocrataProvider.ExpandBreedAbbreviations(raw));
 }

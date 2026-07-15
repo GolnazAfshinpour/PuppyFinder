@@ -64,11 +64,13 @@ public sealed class SocrataProvider(
 
             listings.Add(new Listing(
                 Id: $"{dataset.SourceName}-{listings.Count}-{name}".Replace(' ', '-').ToLowerInvariant(),
-                Name: ToTitleCase(name),
-                Breed: ToTitleCase(Get(row, dataset.BreedField)) ?? "Mixed Breed",
+                Name: ToTitleCase(CleanName(name)),
+                Breed: ExpandBreedAbbreviations(ToTitleCase(Get(row, dataset.BreedField))) ?? "Mixed Breed",
                 Age: ToTitleCase(Get(row, dataset.AgeField)),
                 Sex: NormalizeSex(Get(row, dataset.SexField)),
-                Description: $"Adoptable through {dataset.SourceName}.",
+                // No prose in the feeds; the UI already attributes the source, so a
+                // generated "Adoptable through X" blurb would just duplicate it.
+                Description: "",
                 City: ToTitleCase(dataset.CityField is null ? null : Get(row, dataset.CityField)) ?? dataset.DefaultCity,
                 State: dataset.State,
                 ImageUrl: IsImageUrl(image) ? UpgradeToHttps(image!) : null,
@@ -146,6 +148,37 @@ public sealed class SocrataProvider(
         url.StartsWith("http://", StringComparison.OrdinalIgnoreCase)
             ? string.Concat("https://", url.AsSpan("http://".Length))
             : url;
+
+    /// <summary>
+    /// Shelters prefix names with bookkeeping markers ("*BELLARINA" = needs review,
+    /// etc.) that mean nothing to adopters — strip anything before the first letter.
+    /// </summary>
+    public static string CleanName(string name)
+    {
+        var start = 0;
+        while (start < name.Length && !char.IsLetter(name[start]))
+        {
+            start++;
+        }
+
+        var cleaned = name[start..].Trim();
+        return cleaned.Length > 0 ? cleaned : name.Trim();
+    }
+
+    // PetHarbor truncates breed words to fixed widths ("LABRADOR RETR",
+    // "GERM SHEPHERD"). Expand the common, unambiguous ones per word.
+    private static readonly Dictionary<string, string> BreedWordFixes = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["Retr"] = "Retriever", ["Terr"] = "Terrier", ["Ter"] = "Terrier",
+        ["Shep"] = "Shepherd", ["Germ"] = "German", ["Aust"] = "Australian",
+        ["Span"] = "Spaniel", ["Eng"] = "English", ["Amer"] = "American", ["Am"] = "American",
+    };
+
+    public static string? ExpandBreedAbbreviations(string? breed) =>
+        breed is null
+            ? null
+            : string.Join(' ', breed.Split(' ', StringSplitOptions.RemoveEmptyEntries)
+                .Select(word => BreedWordFixes.GetValueOrDefault(word, word)));
 
     private static string? NormalizeSex(string? raw) => raw?.Trim().ToUpperInvariant() switch
     {
