@@ -71,7 +71,7 @@ public sealed class SocrataProvider(
                 Description: $"Adoptable through {dataset.SourceName}.",
                 City: ToTitleCase(dataset.CityField is null ? null : Get(row, dataset.CityField)) ?? dataset.DefaultCity,
                 State: dataset.State,
-                ImageUrl: IsImageUrl(image) ? image : null,
+                ImageUrl: IsImageUrl(image) ? UpgradeToHttps(image!) : null,
                 ListingUrl: link ?? dataset.FallbackListingUrl,
                 Source: dataset.SourceName,
                 SourceUrl: dataset.SourceUrl));
@@ -105,6 +105,14 @@ public sealed class SocrataProvider(
 
     private static bool IsImageUrl(string? url) =>
         url is not null && Uri.IsWellFormedUriString(url, UriKind.Absolute);
+
+    // Some feeds (Montgomery County) publish http:// image URLs, which browsers
+    // block as mixed content on an https page. PetHarbor serves the same images
+    // over https (verified July 2026).
+    private static string UpgradeToHttps(string url) =>
+        url.StartsWith("http://", StringComparison.OrdinalIgnoreCase)
+            ? string.Concat("https://", url.AsSpan("http://".Length))
+            : url;
 
     private static string? NormalizeSex(string? raw) => raw?.Trim().ToUpperInvariant() switch
     {

@@ -1,18 +1,24 @@
 <script setup>
+import { ref } from 'vue'
+
 defineProps({
   listing: { type: Object, required: true },
 })
+
+const imageFailed = ref(false)
 </script>
 
 <template>
   <li class="card bg-base-100 shadow-md transition hover:-translate-y-0.5 hover:shadow-xl">
     <figure class="bg-base-200 h-44">
       <img
-        v-if="listing.imageUrl"
+        v-if="listing.imageUrl && !imageFailed"
         :src="listing.imageUrl"
         :alt="listing.name"
         class="h-full w-full object-cover"
         loading="lazy"
+        referrerpolicy="no-referrer"
+        @error="imageFailed = true"
       />
       <span v-else class="text-5xl" aria-hidden="true">🐶</span>
     </figure>
