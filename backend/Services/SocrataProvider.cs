@@ -72,7 +72,11 @@ public sealed class SocrataProvider(
                 City: ToTitleCase(dataset.CityField is null ? null : Get(row, dataset.CityField)) ?? dataset.DefaultCity,
                 State: dataset.State,
                 ImageUrl: IsImageUrl(image) ? UpgradeToHttps(image!) : null,
-                ListingUrl: link ?? dataset.FallbackListingUrl,
+                // Best per-animal page wins: a PetHarbor detail page derived from the
+                // image ID, then the feed's own link (sometimes just a generic info
+                // page), then the shelter's adoption page. Feeds have shipped dead
+                // fallback links before — Montgomery's old adoptdog.html 404s.
+                ListingUrl: PetHarborDetailUrl(image) ?? link ?? dataset.FallbackListingUrl,
                 Source: dataset.SourceName,
                 SourceUrl: dataset.SourceUrl));
         }
@@ -105,6 +109,35 @@ public sealed class SocrataProvider(
 
     private static bool IsImageUrl(string? url) =>
         url is not null && Uri.IsWellFormedUriString(url, UriKind.Absolute);
+
+    /// <summary>
+    /// PetHarbor image URLs (get_image.asp?ID=A123&LOCATION=XYZ) carry the animal's
+    /// shelter ID, which maps 1:1 to its public detail page (pet.asp?uaid=XYZ.A123) —
+    /// verified July 2026. Param casing varies per shelter, so match case-insensitively.
+    /// </summary>
+    public static string? PetHarborDetailUrl(string? imageUrl)
+    {
+        if (imageUrl is null ||
+            !Uri.TryCreate(imageUrl, UriKind.Absolute, out var uri) ||
+            !(uri.Host.Equals("petharbor.com", StringComparison.OrdinalIgnoreCase) ||
+              uri.Host.EndsWith(".petharbor.com", StringComparison.OrdinalIgnoreCase)))
+        {
+            return null;
+        }
+
+        string? id = null, location = null;
+        foreach (var pair in uri.Query.TrimStart('?').Split('&', StringSplitOptions.RemoveEmptyEntries))
+        {
+            var parts = pair.Split('=', 2);
+            if (parts.Length != 2) continue;
+            if (parts[0].Equals("id", StringComparison.OrdinalIgnoreCase)) id = parts[1];
+            if (parts[0].Equals("location", StringComparison.OrdinalIgnoreCase)) location = parts[1];
+        }
+
+        return id is null || location is null
+            ? null
+            : $"https://petharbor.com/pet.asp?uaid={location.ToUpperInvariant()}.{id.ToUpperInvariant()}";
+    }
 
     // Some feeds (Montgomery County) publish http:// image URLs, which browsers
     // block as mixed content on an https page. PetHarbor serves the same images

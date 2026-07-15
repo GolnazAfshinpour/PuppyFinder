@@ -35,7 +35,8 @@ var montgomeryCounty = new SocrataDataset(
     ImageField: "url", LinkField: null, CityField: null,
     DefaultCity: "Derwood", State: "MD",
     AnimalTypeField: "animaltype",
-    FallbackListingUrl: "https://www.montgomerycountymd.gov/animalservices/adoption/adoptdog.html");
+    // Their old adoption/adoptdog.html path 404s after a site restructure (July 2026).
+    FallbackListingUrl: "https://www.montgomerycountymd.gov/animal-services-adoption-center/adopt-pet");
 
 var kingCounty = new SocrataDataset(
     SourceName: "King County Pet Adoption",
