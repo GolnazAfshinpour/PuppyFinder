@@ -168,6 +168,14 @@ public class ApiIntegrationTests(OfflineApiFactory factory) : IClassFixture<Offl
     }
 
     [Fact]
+    public async Task Coverage_WithAllFeedsDown_ReturnsEmptyStateList()
+    {
+        var coverage = await GetJson("/api/coverage");
+        Assert.Equal(JsonValueKind.Array, coverage.ValueKind);
+        Assert.Equal(0, coverage.GetArrayLength());
+    }
+
+    [Fact]
     public async Task Sources_ReportEveryProvider_WithFailureRecorded()
     {
         await GetJson("/api/listings"); // trigger a fetch so failures are recorded

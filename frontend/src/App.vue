@@ -40,6 +40,7 @@ const error = ref('')
 // load and render inside the "Adoptable now" tab.
 const listings = ref([])
 const sources = ref([])
+const coveredStates = ref([]) // states with at least one live listing right now
 const loadingListings = ref(false)
 const listingsError = ref('')
 const listingsStale = ref(true)
@@ -98,13 +99,15 @@ async function loadListings() {
     if (selectedState.value) params.set('state', selectedState.value)
     if (selectedCity.value.trim() && selectedState.value) params.set('city', selectedCity.value.trim())
     if (selectedSize.value) params.set('size', selectedSize.value)
-    const [listRes, srcRes] = await Promise.all([
+    const [listRes, srcRes, covRes] = await Promise.all([
       fetch(`/api/listings${params.size ? `?${params}` : ''}`),
       sources.value.length ? Promise.resolve(null) : fetch('/api/sources'),
+      coveredStates.value.length ? Promise.resolve(null) : fetch('/api/coverage'),
     ])
     if (!listRes.ok) throw new Error(`API returned ${listRes.status}`)
     listings.value = await listRes.json()
     if (srcRes?.ok) sources.value = await srcRes.json()
+    if (covRes?.ok) coveredStates.value = await covRes.json()
     listingsStale.value = false
   } catch (e) {
     listingsError.value = `Could not load listings (${e.message})`
@@ -300,7 +303,21 @@ onMounted(() => {
           </h2>
           <p class="mb-1 text-sm text-base-content/60">
             Live from public shelter feeds{{ activeSources.length ? ` (${activeSources.join(', ')})` : '' }}
-            — refreshed every few minutes. Coverage grows as more open-data feeds are added.
+            — refreshed every few minutes.
+          </p>
+          <p v-if="coveredStates.length" class="mb-1 flex flex-wrap items-center gap-1 text-sm text-base-content/60">
+            States with live dogs right now:
+            <button
+              v-for="s in coveredStates"
+              :key="s"
+              type="button"
+              class="badge badge-sm cursor-pointer"
+              :class="selectedState === s ? 'badge-primary' : 'badge-outline'"
+              @click="selectedState = selectedState === s ? '' : s"
+            >
+              {{ s }}
+            </button>
+            <span class="opacity-70">— more states as feeds are added.</span>
           </p>
           <p v-if="traits.length" class="mb-5 text-xs text-base-content/50">
             ℹ️ Must-have traits narrow the breed picker only — shelter feeds don't include
@@ -317,15 +334,29 @@ onMounted(() => {
           <div v-else class="card bg-base-100 shadow-md">
             <div class="card-body items-center text-center">
               <span class="text-4xl">🐾</span>
-              <p class="font-semibold">No live listings match your filters yet.</p>
-              <p class="text-sm opacity-70">
-                Our shelter feeds currently cover Maryland (Montgomery County) and Washington
-                (King County). Try clearing the breed or state — or use the site search tab,
+              <p class="font-semibold">No live listings match your filters.</p>
+              <p v-if="selectedState && !coveredStates.includes(selectedState)" class="text-sm opacity-70">
+                No shelter feed covers {{ selectedState }} yet — right now live listings exist in
+                {{ coveredStates.join(' and ') || 'no states' }}. The site search tab covers the whole country.
+              </p>
+              <p v-else class="text-sm opacity-70">
+                Try loosening the breed or size filter — or use the site search tab,
                 which covers the whole country.
               </p>
-              <button type="button" class="btn btn-outline btn-sm" @click="tab = 'sites'">
-                ← Back to site search
-              </button>
+              <div class="flex flex-wrap justify-center gap-2">
+                <button
+                  v-for="s in coveredStates.filter((c) => c !== selectedState)"
+                  :key="s"
+                  type="button"
+                  class="btn btn-outline btn-sm"
+                  @click="selectedState = s"
+                >
+                  🐶 Show {{ s }} dogs
+                </button>
+                <button type="button" class="btn btn-outline btn-sm" @click="tab = 'sites'">
+                  ← Back to site search
+                </button>
+              </div>
             </div>
           </div>
         </template>

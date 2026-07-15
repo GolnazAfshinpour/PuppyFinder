@@ -110,6 +110,16 @@ app.MapGet("/api/sources", (ListingAggregator aggregator) =>
     Results.Ok(aggregator.GetSourceStatuses()))
 .WithName("GetSources");
 
+// States that currently have at least one live adoptable listing — derived from
+// the data itself so it stays correct as feeds are added (or RescueGroups arrives).
+app.MapGet("/api/coverage", async (ListingAggregator aggregator, CancellationToken ct) =>
+    Results.Ok((await aggregator.GetListingsAsync(ct))
+        .Select(l => l.State.ToUpperInvariant())
+        .Distinct()
+        .Order()
+        .ToList()))
+.WithName("GetCoverage");
+
 app.MapGet("/api/breeds", async (BreedCatalogService catalog, CancellationToken ct) =>
     Results.Ok((await catalog.GetBreedsAsync(ct)).Select(b => new
     {
