@@ -3,12 +3,14 @@
 
 const GOALS = ['adopt', 'buy', 'both']
 const SIZES = ['Teacup', 'Small', 'Medium', 'Large']
+const TABS = ['sites', 'adopt']
 
 export function parseSearchUrl(search, usStates) {
   const params = new URLSearchParams(search)
   const state = (params.get('state') ?? '').toUpperCase()
   const size = SIZES.find((s) => s.toLowerCase() === (params.get('size') ?? '').toLowerCase())
   const goal = params.get('goal')
+  const tab = params.get('tab')
   return {
     breed: params.get('breed') ?? '',
     state: usStates.includes(state) ? state : '',
@@ -16,10 +18,11 @@ export function parseSearchUrl(search, usStates) {
     size: size ?? '',
     traits: (params.get('traits') ?? '').split(',').filter(Boolean),
     goal: GOALS.includes(goal) ? goal : 'both',
+    tab: TABS.includes(tab) ? tab : 'sites',
   }
 }
 
-export function buildSearchQuery({ breed, state, city, size, traits, goal }) {
+export function buildSearchQuery({ breed, state, city, size, traits, goal, tab }) {
   const params = new URLSearchParams()
   if (breed) params.set('breed', breed)
   if (state) params.set('state', state)
@@ -27,5 +30,6 @@ export function buildSearchQuery({ breed, state, city, size, traits, goal }) {
   if (size) params.set('size', size)
   if (traits.length) params.set('traits', traits.join(','))
   if (goal !== 'both') params.set('goal', goal)
+  if (tab !== 'sites') params.set('tab', tab)
   return params.toString()
 }

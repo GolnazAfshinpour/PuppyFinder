@@ -68,13 +68,18 @@ if (app.Environment.IsDevelopment())
 
 app.UseCors(FrontendCors);
 
-app.MapGet("/api/listings", async (string? breed, string? state, ListingAggregator aggregator, CancellationToken ct) =>
+app.MapGet("/api/listings", async (string? breed, string? state, ListingAggregator aggregator, BreedCatalogService catalog, CancellationToken ct) =>
 {
     var listings = (await aggregator.GetListingsAsync(ct)).AsEnumerable();
 
     if (!string.IsNullOrWhiteSpace(breed))
     {
-        listings = listings.Where(l => l.Breed.Contains(breed, StringComparison.OrdinalIgnoreCase));
+        // The UI sends catalog slugs; shelters store free-text breed names, so match
+        // on the breed's search name ("labrador-retriever" → "Labrador Retriever"),
+        // minus any parenthetical qualifier ("Poodle (Standard)" → "Poodle").
+        var searchText = (await catalog.FindAsync(breed, ct))?.SearchName ?? breed;
+        searchText = searchText.Split('(')[0].Trim();
+        listings = listings.Where(l => l.Breed.Contains(searchText, StringComparison.OrdinalIgnoreCase));
     }
 
     if (!string.IsNullOrWhiteSpace(state))

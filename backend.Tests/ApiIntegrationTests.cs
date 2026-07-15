@@ -158,6 +158,29 @@ public class ApiIntegrationTests(OfflineApiFactory factory) : IClassFixture<Offl
         Assert.Equal(names.OrderBy(n => n).ToList(), names);
     }
 
+    // --- /api/listings & /api/sources ---
+
+    [Fact]
+    public async Task Listings_WithAllFeedsDown_ReturnsEmptyListNotError()
+    {
+        var listings = await GetJson("/api/listings?breed=golden-retriever&state=TX");
+        Assert.Equal(0, listings.GetArrayLength());
+    }
+
+    [Fact]
+    public async Task Sources_ReportEveryProvider_WithFailureRecorded()
+    {
+        await GetJson("/api/listings"); // trigger a fetch so failures are recorded
+        var sources = await GetJson("/api/sources");
+        var byName = sources.EnumerateArray().ToDictionary(s => s.GetProperty("name").GetString()!);
+
+        Assert.Contains("Montgomery County Animal Services", byName.Keys);
+        Assert.Contains("King County Pet Adoption", byName.Keys);
+        var montgomery = byName["Montgomery County Animal Services"];
+        Assert.True(montgomery.GetProperty("enabled").GetBoolean());
+        Assert.False(string.IsNullOrEmpty(montgomery.GetProperty("lastError").GetString()));
+    }
+
     // --- /api/quiz ---
 
     [Fact]

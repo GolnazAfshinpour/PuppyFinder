@@ -5,6 +5,7 @@ import { fetchBreedImage } from './dogImages.js'
 import { buildSearchQuery, parseSearchUrl } from './searchUrl.js'
 import SearchHub from './components/SearchHub.vue'
 import SiteCard from './components/SiteCard.vue'
+import ListingCard from './components/ListingCard.vue'
 import BreedQuiz from './components/BreedQuiz.vue'
 import SafetyGuide from './components/SafetyGuide.vue'
 import ThemePicker from './components/ThemePicker.vue'
@@ -29,10 +30,19 @@ const selectedCity = ref(fromUrl.city)
 const selectedSize = ref(fromUrl.size)
 const traits = ref(fromUrl.traits)
 const goal = ref(fromUrl.goal)
+const tab = ref(fromUrl.tab) // 'sites' = link-out cards, 'adopt' = live shelter listings
 const quizOpen = ref(false)
 const guideOpen = ref(false)
 const loadingSites = ref(true)
 const error = ref('')
+
+// Live listings are kept fully separate from the site-search cards: they only
+// load and render inside the "Adoptable now" tab.
+const listings = ref([])
+const sources = ref([])
+const loadingListings = ref(false)
+const listingsError = ref('')
+const listingsStale = ref(true)
 
 const selectedBreedName = computed(
   () => breeds.value.find((b) => b.slug === selectedBreed.value)?.displayName ?? '',
@@ -79,6 +89,32 @@ async function loadSites() {
   }
 }
 
+async function loadListings() {
+  loadingListings.value = true
+  listingsError.value = ''
+  try {
+    const params = new URLSearchParams()
+    if (selectedBreed.value) params.set('breed', selectedBreed.value)
+    if (selectedState.value) params.set('state', selectedState.value)
+    const [listRes, srcRes] = await Promise.all([
+      fetch(`/api/listings${params.size ? `?${params}` : ''}`),
+      sources.value.length ? Promise.resolve(null) : fetch('/api/sources'),
+    ])
+    if (!listRes.ok) throw new Error(`API returned ${listRes.status}`)
+    listings.value = await listRes.json()
+    if (srcRes?.ok) sources.value = await srcRes.json()
+    listingsStale.value = false
+  } catch (e) {
+    listingsError.value = `Could not load listings (${e.message})`
+  } finally {
+    loadingListings.value = false
+  }
+}
+
+const activeSources = computed(() =>
+  sources.value.filter((s) => s.enabled).map((s) => s.name),
+)
+
 async function loadBreeds() {
   try {
     const res = await fetch('/api/breeds')
@@ -105,8 +141,18 @@ function pickQuizBreed(slug) {
 
 watch([selectedBreed, selectedState], loadSites)
 
+// Refresh listings when their filters change — immediately if the adopt tab is
+// open, otherwise lazily on the next tab switch.
+watch([selectedBreed, selectedState], () => {
+  listingsStale.value = true
+  if (tab.value === 'adopt') loadListings()
+})
+watch(tab, () => {
+  if (tab.value === 'adopt' && listingsStale.value) loadListings()
+})
+
 // Keep the address bar in sync (replace, not push — no history spam).
-watch([selectedBreed, selectedState, selectedCity, selectedSize, traits, goal], () => {
+watch([selectedBreed, selectedState, selectedCity, selectedSize, traits, goal, tab], () => {
   const query = buildSearchQuery({
     breed: selectedBreed.value,
     state: selectedState.value,
@@ -114,6 +160,7 @@ watch([selectedBreed, selectedState, selectedCity, selectedSize, traits, goal], 
     size: selectedSize.value,
     traits: traits.value,
     goal: goal.value,
+    tab: tab.value,
   })
   history.replaceState(null, '', query ? `?${query}` : window.location.pathname)
 })
@@ -137,6 +184,7 @@ watch([selectedSize, traits], () => {
 onMounted(() => {
   loadBreeds()
   loadSites()
+  if (tab.value === 'adopt') loadListings()
 })
 </script>
 
@@ -187,36 +235,89 @@ onMounted(() => {
       </aside>
 
       <section>
-        <h2 class="mb-5 flex items-center gap-3 text-2xl font-bold">
-          <img
-            v-if="breedPhoto"
-            :src="breedPhoto"
-            :alt="selectedBreedName"
-            class="ring-primary/40 h-12 w-12 shrink-0 rounded-full object-cover shadow ring-2"
-          />
-          <span>
-            Your matching sites
-            <span v-if="selectedBreedName" class="text-primary">for {{ selectedBreedName }}s</span>
-          </span>
-        </h2>
-        <p v-if="loadingSites" class="text-center text-base-content/60">
-          <span class="loading loading-dots loading-md" />
-        </p>
-        <div v-else-if="error" class="alert alert-error">{{ error }}</div>
-        <ul v-else class="grid list-none gap-6 p-0 sm:grid-cols-2">
-          <SiteCard
-            v-for="site in visibleSites"
-            :key="site.id"
-            :site="site"
-            :wanted="wantedFilters"
-            @open-guide="guideOpen = true"
-          />
-        </ul>
+        <div role="tablist" class="tabs tabs-box mb-5 w-fit">
+          <button
+            role="tab"
+            class="tab gap-1"
+            :class="{ 'tab-active': tab === 'sites' }"
+            @click="tab = 'sites'"
+          >
+            🔗 Search the sites
+          </button>
+          <button
+            role="tab"
+            class="tab gap-1"
+            :class="{ 'tab-active': tab === 'adopt' }"
+            @click="tab = 'adopt'"
+          >
+            🐶 Adoptable now
+          </button>
+        </div>
 
-        <p class="mt-10 text-center text-sm text-base-content/60">
-          PuppyFinder links you directly to each site's own listings — always verify a breeder
-          or rescue yourself before sending money.
-        </p>
+        <template v-if="tab === 'sites'">
+          <h2 class="mb-5 flex items-center gap-3 text-2xl font-bold">
+            <img
+              v-if="breedPhoto"
+              :src="breedPhoto"
+              :alt="selectedBreedName"
+              class="ring-primary/40 h-12 w-12 shrink-0 rounded-full object-cover shadow ring-2"
+            />
+            <span>
+              Your matching sites
+              <span v-if="selectedBreedName" class="text-primary">for {{ selectedBreedName }}s</span>
+            </span>
+          </h2>
+          <p v-if="loadingSites" class="text-center text-base-content/60">
+            <span class="loading loading-dots loading-md" />
+          </p>
+          <div v-else-if="error" class="alert alert-error">{{ error }}</div>
+          <ul v-else class="grid list-none gap-6 p-0 sm:grid-cols-2">
+            <SiteCard
+              v-for="site in visibleSites"
+              :key="site.id"
+              :site="site"
+              :wanted="wantedFilters"
+              @open-guide="guideOpen = true"
+            />
+          </ul>
+
+          <p class="mt-10 text-center text-sm text-base-content/60">
+            PuppyFinder links you directly to each site's own listings — always verify a breeder
+            or rescue yourself before sending money.
+          </p>
+        </template>
+
+        <template v-else>
+          <h2 class="mb-1 text-2xl font-bold">
+            Adoptable dogs right now
+            <span v-if="selectedBreedName" class="text-primary">— {{ selectedBreedName }}s</span>
+          </h2>
+          <p class="mb-5 text-sm text-base-content/60">
+            Live from public shelter feeds{{ activeSources.length ? ` (${activeSources.join(', ')})` : '' }}
+            — refreshed every few minutes. Coverage grows as more open-data feeds are added.
+          </p>
+          <p v-if="loadingListings" class="text-center text-base-content/60">
+            <span class="loading loading-dots loading-md" />
+          </p>
+          <div v-else-if="listingsError" class="alert alert-error">{{ listingsError }}</div>
+          <ul v-else-if="listings.length" class="grid list-none gap-6 p-0 sm:grid-cols-2 xl:grid-cols-3">
+            <ListingCard v-for="l in listings" :key="l.id" :listing="l" />
+          </ul>
+          <div v-else class="card bg-base-100 shadow-md">
+            <div class="card-body items-center text-center">
+              <span class="text-4xl">🐾</span>
+              <p class="font-semibold">No live listings match your filters yet.</p>
+              <p class="text-sm opacity-70">
+                Our shelter feeds currently cover Maryland (Montgomery County) and Washington
+                (King County). Try clearing the breed or state — or use the site search tab,
+                which covers the whole country.
+              </p>
+              <button type="button" class="btn btn-outline btn-sm" @click="tab = 'sites'">
+                ← Back to site search
+              </button>
+            </div>
+          </div>
+        </template>
       </section>
     </div>
 

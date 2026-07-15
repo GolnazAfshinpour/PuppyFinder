@@ -3,7 +3,7 @@ import { buildSearchQuery, parseSearchUrl } from './searchUrl.js'
 
 const US_STATES = ['TX', 'NY', 'CA', 'ME']
 
-const defaults = { breed: '', state: '', city: '', size: '', traits: [], goal: 'both' }
+const defaults = { breed: '', state: '', city: '', size: '', traits: [], goal: 'both', tab: 'sites' }
 
 describe('parseSearchUrl', () => {
   it('returns clean defaults for an empty query', () => {
@@ -12,7 +12,7 @@ describe('parseSearchUrl', () => {
 
   it('restores a full search', () => {
     expect(
-      parseSearchUrl('?breed=golden-retriever&state=TX&city=Houston&size=Large&traits=kids,lowshed&goal=buy', US_STATES),
+      parseSearchUrl('?breed=golden-retriever&state=TX&city=Houston&size=Large&traits=kids,lowshed&goal=buy&tab=adopt', US_STATES),
     ).toEqual({
       breed: 'golden-retriever',
       state: 'TX',
@@ -20,6 +20,7 @@ describe('parseSearchUrl', () => {
       size: 'Large',
       traits: ['kids', 'lowshed'],
       goal: 'buy',
+      tab: 'adopt',
     })
   })
 
@@ -30,7 +31,7 @@ describe('parseSearchUrl', () => {
   })
 
   it('drops values that fail validation instead of erroring', () => {
-    const parsed = parseSearchUrl('?state=ZZ&size=gigantic&goal=steal&traits=', US_STATES)
+    const parsed = parseSearchUrl('?state=ZZ&size=gigantic&goal=steal&traits=&tab=nonsense', US_STATES)
     expect(parsed).toEqual(defaults)
   })
 })
@@ -52,6 +53,7 @@ describe('buildSearchQuery', () => {
       size: 'Small',
       traits: ['apartment'],
       goal: 'adopt',
+      tab: 'adopt',
     }
     expect(parseSearchUrl(`?${buildSearchQuery(state)}`, US_STATES)).toEqual(state)
   })
