@@ -177,6 +177,7 @@ public sealed class SocrataProvider(
         ["Retr"] = "Retriever", ["Terr"] = "Terrier", ["Ter"] = "Terrier",
         ["Shep"] = "Shepherd", ["Germ"] = "German", ["Aust"] = "Australian",
         ["Span"] = "Spaniel", ["Eng"] = "English", ["Amer"] = "American", ["Am"] = "American",
+        ["Shetld"] = "Shetland",
     };
 
     public static string? ExpandBreedAbbreviations(string? breed) =>

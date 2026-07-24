@@ -6,6 +6,7 @@ import { buildSearchQuery, parseSearchUrl } from './searchUrl.js'
 import SearchHub from './components/SearchHub.vue'
 import SiteCard from './components/SiteCard.vue'
 import ListingCard from './components/ListingCard.vue'
+import AlertSignup from './components/AlertSignup.vue'
 import BreedQuiz from './components/BreedQuiz.vue'
 import SafetyGuide from './components/SafetyGuide.vue'
 import ThemePicker from './components/ThemePicker.vue'
@@ -324,6 +325,14 @@ onMounted(() => {
             temperament data, so they aren't applied here.
           </p>
           <div v-else class="mb-5" />
+
+          <AlertSignup
+            :breed="selectedBreed"
+            :breed-name="selectedBreedName"
+            :state="selectedState"
+            :city="selectedCity"
+            :size="selectedSize"
+          />
           <p v-if="loadingListings" class="text-center text-base-content/60">
             <span class="loading loading-dots loading-md" />
           </p>

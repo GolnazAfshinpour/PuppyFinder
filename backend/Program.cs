@@ -1,5 +1,6 @@
 using System.Text.Json.Serialization;
 using PuppyFinder.Api.Data;
+using PuppyFinder.Api.Models;
 using PuppyFinder.Api.Services;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -57,6 +58,16 @@ builder.Services.AddSingleton<IListingProvider>(sp => new SocrataProvider(
 builder.Services.AddSingleton<IListingProvider, RescueGroupsProvider>();
 builder.Services.AddSingleton<ListingAggregator>();
 
+// Saved-search alerts: JSON-file store + in-process checker. Emails go out via
+// SMTP when configured (Smtp:Host); otherwise to data/outbox for inspection.
+builder.Services.AddSingleton<AlertStore>();
+builder.Services.AddSingleton<IEmailSender>(sp =>
+    builder.Configuration["Smtp:Host"] is { Length: > 0 }
+        ? ActivatorUtilities.CreateInstance<SmtpEmailSender>(sp)
+        : ActivatorUtilities.CreateInstance<OutboxEmailSender>(sp));
+builder.Services.AddSingleton<AlertChecker>();
+builder.Services.AddHostedService(sp => sp.GetRequiredService<AlertChecker>());
+
 const string FrontendCors = "frontend";
 builder.Services.AddCors(options =>
     options.AddPolicy(FrontendCors, policy =>
@@ -75,34 +86,17 @@ app.MapGet("/api/listings", async (string? breed, string? state, string? city, s
 {
     var listings = (await aggregator.GetListingsAsync(ct)).AsEnumerable();
 
+    string? searchText = null;
     if (!string.IsNullOrWhiteSpace(breed))
     {
         // The UI sends catalog slugs; shelters store free-text breed names, so match
         // on the breed's search name ("labrador-retriever" → "Labrador Retriever"),
         // minus any parenthetical qualifier ("Poodle (Standard)" → "Poodle").
-        var searchText = (await catalog.FindAsync(breed, ct))?.SearchName ?? breed;
+        searchText = (await catalog.FindAsync(breed, ct))?.SearchName ?? breed;
         searchText = searchText.Split('(')[0].Trim();
-        listings = listings.Where(l => l.Breed.Contains(searchText, StringComparison.OrdinalIgnoreCase));
     }
 
-    if (!string.IsNullOrWhiteSpace(state))
-    {
-        listings = listings.Where(l => l.State.Equals(state, StringComparison.OrdinalIgnoreCase));
-    }
-
-    if (!string.IsNullOrWhiteSpace(city))
-    {
-        listings = listings.Where(l => l.City.Contains(city.Trim(), StringComparison.OrdinalIgnoreCase));
-    }
-
-    if (!string.IsNullOrWhiteSpace(size))
-    {
-        // Known-size mismatches drop; listings without size data drop too — a Small
-        // filter that still shows 90-lb dogs reads as broken.
-        listings = listings.Where(l => size.Equals(l.Size, StringComparison.OrdinalIgnoreCase));
-    }
-
-    return Results.Ok(listings);
+    return Results.Ok(ListingQuery.Filter(listings, searchText, state, city, size));
 })
 .WithName("GetListings");
 
@@ -175,7 +169,68 @@ app.MapGet("/api/sites", async (string? breed, string? state, string? city, Bree
 })
 .WithName("GetSites");
 
+app.MapPost("/api/alerts", async (AlertRequest request, AlertStore store, AlertChecker checker,
+    ListingAggregator aggregator, BreedCatalogService catalog, CancellationToken ct) =>
+{
+    if (!System.Net.Mail.MailAddress.TryCreate(request.Email, out _))
+    {
+        return Results.BadRequest("A valid email address is required.");
+    }
+
+    if (!string.IsNullOrWhiteSpace(request.Breed) && await catalog.FindAsync(request.Breed, ct) is null)
+    {
+        return Results.BadRequest($"Unknown breed '{request.Breed}'.");
+    }
+
+    var subscription = new AlertSubscription(
+        Id: Guid.NewGuid().ToString("N")[..12],
+        Email: request.Email.Trim(),
+        Breed: NullIfBlank(request.Breed),
+        State: NullIfBlank(request.State)?.ToUpperInvariant(),
+        City: NullIfBlank(request.City),
+        Size: NullIfBlank(request.Size),
+        CreatedAt: DateTimeOffset.UtcNow);
+
+    // Seed the seen-set with everything currently listed, so signup alerts only
+    // about dogs that appear from now on (the UI already shows today's matches).
+    try
+    {
+        var current = await checker.MatchAsync(await aggregator.GetListingsAsync(ct), subscription, ct);
+        subscription = subscription with { SeenListingIds = [.. current.Select(l => l.Id)] };
+    }
+    catch
+    {
+        // feeds down — an extra "new dogs" email later is acceptable
+    }
+
+    var saved = await store.AddAsync(subscription, ct);
+    return Results.Ok(new { saved.Id, saved.Email, saved.Breed, saved.State, saved.City, saved.Size });
+})
+.WithName("CreateAlert");
+
+app.MapGet("/api/alerts", async (string email, AlertStore store, CancellationToken ct) =>
+    Results.Ok((await store.GetAllAsync(ct))
+        .Where(s => s.Email.Equals(email, StringComparison.OrdinalIgnoreCase))
+        .Select(s => new { s.Id, s.Email, s.Breed, s.State, s.City, s.Size, s.CreatedAt })))
+.WithName("ListAlerts");
+
+app.MapDelete("/api/alerts/{id}", async (string id, string email, AlertStore store, CancellationToken ct) =>
+    await store.RemoveAsync(id, email, ct) ? Results.NoContent() : Results.NotFound())
+.WithName("DeleteAlert");
+
+// One-click link used inside the alert emails.
+app.MapGet("/api/alerts/unsubscribe", async (string id, string email, AlertStore store, CancellationToken ct) =>
+    await store.RemoveAsync(id, email, ct)
+        ? Results.Text("You're unsubscribed — no more PuppyFinder alerts for this search. 🐾")
+        : Results.Text("This alert was already removed."))
+.WithName("UnsubscribeAlert");
+
 app.Run();
+
+static string? NullIfBlank(string? value) =>
+    string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+
+public record AlertRequest(string Email, string? Breed, string? State, string? City, string? Size);
 
 // Exposes the implicit Program class to WebApplicationFactory in integration tests.
 public partial class Program;

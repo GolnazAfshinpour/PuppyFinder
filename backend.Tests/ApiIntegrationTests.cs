@@ -15,12 +15,17 @@ namespace PuppyFinder.Api.Tests;
 /// </summary>
 public sealed class OfflineApiFactory : WebApplicationFactory<Program>
 {
-    protected override void ConfigureWebHost(IWebHostBuilder builder) =>
+    protected override void ConfigureWebHost(IWebHostBuilder builder)
+    {
+        // Keep alert subscriptions out of the repo's working tree during tests.
+        builder.UseSetting("Alerts:StorePath",
+            Path.Combine(Path.GetTempPath(), $"puppyfinder-tests-{Guid.NewGuid():N}", "alerts.json"));
         builder.ConfigureServices(services =>
         {
             services.RemoveAll<IHttpClientFactory>();
             services.AddSingleton<IHttpClientFactory>(new OfflineHttpClientFactory());
         });
+    }
 
     private sealed class OfflineHttpClientFactory : IHttpClientFactory
     {
@@ -187,6 +192,73 @@ public class ApiIntegrationTests(OfflineApiFactory factory) : IClassFixture<Offl
         var montgomery = byName["Montgomery County Animal Services"];
         Assert.True(montgomery.GetProperty("enabled").GetBoolean());
         Assert.False(string.IsNullOrEmpty(montgomery.GetProperty("lastError").GetString()));
+    }
+
+    // --- /api/alerts ---
+
+    private static object ValidAlert(string email = "golnaz@example.com") => new
+    {
+        email, breed = "golden-retriever", state = "MD", city = (string?)null, size = "Large",
+    };
+
+    [Fact]
+    public async Task Alerts_CreateListUnsubscribe_Roundtrip()
+    {
+        var create = await _client.PostAsJsonAsync("/api/alerts", ValidAlert("roundtrip@example.com"), Json);
+        Assert.Equal(HttpStatusCode.OK, create.StatusCode);
+        var created = JsonDocument.Parse(await create.Content.ReadAsStringAsync()).RootElement;
+        var id = created.GetProperty("id").GetString();
+        Assert.False(string.IsNullOrEmpty(id));
+
+        var list = await GetJson("/api/alerts?email=roundtrip@example.com");
+        Assert.Contains(list.EnumerateArray(), a => a.GetProperty("id").GetString() == id);
+
+        var unsubscribe = await _client.GetAsync($"/api/alerts/unsubscribe?id={id}&email=roundtrip@example.com");
+        Assert.Equal(HttpStatusCode.OK, unsubscribe.StatusCode);
+        Assert.Contains("unsubscribed", await unsubscribe.Content.ReadAsStringAsync());
+
+        var after = await GetJson("/api/alerts?email=roundtrip@example.com");
+        Assert.Equal(0, after.GetArrayLength());
+    }
+
+    [Fact]
+    public async Task Alerts_ResubmittingSameSearch_IsIdempotent()
+    {
+        var first = await _client.PostAsJsonAsync("/api/alerts", ValidAlert("dupe@example.com"), Json);
+        var second = await _client.PostAsJsonAsync("/api/alerts", ValidAlert("dupe@example.com"), Json);
+        var id1 = JsonDocument.Parse(await first.Content.ReadAsStringAsync()).RootElement.GetProperty("id").GetString();
+        var id2 = JsonDocument.Parse(await second.Content.ReadAsStringAsync()).RootElement.GetProperty("id").GetString();
+        Assert.Equal(id1, id2);
+    }
+
+    [Theory]
+    [InlineData("not-an-email")]
+    [InlineData("")]
+    public async Task Alerts_InvalidEmail_Returns400(string email)
+    {
+        var response = await _client.PostAsJsonAsync("/api/alerts", new { email, breed = (string?)null }, Json);
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Alerts_UnknownBreed_Returns400()
+    {
+        var response = await _client.PostAsJsonAsync("/api/alerts",
+            new { email = "ok@example.com", breed = "not-a-breed" }, Json);
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Alerts_DeleteWithWrongEmail_Returns404()
+    {
+        var create = await _client.PostAsJsonAsync("/api/alerts", ValidAlert("owner@example.com"), Json);
+        var id = JsonDocument.Parse(await create.Content.ReadAsStringAsync()).RootElement.GetProperty("id").GetString();
+
+        var wrong = await _client.DeleteAsync($"/api/alerts/{id}?email=attacker@example.com");
+        Assert.Equal(HttpStatusCode.NotFound, wrong.StatusCode);
+
+        var right = await _client.DeleteAsync($"/api/alerts/{id}?email=owner@example.com");
+        Assert.Equal(HttpStatusCode.NoContent, right.StatusCode);
     }
 
     // --- /api/quiz ---
