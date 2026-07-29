@@ -1,6 +1,6 @@
 <script setup>
 import { computed, onMounted, ref, watch } from 'vue'
-import { breedMatches } from './breedFilters.js'
+import { TRAITS, breedMatches } from './breedFilters.js'
 import { clearProfile, loadProfile, rankListings } from './adopterProfile.js'
 import { loadFavorites, loadRecent, recordViewed, toggleFavorite } from './favorites.js'
 import { parseQuery } from './smartSearch.js'
@@ -79,9 +79,6 @@ const listingsStale = ref(true)
 const selectedBreedName = computed(
   () => breeds.value.find((b) => b.slug === selectedBreed.value)?.displayName ?? '',
 )
-function selectedBreedNameFor(slug) {
-  return breeds.value.find((b) => b.slug === slug)?.displayName ?? slug
-}
 
 const visibleSites = computed(() => {
   if (goal.value === 'adopt') return sites.value.filter((s) => s.kind === 'Adopt')
@@ -122,14 +119,29 @@ const smartHint = ref('')
 function runSmartSearch() {
   const parsed = parseQuery(smartQuery.value, { breeds: breeds.value, usStates: US_STATES })
   const hints = []
-  // Contradiction like "small golden retriever": the breed is the more specific
-  // intent, so it wins and we say what was ignored (otherwise the size-watcher
-  // would silently drop the breed).
-  if (parsed.breed && parsed.size) {
-    const breedSize = breeds.value.find((b) => b.slug === parsed.breed)?.size
-    if (breedSize && breedSize !== parsed.size) {
-      hints.push(`ignored “${parsed.size.toLowerCase()}” — ${selectedBreedNameFor(parsed.breed)}s are ${breedSize}`)
-      parsed.size = ''
+  // A searched breed is the most specific intent, so it always wins over
+  // size/trait constraints — parsed OR pre-existing — that contradict it.
+  // Otherwise the breed-narrowing watcher would silently delete the breed
+  // and the site links would open unfiltered.
+  if (parsed.breed) {
+    const breedInfo = breeds.value.find((b) => b.slug === parsed.breed)
+    if (breedInfo?.size) {
+      const wantedSize = parsed.size || selectedSize.value
+      if (wantedSize && breedInfo.size !== wantedSize) {
+        hints.push(`ignored “${wantedSize.toLowerCase()}” — ${breedInfo.displayName}s are ${breedInfo.size.toLowerCase()}`)
+        parsed.size = ''
+        selectedSize.value = ''
+      }
+      const wantedTraits = [...new Set([...traits.value, ...parsed.traits])]
+      const conflicting = wantedTraits.filter((key) => {
+        const trait = TRAITS.find((t) => t.key === key)
+        return trait && !trait.matches(breedInfo)
+      })
+      if (conflicting.length) {
+        hints.push(`ignored ${conflicting.map((k) => `“${TRAIT_LABELS[k].toLowerCase()}”`).join(', ')} — not a ${breedInfo.displayName} strength`)
+        parsed.traits = parsed.traits.filter((t) => !conflicting.includes(t))
+        traits.value = traits.value.filter((t) => !conflicting.includes(t))
+      }
     }
   }
   if (parsed.breed) selectedBreed.value = parsed.breed
@@ -137,6 +149,7 @@ function runSmartSearch() {
   if (parsed.size) selectedSize.value = parsed.size
   if (parsed.traits.length) traits.value = [...new Set([...traits.value, ...parsed.traits])]
   if (parsed.goal) goal.value = parsed.goal
+  if (parsed.inferredState) hints.push(`assuming ${parsed.city} is in ${parsed.inferredState}`)
   if (parsed.city) {
     if (parsed.state || selectedState.value) selectedCity.value = parsed.city
     else hints.push(`pick a state to apply “${parsed.city}”`)

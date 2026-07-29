@@ -46,6 +46,22 @@ describe('parseQuery', () => {
     expect(parseQuery('poodle puppies', ctx).breed).toBe('poodle')
   })
 
+  it('infers the state from a known metro city', () => {
+    const r = parseQuery('golden retriever near seattle', ctx)
+    expect(r.city).toBe('Seattle')
+    expect(r.state).toBe('WA')
+    expect(r.inferredState).toBe('WA')
+    // explicit state always beats inference
+    expect(parseQuery('poodle near portland maine', { ...ctx, usStates: [...ctx.usStates, 'ME'] }).state).toBe('ME')
+  })
+
+  it('parses multi-word trait phrases like apartment friendly', () => {
+    const r = parseQuery('apartment friendly french bulldog', ctx)
+    expect(r.traits).toContain('apartment')
+    expect(r.breed).toBe('french-bulldog')
+    expect(r.unmatched).toEqual([])
+  })
+
   it('detects near me and reports unmatched words', () => {
     const r = parseQuery('fluffy purple dog near me', ctx)
     expect(r.nearMe).toBe(true)

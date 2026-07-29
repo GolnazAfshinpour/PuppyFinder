@@ -34,7 +34,7 @@ const SIZE_WORDS = [
 
 const TRAIT_WORDS = [
   [['good with kids', 'kid friendly', 'kids', 'children', 'family dog', 'family'], 'kids'],
-  [['apartment', 'condo', 'city dog'], 'apartment'],
+  [['apartment friendly', 'apartment', 'condo', 'city dog'], 'apartment'],
   [['hypoallergenic', 'low shedding', 'low shed', 'no shedding', 'doesnt shed', "doesn't shed", 'non shedding'], 'lowshed'],
 ]
 
@@ -42,6 +42,23 @@ const GOAL_WORDS = [
   [['adopt', 'adoption', 'rescue', 'shelter'], 'adopt'],
   [['buy', 'breeder', 'purchase', 'for sale'], 'buy'],
 ]
+
+// Major-metro home states so "near seattle" filters without the user naming
+// WA (same-name-city ambiguity accepted for the biggest metro; the hint says
+// what was assumed). Includes our live shelter feeds' cities.
+const CITY_STATES = {
+  seattle: 'WA', tacoma: 'WA', kent: 'WA', spokane: 'WA',
+  derwood: 'MD', baltimore: 'MD', rockville: 'MD',
+  houston: 'TX', dallas: 'TX', austin: 'TX', 'san antonio': 'TX', 'fort worth': 'TX', 'el paso': 'TX',
+  'new york': 'NY', brooklyn: 'NY', 'los angeles': 'CA', 'san francisco': 'CA', 'san diego': 'CA',
+  'san jose': 'CA', sacramento: 'CA', chicago: 'IL', phoenix: 'AZ', philadelphia: 'PA',
+  pittsburgh: 'PA', miami: 'FL', tampa: 'FL', orlando: 'FL', jacksonville: 'FL',
+  atlanta: 'GA', boston: 'MA', denver: 'CO', detroit: 'MI', minneapolis: 'MN',
+  portland: 'OR', 'las vegas': 'NV', 'st louis': 'MO', 'kansas city': 'MO',
+  charlotte: 'NC', raleigh: 'NC', nashville: 'TN', memphis: 'TN', columbus: 'OH',
+  cleveland: 'OH', cincinnati: 'OH', indianapolis: 'IN', milwaukee: 'WI',
+  'salt lake city': 'UT', 'new orleans': 'LA', 'oklahoma city': 'OK', albuquerque: 'NM',
+}
 
 // Words that carry no filter meaning; whatever else is left over is reported
 // back so the user knows what wasn't understood.
@@ -52,7 +69,7 @@ const FILLER = new Set([
 ])
 
 export function parseQuery(text, { breeds = [], usStates = [] } = {}) {
-  const result = { breed: '', state: '', city: '', size: '', traits: [], goal: '', nearMe: false, unmatched: [] }
+  const result = { breed: '', state: '', city: '', size: '', traits: [], goal: '', nearMe: false, inferredState: '', unmatched: [] }
   if (!text?.trim()) return result
 
   // 2-letter state abbreviations only when typed uppercase ("MD") — otherwise
@@ -120,6 +137,11 @@ export function parseQuery(text, { breeds = [], usStates = [] } = {}) {
     if (city && !FILLER.has(city)) {
       result.city = city.replace(/\b[a-z]/g, (c) => c.toUpperCase())
       q = q.replace(` ${cityMatch[1]}`, ' ')
+      // A known metro implies its state, so "near seattle" filters immediately.
+      if (!result.state && CITY_STATES[city] && usStates.includes(CITY_STATES[city])) {
+        result.state = CITY_STATES[city]
+        result.inferredState = CITY_STATES[city]
+      }
     }
   }
 
