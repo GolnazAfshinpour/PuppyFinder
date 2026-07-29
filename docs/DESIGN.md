@@ -66,7 +66,8 @@ special. Never larger than `text-5xl` (3rem) — bigger reads as shouting.
 
 ## 5. Component conventions
 
-- **Dog card:** photo → Fraunces name (stretched link: the name's hit area is
+- **Dog card:** photo with favorite heart top-right (base-100/85 blur circle,
+  primary heart, `aria-pressed`) → Fraunces name (stretched link: the name's hit area is
   the whole card, other interactive elements sit above via `relative z-10`,
   card shows `focus-within` ring) + fit badge → ONE muted metadata line
   ("Male · Neutered · 2 Years · Medium") → breed → location → contact →
@@ -98,6 +99,11 @@ Honesty beats marketing — cautions and coverage limits are stated plainly.
   (`max-h` + `overflow-y-auto`) so an expanded panel never clips.
 - Mobile: filters collapse behind a toggle; results stay above the fold.
 - Loading = skeleton cards matching the real layout, never spinners.
-- Empty states are never dead ends: say *why* it's empty, offer the next step.
+- Zero results auto-broaden: relax one constraint at a time (city → size →
+  breed → state → all), state exactly what was relaxed, offer one-tap clear
+  and the saved-search alert. The user should never have to rework a failed
+  search themselves.
+- Multi-session memory is anonymous: favorites + recently-viewed live in
+  localStorage as listing snapshots (they must survive dogs leaving the feed).
 - Known gaps (documented, not yet built): per-option result counts, breed
   combobox with type-ahead, compare-selected view for the 14-site directory.

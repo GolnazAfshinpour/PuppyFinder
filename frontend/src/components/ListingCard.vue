@@ -3,7 +3,10 @@ import { computed, ref } from 'vue'
 
 const props = defineProps({
   listing: { type: Object, required: true },
+  favorite: { type: Boolean, default: false },
 })
+
+defineEmits(['toggle-favorite', 'viewed'])
 
 const imageFailed = ref(false)
 
@@ -20,7 +23,7 @@ const metaLine = computed(() => {
 
 <template>
   <li class="card card-lift bg-base-100 focus-within:ring-primary/50 relative overflow-hidden focus-within:ring-2">
-    <figure class="bg-base-300 aspect-[4/3]">
+    <figure class="bg-base-300 relative aspect-[4/3]">
       <img
         v-if="listing.imageUrl && !imageFailed"
         :src="listing.imageUrl"
@@ -31,6 +34,18 @@ const metaLine = computed(() => {
         @error="imageFailed = true"
       />
       <span v-else class="text-5xl" aria-hidden="true">🐶</span>
+      <button
+        type="button"
+        class="btn btn-circle btn-sm bg-base-100/85 absolute top-2 right-2 z-10 border-none backdrop-blur-sm transition-transform active:scale-125"
+        :title="favorite ? `Remove ${listing.name} from saved dogs` : `Save ${listing.name}`"
+        :aria-pressed="favorite"
+        @click="$emit('toggle-favorite')"
+      >
+        <svg class="h-4.5 w-4.5" viewBox="0 0 24 24" :fill="favorite ? 'var(--color-primary)' : 'none'"
+          stroke="var(--color-primary)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M21 8.25c0-2.485-2.099-4.5-4.688-4.5-1.935 0-3.597 1.126-4.312 2.733-.715-1.607-2.377-2.733-4.313-2.733C5.1 3.75 3 5.765 3 8.25c0 7.22 9 12 9 12s9-4.78 9-12Z" />
+        </svg>
+      </button>
     </figure>
     <div class="card-body gap-2 p-4">
       <div class="flex items-start justify-between gap-2">
@@ -42,6 +57,7 @@ const metaLine = computed(() => {
             target="_blank"
             rel="noopener noreferrer"
             class="after:absolute after:inset-0 after:content-[''] focus-visible:outline-none"
+            @click="$emit('viewed')"
           >
             {{ listing.name }}
           </a>
@@ -69,6 +85,7 @@ const metaLine = computed(() => {
         :href="listing.listingUrl"
         target="_blank"
         rel="noopener noreferrer"
+        @click="$emit('viewed')"
       >
         Meet {{ listing.name }} ↗
       </a>

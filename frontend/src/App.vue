@@ -2,6 +2,7 @@
 import { computed, onMounted, ref, watch } from 'vue'
 import { breedMatches } from './breedFilters.js'
 import { clearProfile, loadProfile, rankListings } from './adopterProfile.js'
+import { loadFavorites, loadRecent, recordViewed, toggleFavorite } from './favorites.js'
 import { fetchBreedImage } from './dogImages.js'
 import { buildSearchQuery, parseSearchUrl } from './searchUrl.js'
 import SearchHub from './components/SearchHub.vue'
@@ -44,11 +45,27 @@ const error = ref('')
 const listings = ref([])
 const sources = ref([])
 const coveredStates = ref([]) // states with at least one live listing right now
+// Auto-broadened results shown when the exact search is empty: {listings, note}.
+const broadened = ref(null)
+
+// Multi-session memory: saved dogs + recently viewed (localStorage snapshots).
+const favorites = ref(loadFavorites())
+const recent = ref(loadRecent())
+function onToggleFavorite(listing) {
+  favorites.value = toggleFavorite(listing)
+}
+function onViewed(listing) {
+  recent.value = recordViewed(listing)
+}
+const favoriteIds = computed(() => new Set(favorites.value.map((f) => f.id)))
 
 // Saved quiz profile (localStorage): when present, listings are re-ranked by fit.
 const profile = ref(loadProfile())
+const displayListings = computed(() =>
+  listings.value.length ? listings.value : (broadened.value?.listings ?? []),
+)
 const rankedListings = computed(() =>
-  profile.value ? rankListings(listings.value, profile.value.scores) : listings.value,
+  profile.value ? rankListings(displayListings.value, profile.value.scores) : displayListings.value,
 )
 function dropProfile() {
   clearProfile()
@@ -130,22 +147,63 @@ async function loadSites() {
   }
 }
 
+function listingParams(overrides = {}) {
+  const values = {
+    breed: selectedBreed.value,
+    state: selectedState.value,
+    city: selectedCity.value.trim() && selectedState.value ? selectedCity.value.trim() : '',
+    size: selectedSize.value,
+    ...overrides,
+  }
+  const params = new URLSearchParams()
+  for (const [key, value] of Object.entries(values)) {
+    if (value) params.set(key, value)
+  }
+  return params
+}
+
+async function fetchListings(params) {
+  const res = await fetch(`/api/listings${params.size ? `?${params}` : ''}`)
+  if (!res.ok) throw new Error(`API returned ${res.status}`)
+  return res.json()
+}
+
+// Zero results is our job to fix, not the user's (only ~20% rework a failed
+// search themselves): relax one constraint at a time until dogs appear, and
+// say exactly what was relaxed.
+async function broadenSearch() {
+  const relaxations = [
+    { overrides: { city: '' }, note: `outside ${selectedCity.value.trim()} (all of ${selectedState.value})`, applies: () => selectedCity.value.trim() && selectedState.value },
+    { overrides: { size: '' }, note: 'of any size', applies: () => selectedSize.value },
+    { overrides: { breed: '' }, note: 'of any breed', applies: () => selectedBreed.value },
+    { overrides: { state: '', city: '' }, note: 'across all states with live feeds', applies: () => selectedState.value },
+    { overrides: { breed: '', state: '', city: '', size: '' }, note: 'available right now (all filters relaxed)', applies: () => true },
+  ]
+  for (const relaxation of relaxations) {
+    if (!relaxation.applies()) continue
+    try {
+      const result = await fetchListings(listingParams(relaxation.overrides))
+      if (result.length) {
+        return { listings: result, note: relaxation.note }
+      }
+    } catch {
+      return null
+    }
+  }
+  return null
+}
+
 async function loadListings() {
   loadingListings.value = true
   listingsError.value = ''
   try {
-    const params = new URLSearchParams()
-    if (selectedBreed.value) params.set('breed', selectedBreed.value)
-    if (selectedState.value) params.set('state', selectedState.value)
-    if (selectedCity.value.trim() && selectedState.value) params.set('city', selectedCity.value.trim())
-    if (selectedSize.value) params.set('size', selectedSize.value)
     const [listRes, srcRes, covRes] = await Promise.all([
-      fetch(`/api/listings${params.size ? `?${params}` : ''}`),
+      fetchListings(listingParams()),
       sources.value.length ? Promise.resolve(null) : fetch('/api/sources'),
       coveredStates.value.length ? Promise.resolve(null) : fetch('/api/coverage'),
     ])
-    if (!listRes.ok) throw new Error(`API returned ${listRes.status}`)
-    listings.value = await listRes.json()
+    listings.value = listRes
+    broadened.value = listRes.length ? null : await broadenSearch()
     if (srcRes?.ok) sources.value = await srcRes.json()
     if (covRes?.ok) coveredStates.value = await covRes.json()
     listingsStale.value = false
@@ -413,6 +471,28 @@ onMounted(() => {
             :city="selectedCity"
             :size="selectedSize"
           />
+
+          <details v-if="favorites.length" class="collapse-arrow border-base-300 bg-base-100 collapse mb-5 border">
+            <summary class="collapse-title font-semibold">❤️ Your saved dogs ({{ favorites.length }})</summary>
+            <div class="collapse-content">
+              <ul class="space-y-2">
+                <li v-for="f in favorites" :key="f.id" class="flex items-center gap-3 text-sm">
+                  <img v-if="f.imageUrl" :src="f.imageUrl" :alt="f.name" referrerpolicy="no-referrer"
+                    class="h-11 w-11 rounded-lg object-cover" />
+                  <span v-else class="bg-base-300 grid h-11 w-11 place-items-center rounded-lg">🐶</span>
+                  <span class="min-w-0 flex-1 truncate">
+                    <strong>{{ f.name }}</strong> — {{ f.breed }} · {{ f.city }}, {{ f.state }}
+                  </span>
+                  <a :href="f.listingUrl" target="_blank" rel="noopener noreferrer" class="link whitespace-nowrap">
+                    Open ↗
+                  </a>
+                  <button type="button" class="btn btn-ghost btn-xs" title="Remove from saved" @click="onToggleFavorite(f)">
+                    ✕
+                  </button>
+                </li>
+              </ul>
+            </div>
+          </details>
           <ul v-if="loadingListings" class="grid list-none gap-6 p-0 sm:grid-cols-2 xl:grid-cols-3" aria-hidden="true">
             <li v-for="n in 6" :key="n" class="card bg-base-100 overflow-hidden">
               <div class="skeleton h-44 rounded-none" />
@@ -424,7 +504,17 @@ onMounted(() => {
             </li>
           </ul>
           <div v-else-if="listingsError" class="alert alert-error">{{ listingsError }}</div>
-          <template v-else-if="listings.length">
+          <template v-else-if="displayListings.length">
+            <div
+              v-if="!listings.length && broadened"
+              class="alert alert-soft alert-warning mb-4 flex flex-wrap items-center justify-between gap-2 py-2 text-sm"
+            >
+              <span>
+                No dogs match your exact search — showing
+                <strong>{{ broadened.listings.length }} dogs</strong> {{ broadened.note }} instead.
+              </span>
+              <button type="button" class="link" @click="clearAllFilters">Clear my filters</button>
+            </div>
             <div
               v-if="profile"
               class="alert alert-soft alert-info mb-4 flex flex-wrap items-center justify-between gap-2 py-2 text-sm"
@@ -436,7 +526,14 @@ onMounted(() => {
               </span>
             </div>
             <ul class="grid list-none gap-6 p-0 sm:grid-cols-2 xl:grid-cols-3">
-              <ListingCard v-for="l in rankedListings" :key="l.id" :listing="l" />
+              <ListingCard
+                v-for="l in rankedListings"
+                :key="l.id"
+                :listing="l"
+                :favorite="favoriteIds.has(l.id)"
+                @toggle-favorite="onToggleFavorite(l)"
+                @viewed="onViewed(l)"
+              />
             </ul>
           </template>
           <div v-else class="card bg-base-100 shadow-md">
@@ -464,6 +561,20 @@ onMounted(() => {
                 <button type="button" class="btn btn-outline btn-sm" @click="tab = 'sites'">
                   ← Back to site search
                 </button>
+              </div>
+              <div v-if="recent.length" class="mt-4 w-full text-left">
+                <p class="mb-2 text-sm font-semibold">Dogs you looked at recently:</p>
+                <ul class="space-y-2">
+                  <li v-for="r in recent.slice(0, 4)" :key="r.id" class="flex items-center gap-3 text-sm">
+                    <img v-if="r.imageUrl" :src="r.imageUrl" :alt="r.name" referrerpolicy="no-referrer"
+                      class="h-9 w-9 rounded-lg object-cover" />
+                    <span v-else class="bg-base-300 grid h-9 w-9 place-items-center rounded-lg">🐶</span>
+                    <span class="min-w-0 flex-1 truncate">{{ r.name }} — {{ r.breed }}</span>
+                    <a :href="r.listingUrl" target="_blank" rel="noopener noreferrer" class="link whitespace-nowrap">
+                      Open ↗
+                    </a>
+                  </li>
+                </ul>
               </div>
             </div>
           </div>
