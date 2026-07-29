@@ -1,7 +1,7 @@
 @import "tailwindcss";
 
-/* Golden Hour — warm editorial brand theme (see docs/DESIGN.md rationale in git history).
-   Cream canvas, espresso ink, one confident terracotta accent; honey + sage support. */
+/* Golden Hour — warm editorial brand theme. Tokens, type scale, and component
+   conventions are documented in docs/DESIGN.md — change values there-first. */
 @plugin "daisyui" {
   themes: false;
 }

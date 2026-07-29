@@ -236,8 +236,8 @@ onMounted(() => {
   <nav class="bg-base-200/80 sticky top-0 z-40 backdrop-blur-md">
     <div class="mx-auto flex max-w-6xl items-center justify-between gap-3 px-4 py-2 sm:px-6">
       <div class="flex items-center gap-2">
-        <PuppyLogo class="h-10 w-10 shrink-0" />
-        <span class="font-display text-2xl font-semibold tracking-tight">PuppyFinder</span>
+        <PuppyLogo class="h-9 w-9 shrink-0" />
+        <span class="font-display text-xl font-semibold tracking-tight">PuppyFinder</span>
       </div>
       <div class="flex items-center gap-1">
         <button type="button" class="btn btn-ghost btn-sm" @click="guideOpen = true">
@@ -250,20 +250,20 @@ onMounted(() => {
 
   <main class="mx-auto max-w-6xl px-4 pt-6 pb-16 sm:px-6">
     <!-- Editorial hero: one headline doing the brand work, numeric trust under it. -->
-    <header class="mb-8">
-      <h1 class="font-display max-w-2xl text-4xl leading-[1.05] font-semibold tracking-tight sm:text-6xl">
-        Every puppy site.<br />
+    <header class="mb-8 text-center">
+      <h1 class="font-display mx-auto max-w-2xl text-3xl leading-[1.1] font-semibold tracking-tight sm:text-5xl">
+        Every puppy site.
         <span class="text-primary">One honest search.</span>
       </h1>
-      <p class="text-base-content/70 mt-3 max-w-xl text-base sm:text-lg">
+      <p class="text-base-content/70 mx-auto mt-3 max-w-xl text-base">
         Search 14 marketplaces and rescues at once, browse live shelter dogs, and know
         exactly who to trust before any money changes hands.
       </p>
-      <div class="mt-4 flex flex-wrap gap-2 text-sm">
-        <span class="badge badge-outline badge-lg gap-1">14 sites, honestly ranked</span>
-        <span class="badge badge-outline badge-lg gap-1">Live shelter feeds</span>
-        <span class="badge badge-outline badge-lg gap-1">Free email alerts</span>
-        <span class="badge badge-outline badge-lg gap-1">Scam-safety guide built in</span>
+      <div class="mt-4 flex flex-wrap justify-center gap-2">
+        <span class="badge badge-outline">14 sites, honestly ranked</span>
+        <span class="badge badge-outline">Live shelter feeds</span>
+        <span class="badge badge-outline">Free email alerts</span>
+        <span class="badge badge-outline">Scam-safety guide built in</span>
       </div>
     </header>
 
