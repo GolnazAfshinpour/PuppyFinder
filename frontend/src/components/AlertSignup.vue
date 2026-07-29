@@ -13,6 +13,47 @@ const email = ref('')
 const saving = ref(false)
 const savedFor = ref('') // human summary of the alert just created
 const error = ref('')
+const myAlerts = ref(null) // null = not loaded; [] = loaded, none
+const loadingAlerts = ref(false)
+
+function describeAlert(a) {
+  const parts = []
+  if (a.size) parts.push(a.size)
+  parts.push(a.breed ? a.breed.replaceAll('-', ' ') : 'any breed')
+  if (a.city && a.state) parts.push(`in ${a.city}, ${a.state}`)
+  else if (a.state) parts.push(`in ${a.state}`)
+  else parts.push('anywhere')
+  return parts.join(' · ')
+}
+
+async function loadMyAlerts() {
+  if (!email.value.trim()) return
+  loadingAlerts.value = true
+  error.value = ''
+  try {
+    const res = await fetch(`/api/alerts?email=${encodeURIComponent(email.value.trim())}`)
+    if (!res.ok) throw new Error(`API returned ${res.status}`)
+    myAlerts.value = await res.json()
+  } catch (e) {
+    error.value = e.message
+  } finally {
+    loadingAlerts.value = false
+  }
+}
+
+async function removeAlert(alert) {
+  try {
+    const res = await fetch(
+      `/api/alerts/${alert.id}?email=${encodeURIComponent(alert.email)}`,
+      { method: 'DELETE' },
+    )
+    if (res.ok || res.status === 404) {
+      myAlerts.value = myAlerts.value.filter((a) => a.id !== alert.id)
+    }
+  } catch (e) {
+    error.value = e.message
+  }
+}
 
 const filterSummary = computed(() => {
   const parts = []
@@ -43,7 +84,7 @@ async function save() {
     })
     if (!res.ok) throw new Error((await res.text()).replaceAll('"', '') || `API returned ${res.status}`)
     savedFor.value = filterSummary.value
-    email.value = ''
+    if (myAlerts.value !== null) await loadMyAlerts()
   } catch (e) {
     error.value = e.message
   } finally {
@@ -72,6 +113,27 @@ async function save() {
       </form>
       <p v-if="savedFor" class="text-success text-xs">✓ Alert saved — we'll email you about new dogs ({{ savedFor }}).</p>
       <p v-if="error" class="text-error text-xs">{{ error }}</p>
+
+      <button
+        v-if="myAlerts === null"
+        type="button"
+        class="link self-start text-xs opacity-70"
+        :disabled="loadingAlerts || !email.trim()"
+        @click="loadMyAlerts"
+      >
+        {{ loadingAlerts ? 'Loading…' : 'Show my existing alerts (enter your email above first)' }}
+      </button>
+      <div v-else class="text-xs">
+        <p v-if="myAlerts.length === 0" class="opacity-60">No alerts saved for that email yet.</p>
+        <ul v-else class="space-y-1">
+          <li v-for="a in myAlerts" :key="a.id" class="flex items-center gap-2">
+            <span>🔔 {{ describeAlert(a) }}</span>
+            <button type="button" class="btn btn-ghost btn-xs text-error" @click="removeAlert(a)">
+              remove
+            </button>
+          </li>
+        </ul>
+      </div>
     </div>
   </div>
 </template>

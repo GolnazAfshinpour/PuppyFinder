@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.puppyfinder.api</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/usr/local/share/dotnet/dotnet</string>
+    <string>run</string>
+    <string>--project</string>
+    <string>/Users/gafshinpour/Documents/PuppyFinder/backend</string>
+  </array>
+  <key>WorkingDirectory</key>
+  <string>/Users/gafshinpour/Documents/PuppyFinder/backend</string>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>ASPNETCORE_URLS</key>
+    <string>http://localhost:5133</string>
+    <!-- Development so dotnet user-secrets (SMTP credentials) load. -->
+    <key>ASPNETCORE_ENVIRONMENT</key>
+    <string>Development</string>
+    <key>PATH</key>
+    <string>/usr/local/share/dotnet:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
+  </dict>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <true/>
+  <key>StandardOutPath</key>
+  <string>/tmp/puppyfinder-api.log</string>
+  <key>StandardErrorPath</key>
+  <string>/tmp/puppyfinder-api.log</string>
+</dict>
+</plist>
