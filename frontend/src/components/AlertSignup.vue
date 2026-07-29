@@ -99,7 +99,7 @@ async function save() {
 </script>
 
 <template>
-  <div class="card bg-base-200 mb-5">
+  <div class="card border-secondary/50 bg-secondary/10 mb-5 border">
     <div class="card-body gap-2 p-4">
       <p class="text-sm font-semibold">🔔 New dogs matching this search? Get an email.</p>
       <p class="text-xs opacity-60">Watching: {{ filterSummary }} — one email per new dog, unsubscribe anytime.</p>

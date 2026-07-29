@@ -47,7 +47,7 @@ function toggleTrait(key) {
 <template>
   <section class="card bg-base-100 shadow-md">
     <div class="card-body gap-4">
-      <h2 class="card-title text-base">🔍 Your search</h2>
+      <h2 class="font-display card-title text-lg font-semibold">Your search</h2>
 
       <div>
         <span class="label-text mb-1 block text-xs font-bold tracking-wide uppercase opacity-60">Size</span>
@@ -148,10 +148,10 @@ function toggleTrait(key) {
 
       <div class="mt-1 flex flex-col gap-2">
         <button type="button" class="btn btn-primary w-full" @click="emit('open-all')">
-          🚀 Open all {{ siteCount }} sites
+          Open all {{ siteCount }} sites ↗
         </button>
         <button type="button" class="btn btn-outline w-full" @click="emit('open-quiz')">
-          🧭 Take the breed quiz
+          🐾 Take the breed quiz
         </button>
       </div>
       <p class="text-center text-xs opacity-60">

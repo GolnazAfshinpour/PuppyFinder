@@ -35,6 +35,7 @@ const goal = ref(fromUrl.goal)
 const tab = ref(fromUrl.tab) // 'sites' = link-out cards, 'adopt' = live shelter listings
 const quizOpen = ref(false)
 const guideOpen = ref(false)
+const filtersOpen = ref(false) // mobile-only filter drawer state
 const loadingSites = ref(true)
 const error = ref('')
 
@@ -66,6 +67,27 @@ const visibleSites = computed(() => {
   if (goal.value === 'buy') return sites.value.filter((s) => s.kind !== 'Adopt')
   return sites.value
 })
+
+// Active filters as removable chips above the results (table-stakes search UX).
+const activeChips = computed(() => {
+  const chips = []
+  if (selectedSize.value) chips.push({ key: 'size', label: `Size: ${selectedSize.value}`, clear: () => (selectedSize.value = '') })
+  for (const t of traits.value) {
+    chips.push({ key: `trait-${t}`, label: TRAIT_LABELS[t] ?? t, clear: () => (traits.value = traits.value.filter((x) => x !== t)) })
+  }
+  if (selectedBreed.value) chips.push({ key: 'breed', label: selectedBreedName.value || selectedBreed.value, clear: () => (selectedBreed.value = '') })
+  if (selectedState.value) chips.push({ key: 'state', label: selectedState.value, clear: () => (selectedState.value = '') })
+  if (selectedCity.value.trim() && selectedState.value) chips.push({ key: 'city', label: selectedCity.value.trim(), clear: () => (selectedCity.value = '') })
+  return chips
+})
+const TRAIT_LABELS = { kids: 'Good with kids', apartment: 'Apartment-friendly', lowshed: 'Low-shedding' }
+function clearAllFilters() {
+  selectedBreed.value = ''
+  selectedState.value = ''
+  selectedCity.value = ''
+  selectedSize.value = ''
+  traits.value = []
+}
 
 // Filters the user has set — each card badges which of these its link carries.
 const wantedFilters = computed(() => {
@@ -210,36 +232,50 @@ onMounted(() => {
 </script>
 
 <template>
-  <main class="mx-auto max-w-6xl px-4 pt-3 pb-16 sm:px-6">
-    <header class="mb-6">
-      <div class="flex items-center justify-between gap-3">
-        <div class="flex items-center gap-3">
-          <PuppyLogo class="h-16 w-16 shrink-0 drop-shadow-md sm:h-20 sm:w-20" />
-          <div>
-            <h1 class="font-display text-3xl leading-none font-semibold tracking-wide sm:text-4xl">
-              PuppyFinder
-            </h1>
-            <p class="font-display text-lg text-base-content/70 sm:text-xl">
-              Find your magical companion
-            </p>
-          </div>
-        </div>
-        <div class="flex items-center gap-2">
-          <button type="button" class="btn btn-ghost btn-sm" @click="guideOpen = true">
-            🛡️ <span class="hidden sm:inline">Buy safely</span>
-          </button>
-          <ThemePicker />
-        </div>
+  <!-- Glass sticky nav: identity + global actions, nothing else. -->
+  <nav class="bg-base-200/80 sticky top-0 z-40 backdrop-blur-md">
+    <div class="mx-auto flex max-w-6xl items-center justify-between gap-3 px-4 py-2 sm:px-6">
+      <div class="flex items-center gap-2">
+        <PuppyLogo class="h-10 w-10 shrink-0" />
+        <span class="font-display text-2xl font-semibold tracking-tight">PuppyFinder</span>
       </div>
-      <ul class="steps mt-3 hidden w-full text-xs sm:grid">
-        <li class="step step-primary">Pick a breed — or take the quiz</li>
-        <li class="step step-primary">Choose adopt or buy</li>
-        <li class="step step-primary">Jump to the right page on every site</li>
-      </ul>
+      <div class="flex items-center gap-1">
+        <button type="button" class="btn btn-ghost btn-sm" @click="guideOpen = true">
+          🛡️ <span class="hidden sm:inline">Buy safely</span>
+        </button>
+        <ThemePicker />
+      </div>
+    </div>
+  </nav>
+
+  <main class="mx-auto max-w-6xl px-4 pt-6 pb-16 sm:px-6">
+    <!-- Editorial hero: one headline doing the brand work, numeric trust under it. -->
+    <header class="mb-8">
+      <h1 class="font-display max-w-2xl text-4xl leading-[1.05] font-semibold tracking-tight sm:text-6xl">
+        Every puppy site.<br />
+        <span class="text-primary">One honest search.</span>
+      </h1>
+      <p class="text-base-content/70 mt-3 max-w-xl text-base sm:text-lg">
+        Search 14 marketplaces and rescues at once, browse live shelter dogs, and know
+        exactly who to trust before any money changes hands.
+      </p>
+      <div class="mt-4 flex flex-wrap gap-2 text-sm">
+        <span class="badge badge-outline badge-lg gap-1">14 sites, honestly ranked</span>
+        <span class="badge badge-outline badge-lg gap-1">Live shelter feeds</span>
+        <span class="badge badge-outline badge-lg gap-1">Free email alerts</span>
+        <span class="badge badge-outline badge-lg gap-1">Scam-safety guide built in</span>
+      </div>
     </header>
 
+    <!-- Mobile: filters live behind a toggle so dogs stay above the fold. -->
+    <div class="mb-4 lg:hidden">
+      <button type="button" class="btn btn-outline btn-block" @click="filtersOpen = !filtersOpen">
+        {{ filtersOpen ? '✕ Hide filters' : `⚙︎ Filters${wantedFilters.length || selectedSize || traits.length ? ' (active)' : ''}` }}
+      </button>
+    </div>
+
     <div class="lg:grid lg:grid-cols-[320px_minmax(0,1fr)] lg:items-start lg:gap-8">
-      <aside class="mb-8 lg:sticky lg:top-4 lg:mb-0">
+      <aside class="mb-8 lg:sticky lg:top-16 lg:mb-0" :class="filtersOpen ? 'block' : 'hidden lg:block'">
         <SearchHub
           v-model:breed="selectedBreed"
           v-model:state="selectedState"
@@ -273,6 +309,20 @@ onMounted(() => {
           >
             🐶 Adoptable now
           </button>
+        </div>
+
+        <div v-if="activeChips.length" class="mb-4 flex flex-wrap items-center gap-1.5">
+          <button
+            v-for="chip in activeChips"
+            :key="chip.key"
+            type="button"
+            class="badge badge-primary badge-soft gap-1 py-3"
+            :title="`Remove ${chip.label}`"
+            @click="chip.clear()"
+          >
+            {{ chip.label }} ✕
+          </button>
+          <button type="button" class="link text-xs opacity-60" @click="clearAllFilters">Clear all</button>
         </div>
 
         <template v-if="tab === 'sites'">
@@ -344,9 +394,16 @@ onMounted(() => {
             :city="selectedCity"
             :size="selectedSize"
           />
-          <p v-if="loadingListings" class="text-center text-base-content/60">
-            <span class="loading loading-dots loading-md" />
-          </p>
+          <ul v-if="loadingListings" class="grid list-none gap-6 p-0 sm:grid-cols-2 xl:grid-cols-3" aria-hidden="true">
+            <li v-for="n in 6" :key="n" class="card bg-base-100 overflow-hidden">
+              <div class="skeleton h-44 rounded-none" />
+              <div class="space-y-2 p-4">
+                <div class="skeleton h-5 w-2/5" />
+                <div class="skeleton h-4 w-4/5" />
+                <div class="skeleton h-4 w-3/5" />
+              </div>
+            </li>
+          </ul>
           <div v-else-if="listingsError" class="alert alert-error">{{ listingsError }}</div>
           <template v-else-if="listings.length">
             <div

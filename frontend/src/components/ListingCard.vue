@@ -17,8 +17,8 @@ const sexQualifier = computed(() => {
 </script>
 
 <template>
-  <li class="card bg-base-100 shadow-md transition hover:-translate-y-0.5 hover:shadow-xl">
-    <figure class="bg-base-200 h-44">
+  <li class="card card-lift bg-base-100 overflow-hidden">
+    <figure class="bg-base-300 aspect-[4/3]">
       <img
         v-if="listing.imageUrl && !imageFailed"
         :src="listing.imageUrl"
@@ -31,7 +31,7 @@ const sexQualifier = computed(() => {
       <span v-else class="text-5xl" aria-hidden="true">🐶</span>
     </figure>
     <div class="card-body gap-2 p-4">
-      <h3 class="card-title text-lg">{{ listing.name }}</h3>
+      <h3 class="font-display card-title text-xl font-semibold">{{ listing.name }}</h3>
       <div v-if="listing.fit != null || sexBase || listing.age || listing.size" class="flex flex-wrap gap-1">
         <span v-if="listing.fit != null" class="badge badge-primary badge-soft font-bold whitespace-nowrap">
           {{ listing.fit }}% fit

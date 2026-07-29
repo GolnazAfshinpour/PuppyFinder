@@ -1,13 +1,104 @@
 @import "tailwindcss";
+
+/* Golden Hour — warm editorial brand theme (see docs/DESIGN.md rationale in git history).
+   Cream canvas, espresso ink, one confident terracotta accent; honey + sage support. */
 @plugin "daisyui" {
-  themes: all;
+  themes: false;
+}
+
+@plugin "daisyui/theme" {
+  name: "goldenhour";
+  default: true;
+  color-scheme: light;
+
+  --color-base-100: #fffdf9; /* card surfaces */
+  --color-base-200: #faf6ef; /* page canvas */
+  --color-base-300: #efe5d6;
+  --color-base-content: #2d2117;
+  --color-primary: #c75b39; /* terracotta */
+  --color-primary-content: #fff6f0;
+  --color-secondary: #e8a33d; /* honey */
+  --color-secondary-content: #3a2a10;
+  --color-accent: #7c8b6f; /* sage */
+  --color-accent-content: #f4f6f1;
+  --color-neutral: #4a3a2c;
+  --color-neutral-content: #f7f0e6;
+  --color-info: #5e8ca7;
+  --color-info-content: #f2f7fa;
+  --color-success: #6f9d6b;
+  --color-success-content: #f3f8f2;
+  --color-warning: #d9932f;
+  --color-warning-content: #33240b;
+  --color-error: #b54a3f;
+  --color-error-content: #fdf3f1;
+
+  --radius-selector: 1rem;
+  --radius-field: 0.75rem;
+  --radius-box: 1rem;
+  --size-selector: 0.25rem;
+  --size-field: 0.25rem;
+  --border: 1px;
+  --depth: 1;
+  --noise: 0;
+}
+
+@plugin "daisyui/theme" {
+  name: "goldenhour-dark";
+  prefersdark: true;
+  color-scheme: dark;
+
+  --color-base-100: #2b211a; /* card surfaces */
+  --color-base-200: #221a14; /* page canvas */
+  --color-base-300: #3a2d22;
+  --color-base-content: #f2e8dc;
+  --color-primary: #d97a55;
+  --color-primary-content: #2b130b;
+  --color-secondary: #e3aa52;
+  --color-secondary-content: #2c1f0a;
+  --color-accent: #93a385;
+  --color-accent-content: #171c12;
+  --color-neutral: #f2e8dc;
+  --color-neutral-content: #2b211a;
+  --color-info: #7fa8c0;
+  --color-info-content: #10202b;
+  --color-success: #86ad82;
+  --color-success-content: #12210f;
+  --color-warning: #dfa04a;
+  --color-warning-content: #2c1f0a;
+  --color-error: #cf6e61;
+  --color-error-content: #2b0f0b;
+
+  --radius-selector: 1rem;
+  --radius-field: 0.75rem;
+  --radius-box: 1rem;
+  --size-selector: 0.25rem;
+  --size-field: 0.25rem;
+  --border: 1px;
+  --depth: 1;
+  --noise: 0;
 }
 
 @theme {
-  --font-sans: 'Quicksand', 'Avenir Next', 'Segoe UI', system-ui, sans-serif;
-  --font-display: 'Grenze Gotisch', 'Palatino', serif;
+  --font-sans: 'Nunito Sans', 'Avenir Next', 'Segoe UI', system-ui, sans-serif;
+  --font-display: 'Fraunces', 'Palatino', Georgia, serif;
 }
 
 body {
   -webkit-tap-highlight-color: transparent;
+}
+
+/* Warm-tinted elevation for photo cards; lift + gentle photo zoom on hover. */
+.card-lift {
+  transition: transform 0.25s ease, box-shadow 0.25s ease;
+  box-shadow: 0 1px 3px oklch(35% 0.04 60 / 0.12), 0 6px 18px oklch(35% 0.05 60 / 0.08);
+}
+.card-lift:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 2px 6px oklch(35% 0.04 60 / 0.14), 0 14px 32px oklch(35% 0.06 60 / 0.14);
+}
+.card-lift img {
+  transition: transform 0.4s ease;
+}
+.card-lift:hover figure img {
+  transform: scale(1.04);
 }
