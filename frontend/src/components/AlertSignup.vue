@@ -10,6 +10,7 @@ const props = defineProps({
 })
 
 const email = ref('')
+const emailInput = ref(null)
 const saving = ref(false)
 const savedFor = ref('') // human summary of the alert just created
 const error = ref('')
@@ -27,7 +28,11 @@ function describeAlert(a) {
 }
 
 async function loadMyAlerts() {
-  if (!email.value.trim()) return
+  if (!email.value.trim()) {
+    error.value = 'Type your email in the box above first — then I can look up your alerts.'
+    emailInput.value?.focus()
+    return
+  }
   loadingAlerts.value = true
   error.value = ''
   try {
@@ -100,6 +105,7 @@ async function save() {
       <p class="text-xs opacity-60">Watching: {{ filterSummary }} — one email per new dog, unsubscribe anytime.</p>
       <form class="join w-full max-w-md" @submit.prevent="save">
         <input
+          ref="emailInput"
           v-model="email"
           type="email"
           required
@@ -118,10 +124,10 @@ async function save() {
         v-if="myAlerts === null"
         type="button"
         class="link self-start text-xs opacity-70"
-        :disabled="loadingAlerts || !email.trim()"
+        :disabled="loadingAlerts"
         @click="loadMyAlerts"
       >
-        {{ loadingAlerts ? 'Loading…' : 'Show my existing alerts (enter your email above first)' }}
+        {{ loadingAlerts ? 'Loading…' : 'Show my existing alerts' }}
       </button>
       <div v-else class="text-xs">
         <p v-if="myAlerts.length === 0" class="opacity-60">No alerts saved for that email yet.</p>
