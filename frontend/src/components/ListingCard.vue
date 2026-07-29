@@ -7,17 +7,19 @@ const props = defineProps({
 
 const imageFailed = ref(false)
 
-// "Female (spayed)" → a compact "Female" badge plus a "Spayed" chip,
-// so badge text never wraps mid-word inside a fixed-height badge.
-const sexBase = computed(() => props.listing.sex?.replace(/\s*\(.*\)\s*$/, '') ?? '')
-const sexQualifier = computed(() => {
-  const match = props.listing.sex?.match(/\((.+)\)/)
-  return match ? match[1][0].toUpperCase() + match[1].slice(1) : ''
+// One muted metadata line instead of a pile of badges — evidence caps badges
+// at 1-2 per card, so the fit % keeps badge treatment and the rest is text.
+const metaLine = computed(() => {
+  const sex = props.listing.sex?.replace(/\s*\(.*\)\s*$/, '')
+  const qualifier = props.listing.sex?.match(/\((.+)\)/)?.[1]
+  return [sex, qualifier && qualifier[0].toUpperCase() + qualifier.slice(1), props.listing.age, props.listing.size]
+    .filter(Boolean)
+    .join(' · ')
 })
 </script>
 
 <template>
-  <li class="card card-lift bg-base-100 overflow-hidden">
+  <li class="card card-lift bg-base-100 focus-within:ring-primary/50 relative overflow-hidden focus-within:ring-2">
     <figure class="bg-base-300 aspect-[4/3]">
       <img
         v-if="listing.imageUrl && !imageFailed"
@@ -31,16 +33,24 @@ const sexQualifier = computed(() => {
       <span v-else class="text-5xl" aria-hidden="true">🐶</span>
     </figure>
     <div class="card-body gap-2 p-4">
-      <h3 class="font-display card-title text-xl font-semibold">{{ listing.name }}</h3>
-      <div v-if="listing.fit != null || sexBase || listing.age || listing.size" class="flex flex-wrap gap-1">
+      <div class="flex items-start justify-between gap-2">
+        <!-- Stretched link: the name is the accessible link, its hit area is the
+             whole card; other interactive elements sit above it via z-10. -->
+        <h3 class="font-display card-title text-xl font-semibold">
+          <a
+            :href="listing.listingUrl"
+            target="_blank"
+            rel="noopener noreferrer"
+            class="after:absolute after:inset-0 after:content-[''] focus-visible:outline-none"
+          >
+            {{ listing.name }}
+          </a>
+        </h3>
         <span v-if="listing.fit != null" class="badge badge-primary badge-soft font-bold whitespace-nowrap">
           {{ listing.fit }}% fit
         </span>
-        <span v-if="sexBase" class="badge badge-soft badge-secondary whitespace-nowrap">{{ sexBase }}</span>
-        <span v-if="sexQualifier" class="badge badge-ghost whitespace-nowrap">{{ sexQualifier }}</span>
-        <span v-if="listing.age" class="badge badge-ghost whitespace-nowrap">{{ listing.age }}</span>
-        <span v-if="listing.size" class="badge badge-ghost whitespace-nowrap">{{ listing.size }}</span>
       </div>
+      <p v-if="metaLine" class="text-sm opacity-70">{{ metaLine }}</p>
       <p class="text-sm font-medium">{{ listing.breed }}</p>
       <p class="text-sm opacity-70">📍 {{ listing.city }}, {{ listing.state }}</p>
       <p v-if="listing.contactInfo" class="text-sm font-medium">
@@ -49,10 +59,13 @@ const sexQualifier = computed(() => {
       </p>
       <p v-if="listing.description" class="line-clamp-2 text-xs opacity-60">{{ listing.description }}</p>
       <p class="text-xs opacity-50">
-        via <a :href="listing.sourceUrl" target="_blank" rel="noopener noreferrer" class="link">{{ listing.source }}</a>
+        via
+        <a :href="listing.sourceUrl" target="_blank" rel="noopener noreferrer" class="link relative z-10">
+          {{ listing.source }}
+        </a>
       </p>
       <a
-        class="btn btn-primary btn-block btn-sm mt-1"
+        class="btn btn-primary btn-block btn-sm relative z-10 mt-1"
         :href="listing.listingUrl"
         target="_blank"
         rel="noopener noreferrer"

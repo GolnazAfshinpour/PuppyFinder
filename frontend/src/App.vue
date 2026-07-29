@@ -228,6 +228,14 @@ onMounted(() => {
   loadBreeds()
   loadSites()
   if (tab.value === 'adopt') loadListings()
+  // Coverage feeds the "· live shelter dogs" hints in the State dropdown,
+  // so it's wanted even before the adopt tab is opened.
+  fetch('/api/coverage')
+    .then((r) => (r.ok ? r.json() : []))
+    .then((states) => {
+      if (states.length && !coveredStates.value.length) coveredStates.value = states
+    })
+    .catch(() => {})
 })
 </script>
 
@@ -275,7 +283,10 @@ onMounted(() => {
     </div>
 
     <div class="lg:grid lg:grid-cols-[320px_minmax(0,1fr)] lg:items-start lg:gap-8">
-      <aside class="mb-8 lg:sticky lg:top-16 lg:mb-0" :class="filtersOpen ? 'block' : 'hidden lg:block'">
+      <aside
+        class="mb-8 lg:sticky lg:top-16 lg:mb-0 lg:max-h-[calc(100vh-5rem)] lg:overflow-y-auto"
+        :class="filtersOpen ? 'block' : 'hidden lg:block'"
+      >
         <SearchHub
           v-model:breed="selectedBreed"
           v-model:state="selectedState"
@@ -286,6 +297,7 @@ onMounted(() => {
           :breeds="breeds"
           :us-states="US_STATES"
           :site-count="visibleSites.length"
+          :covered-states="coveredStates"
           @open-all="openAll"
           @open-quiz="quizOpen = true"
         />

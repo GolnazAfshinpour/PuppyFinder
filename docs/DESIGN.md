@@ -66,8 +66,12 @@ special. Never larger than `text-5xl` (3rem) — bigger reads as shouting.
 
 ## 5. Component conventions
 
-- **Dog card:** photo → Fraunces name → sex/age/size badge row → breed →
-  location → contact line → one primary CTA ("Meet {name} ↗").
+- **Dog card:** photo → Fraunces name (stretched link: the name's hit area is
+  the whole card, other interactive elements sit above via `relative z-10`,
+  card shows `focus-within` ring) + fit badge → ONE muted metadata line
+  ("Male · Neutered · 2 Years · Medium") → breed → location → contact →
+  one primary CTA ("Meet {name} ↗"). Max 1-2 badges per card, ever
+  (Baymard/NN/g: badge piles kill 3-second scanning).
 - **Site card:** Fraunces name + kind badge → description → icon rows
   (vetting/price/delivery/best-for) → caution alert (if any) → link-depth
   badges → one primary CTA.
@@ -85,7 +89,15 @@ Honesty beats marketing — cautions and coverage limits are stated plainly.
 
 ## 7. Search UX rules
 
-- Active filters render as removable chips above results + "Clear all".
+- Filter groups ordered by decision-relevance (Baymard/NN/g): Breed → State →
+  City → Size → Must-haves → Goal. Refiners never above decision-drivers.
+- Options carry availability context where cheap ("MD · live shelter dogs").
+- Active filters render as removable chips above results + "Clear all"
+  (clear-all stays a quiet text link, physically apart from primary CTAs).
+- Desktop filters update live; the sidebar is sticky with internal scroll
+  (`max-h` + `overflow-y-auto`) so an expanded panel never clips.
 - Mobile: filters collapse behind a toggle; results stay above the fold.
 - Loading = skeleton cards matching the real layout, never spinners.
 - Empty states are never dead ends: say *why* it's empty, offer the next step.
+- Known gaps (documented, not yet built): per-option result counts, breed
+  combobox with type-ahead, compare-selected view for the 14-site directory.

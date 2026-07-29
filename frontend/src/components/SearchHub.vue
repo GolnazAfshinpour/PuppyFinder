@@ -12,6 +12,7 @@ const props = defineProps({
   traits: { type: Array, default: () => [] },
   goal: { type: String, default: 'both' },
   siteCount: { type: Number, default: 0 },
+  coveredStates: { type: Array, default: () => [] }, // states with live shelter listings
 })
 
 const emit = defineEmits([
@@ -48,6 +49,49 @@ function toggleTrait(key) {
   <section class="card bg-base-100 shadow-md">
     <div class="card-body gap-4">
       <h2 class="font-display card-title text-lg font-semibold">Your search</h2>
+
+      <label class="form-control">
+        <span class="label-text mb-1 text-xs font-bold tracking-wide uppercase opacity-60">Breed</span>
+        <select
+          class="select select-bordered w-full"
+          :value="breed"
+          @change="emit('update:breed', $event.target.value)"
+        >
+          <option value="">Any breed</option>
+          <option v-for="b in filteredBreeds" :key="b.slug" :value="b.slug">{{ b.displayName }}</option>
+        </select>
+        <p v-if="narrowed" class="mt-1 text-xs opacity-60">
+          Showing {{ filteredBreeds.length }} breeds matching your filters (from our curated list).
+        </p>
+      </label>
+
+      <label class="form-control">
+        <span class="label-text mb-1 text-xs font-bold tracking-wide uppercase opacity-60">State</span>
+        <select
+          class="select select-bordered w-full"
+          :value="state"
+          @change="emit('update:state', $event.target.value)"
+        >
+          <option value="">Anywhere in the US</option>
+          <option v-for="s in usStates" :key="s" :value="s">
+            {{ s }}{{ coveredStates.includes(s) ? ' · live shelter dogs' : '' }}
+          </option>
+        </select>
+      </label>
+
+      <label class="form-control">
+        <span class="label-text mb-1 text-xs font-bold tracking-wide uppercase opacity-60">
+          City <span class="normal-case opacity-70">(optional)</span>
+        </span>
+        <input
+          type="text"
+          class="input input-bordered w-full"
+          :value="city"
+          :disabled="!state"
+          :placeholder="state ? 'e.g. Houston' : 'Pick a state first'"
+          @input="emit('update:city', $event.target.value)"
+        />
+      </label>
 
       <div>
         <span class="label-text mb-1 block text-xs font-bold tracking-wide uppercase opacity-60">Size</span>
@@ -88,47 +132,6 @@ function toggleTrait(key) {
           </button>
         </div>
       </div>
-
-      <label class="form-control">
-        <span class="label-text mb-1 text-xs font-bold tracking-wide uppercase opacity-60">Breed</span>
-        <select
-          class="select select-bordered w-full"
-          :value="breed"
-          @change="emit('update:breed', $event.target.value)"
-        >
-          <option value="">Any breed</option>
-          <option v-for="b in filteredBreeds" :key="b.slug" :value="b.slug">{{ b.displayName }}</option>
-        </select>
-        <p v-if="narrowed" class="mt-1 text-xs opacity-60">
-          Showing {{ filteredBreeds.length }} breeds matching your filters (from our curated list).
-        </p>
-      </label>
-
-      <label class="form-control">
-        <span class="label-text mb-1 text-xs font-bold tracking-wide uppercase opacity-60">State</span>
-        <select
-          class="select select-bordered w-full"
-          :value="state"
-          @change="emit('update:state', $event.target.value)"
-        >
-          <option value="">Anywhere in the US</option>
-          <option v-for="s in usStates" :key="s" :value="s">{{ s }}</option>
-        </select>
-      </label>
-
-      <label class="form-control">
-        <span class="label-text mb-1 text-xs font-bold tracking-wide uppercase opacity-60">
-          City <span class="normal-case opacity-70">(optional)</span>
-        </span>
-        <input
-          type="text"
-          class="input input-bordered w-full"
-          :value="city"
-          :disabled="!state"
-          :placeholder="state ? 'e.g. Houston' : 'Pick a state first'"
-          @input="emit('update:city', $event.target.value)"
-        />
-      </label>
 
       <div>
         <span class="label-text mb-1 block text-xs font-bold tracking-wide uppercase opacity-60">I want to…</span>
