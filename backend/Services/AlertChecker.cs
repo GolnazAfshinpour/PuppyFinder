@@ -99,7 +99,8 @@ public sealed class AlertChecker(
             <div style="margin:12px 0;padding:12px;border:1px solid #ddd;border-radius:8px">
               <strong>{WebUtility.HtmlEncode(l.Name)}</strong> — {WebUtility.HtmlEncode(l.Breed)}<br>
               {WebUtility.HtmlEncode(l.Sex ?? "")} {WebUtility.HtmlEncode(l.Age ?? "")} · 📍 {WebUtility.HtmlEncode(l.City)}, {WebUtility.HtmlEncode(l.State)}<br>
-              <a href="{WebUtility.HtmlEncode(l.ListingUrl)}">Meet {WebUtility.HtmlEncode(l.Name)} at {WebUtility.HtmlEncode(l.Source)} →</a>
+              {(l.ContactInfo is null ? "" : $"<strong>{WebUtility.HtmlEncode(l.ContactInfo)}</strong>{(l.AnimalRef is null ? "" : $" — ask about {WebUtility.HtmlEncode(l.AnimalRef)}")}<br>")}
+              <a href="{WebUtility.HtmlEncode(l.ListingUrl)}">See {WebUtility.HtmlEncode(l.Name)}'s photos &amp; bio at {WebUtility.HtmlEncode(l.Source)} →</a>
             </div>
             """));
 
