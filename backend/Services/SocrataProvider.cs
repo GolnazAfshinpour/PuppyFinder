@@ -23,7 +23,8 @@ public record SocrataDataset(
     string? AnimalTypeField,
     string FallbackListingUrl,
     string? SizeField = null,   // e.g. Montgomery's "petsize" (SMALL/MED/LARGE)
-    string? MemoField = null);  // free-text bio; also mined for weight when SizeField is absent
+    string? MemoField = null,   // free-text bio; also mined for weight when SizeField is absent
+    string? ContactInfo = null); // shelter phone/address shown on every card from this feed
 
 /// <summary>
 /// Pulls adoptable-dog listings from a government open-data (Socrata) feed.
@@ -85,7 +86,9 @@ public sealed class SocrataProvider(
                 Source: dataset.SourceName,
                 SourceUrl: dataset.SourceUrl,
                 Size: NormalizeSize(dataset.SizeField is null ? null : Get(row, dataset.SizeField))
-                      ?? SizeFromWeightText(memo)));
+                      ?? SizeFromWeightText(memo),
+                ContactInfo: dataset.ContactInfo,
+                AnimalRef: PetHarborAnimalId(image)));
         }
 
         logger.LogInformation("{Source} returned {Count} dog listings", dataset.SourceName, listings.Count);
@@ -122,17 +125,26 @@ public sealed class SocrataProvider(
     /// shelter ID, which maps 1:1 to its public detail page (pet.asp?uaid=XYZ.A123) —
     /// verified July 2026. Param casing varies per shelter, so match case-insensitively.
     /// </summary>
-    public static string? PetHarborDetailUrl(string? imageUrl)
+    public static string? PetHarborDetailUrl(string? imageUrl) =>
+        TryParsePetHarbor(imageUrl, out var id, out var location)
+            ? $"https://petharbor.com/pet.asp?uaid={location.ToUpperInvariant()}.{id.ToUpperInvariant()}"
+            : null;
+
+    /// <summary>The shelter's own animal ID ("A545419") — what callers should mention.</summary>
+    public static string? PetHarborAnimalId(string? imageUrl) =>
+        TryParsePetHarbor(imageUrl, out var id, out _) ? id.ToUpperInvariant() : null;
+
+    private static bool TryParsePetHarbor(string? imageUrl, out string id, out string location)
     {
+        id = location = "";
         if (imageUrl is null ||
             !Uri.TryCreate(imageUrl, UriKind.Absolute, out var uri) ||
             !(uri.Host.Equals("petharbor.com", StringComparison.OrdinalIgnoreCase) ||
               uri.Host.EndsWith(".petharbor.com", StringComparison.OrdinalIgnoreCase)))
         {
-            return null;
+            return false;
         }
 
-        string? id = null, location = null;
         foreach (var pair in uri.Query.TrimStart('?').Split('&', StringSplitOptions.RemoveEmptyEntries))
         {
             var parts = pair.Split('=', 2);
@@ -141,9 +153,7 @@ public sealed class SocrataProvider(
             if (parts[0].Equals("location", StringComparison.OrdinalIgnoreCase)) location = parts[1];
         }
 
-        return id is null || location is null
-            ? null
-            : $"https://petharbor.com/pet.asp?uaid={location.ToUpperInvariant()}.{id.ToUpperInvariant()}";
+        return id.Length > 0 && location.Length > 0;
     }
 
     // Some feeds (Montgomery County) publish http:// image URLs, which browsers

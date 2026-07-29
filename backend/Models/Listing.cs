@@ -17,4 +17,8 @@ public record Listing(
     string ListingUrl,
     string Source,
     string SourceUrl,
-    string? Size = null); // Teacup | Small | Medium | Large — null when the feed has no size data
+    string? Size = null, // Teacup | Small | Medium | Large — null when the feed has no size data
+    // Shelter contact info shown on the card itself — the PetHarbor detail pages bury
+    // it badly enough that visitors report "no contact info" after clicking through.
+    string? ContactInfo = null,
+    string? AnimalRef = null); // shelter's own ID ("A545419") — what to mention when calling

@@ -40,6 +40,10 @@ const sexQualifier = computed(() => {
       </div>
       <p class="text-sm font-medium">{{ listing.breed }}</p>
       <p class="text-sm opacity-70">📍 {{ listing.city }}, {{ listing.state }}</p>
+      <p v-if="listing.contactInfo" class="text-sm font-medium">
+        {{ listing.contactInfo }}
+        <span v-if="listing.animalRef" class="opacity-70">— ask about {{ listing.animalRef }}</span>
+      </p>
       <p v-if="listing.description" class="line-clamp-2 text-xs opacity-60">{{ listing.description }}</p>
       <p class="text-xs opacity-50">
         via <a :href="listing.sourceUrl" target="_blank" rel="noopener noreferrer" class="link">{{ listing.source }}</a>

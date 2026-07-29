@@ -38,7 +38,9 @@ var montgomeryCounty = new SocrataDataset(
     AnimalTypeField: "animaltype",
     // Their old adoption/adoptdog.html path 404s after a site restructure (July 2026).
     FallbackListingUrl: "https://www.montgomerycountymd.gov/animal-services-adoption-center/adopt-pet",
-    SizeField: "petsize");
+    SizeField: "petsize",
+    // Verified July 2026 against their PetHarbor pages.
+    ContactInfo: "📞 (240) 773-5900 · Derwood, MD");
 
 var kingCounty = new SocrataDataset(
     SourceName: "King County Pet Adoption",
@@ -49,7 +51,9 @@ var kingCounty = new SocrataDataset(
     DefaultCity: "Kent", State: "WA",
     AnimalTypeField: null,
     FallbackListingUrl: "https://kingcounty.gov/en/dept/executive-services/animals-pets-pests/regional-animal-services/adopt-a-pet",
-    MemoField: "memo");
+    MemoField: "memo",
+    // Verified July 2026 against their PetHarbor pages (visit hours: noon-5 weekdays, noon-4 weekends).
+    ContactInfo: "📞 (206) 296-3936 · 21615 64th Ave S, Kent, WA");
 
 builder.Services.AddSingleton<IListingProvider>(sp => new SocrataProvider(
     montgomeryCounty, sp.GetRequiredService<IHttpClientFactory>(), sp.GetRequiredService<ILogger<SocrataProvider>>()));

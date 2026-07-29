@@ -25,6 +25,14 @@ public class SocrataProviderTests
         Assert.Null(SocrataProvider.PetHarborDetailUrl(imageUrl));
 
     [Theory]
+    [InlineData("http://www.petharbor.com/get_image.asp?res=DETAIL&id=A538754&location=MONT", "A538754")]
+    [InlineData("https://petharbor.com/get_image.asp?RES=Detail&LOCATION=KING&ID=a749993", "A749993")]
+    [InlineData("https://example.com/get_image.asp?id=A1&location=MONT", null)]
+    [InlineData(null, null)]
+    public void PetHarborAnimalId_ExtractsShelterReference(string? imageUrl, string? expected) =>
+        Assert.Equal(expected, SocrataProvider.PetHarborAnimalId(imageUrl));
+
+    [Theory]
     [InlineData("*BELLARINA", "BELLARINA")] // shelter bookkeeping marker
     [InlineData("** Rex", "Rex")]
     [InlineData("  Sashi ", "Sashi")]
