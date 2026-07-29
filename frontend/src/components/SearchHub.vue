@@ -13,12 +13,13 @@ const props = defineProps({
   goal: { type: String, default: 'both' },
   siteCount: { type: Number, default: 0 },
   coveredStates: { type: Array, default: () => [] }, // states with live shelter listings
+  locating: { type: Boolean, default: false }, // geolocation lookup in flight
 })
 
 const emit = defineEmits([
   'update:breed', 'update:state', 'update:city', 'update:size', 'update:traits',
   'update:goal',
-  'open-all', 'open-quiz', 'clear',
+  'open-all', 'open-quiz', 'clear', 'near-me',
 ])
 
 const anyFilterActive = computed(
@@ -82,7 +83,12 @@ function toggleTrait(key) {
       </label>
 
       <label class="form-control">
-        <span class="label-text mb-1 text-xs font-bold tracking-wide uppercase opacity-60">State</span>
+        <span class="label-text mb-1 flex items-baseline justify-between text-xs font-bold tracking-wide uppercase opacity-60">
+          State
+          <button type="button" class="link font-normal normal-case" @click.prevent="emit('near-me')">
+            {{ locating ? 'Locating…' : '📍 Near me' }}
+          </button>
+        </span>
         <select
           class="select select-bordered w-full"
           :value="state"

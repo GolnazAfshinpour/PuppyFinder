@@ -105,5 +105,10 @@ Honesty beats marketing — cautions and coverage limits are stated plainly.
   search themselves.
 - Multi-session memory is anonymous: favorites + recently-viewed live in
   localStorage as listing snapshots (they must survive dogs leaving the feed).
-- Known gaps (documented, not yet built): per-option result counts, breed
-  combobox with type-ahead, compare-selected view for the 14-site directory.
+- The smart search box parses free text into these same filters (dictionary
+  matching only — never a model that can hallucinate inventory); contradictions
+  resolve toward the more specific intent with an explanatory hint. "Near me"
+  geolocates to state+city with a manual fallback on denial.
+- Known gaps (documented, not yet built): per-option result counts, true
+  distance sort (needs per-listing coordinates — arrives with RescueGroups),
+  compare-selected view for the 14-site directory.

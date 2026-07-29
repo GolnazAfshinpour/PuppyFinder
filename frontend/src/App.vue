@@ -3,6 +3,7 @@ import { computed, onMounted, ref, watch } from 'vue'
 import { breedMatches } from './breedFilters.js'
 import { clearProfile, loadProfile, rankListings } from './adopterProfile.js'
 import { loadFavorites, loadRecent, recordViewed, toggleFavorite } from './favorites.js'
+import { parseQuery } from './smartSearch.js'
 import { fetchBreedImage } from './dogImages.js'
 import { buildSearchQuery, parseSearchUrl } from './searchUrl.js'
 import SearchHub from './components/SearchHub.vue'
@@ -78,6 +79,9 @@ const listingsStale = ref(true)
 const selectedBreedName = computed(
   () => breeds.value.find((b) => b.slug === selectedBreed.value)?.displayName ?? '',
 )
+function selectedBreedNameFor(slug) {
+  return breeds.value.find((b) => b.slug === slug)?.displayName ?? slug
+}
 
 const visibleSites = computed(() => {
   if (goal.value === 'adopt') return sites.value.filter((s) => s.kind === 'Adopt')
@@ -110,6 +114,93 @@ function clearAllFilters() {
 function resetSearch() {
   clearAllFilters()
   goal.value = 'both'
+}
+
+// #5 — one smart search box: dictionary NL parsing into the same filters.
+const smartQuery = ref('')
+const smartHint = ref('')
+function runSmartSearch() {
+  const parsed = parseQuery(smartQuery.value, { breeds: breeds.value, usStates: US_STATES })
+  const hints = []
+  // Contradiction like "small golden retriever": the breed is the more specific
+  // intent, so it wins and we say what was ignored (otherwise the size-watcher
+  // would silently drop the breed).
+  if (parsed.breed && parsed.size) {
+    const breedSize = breeds.value.find((b) => b.slug === parsed.breed)?.size
+    if (breedSize && breedSize !== parsed.size) {
+      hints.push(`ignored “${parsed.size.toLowerCase()}” — ${selectedBreedNameFor(parsed.breed)}s are ${breedSize}`)
+      parsed.size = ''
+    }
+  }
+  if (parsed.breed) selectedBreed.value = parsed.breed
+  if (parsed.state) selectedState.value = parsed.state
+  if (parsed.size) selectedSize.value = parsed.size
+  if (parsed.traits.length) traits.value = [...new Set([...traits.value, ...parsed.traits])]
+  if (parsed.goal) goal.value = parsed.goal
+  if (parsed.city) {
+    if (parsed.state || selectedState.value) selectedCity.value = parsed.city
+    else hints.push(`pick a state to apply “${parsed.city}”`)
+  }
+  if (parsed.nearMe) locateMe()
+  if (parsed.unmatched.length) hints.push(`didn't understand: ${parsed.unmatched.map((u) => `“${u}”`).join(', ')}`)
+  const appliedAny = parsed.breed || parsed.state || parsed.size || parsed.traits.length || parsed.goal || parsed.city || parsed.nearMe
+  if (!appliedAny && smartQuery.value.trim()) hints.unshift('try mentioning a breed, size, trait, or state')
+  smartHint.value = hints.join(' · ')
+  if (appliedAny) smartQuery.value = ''
+}
+
+// #4 — "near me": browser geolocation reverse-geocoded to state + city
+// (keyless bigdatacloud endpoint), with a manual fallback message on denial.
+const locating = ref(false)
+function locateMe() {
+  smartHint.value = ''
+  if (!navigator.geolocation) {
+    smartHint.value = 'Your browser has no location support — pick a state instead.'
+    return
+  }
+  locating.value = true
+  navigator.geolocation.getCurrentPosition(
+    async (pos) => {
+      try {
+        const res = await fetch(
+          `https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${pos.coords.latitude}&longitude=${pos.coords.longitude}&localityLanguage=en`,
+        )
+        const place = await res.json()
+        const state = place.principalSubdivisionCode?.split('-')[1]
+        if (state && US_STATES.includes(state)) {
+          selectedState.value = state
+          if (place.city) selectedCity.value = place.city
+        } else {
+          smartHint.value = "Couldn't map your location to a US state — pick one instead."
+        }
+      } catch {
+        smartHint.value = 'Location lookup failed — pick a state instead.'
+      } finally {
+        locating.value = false
+      }
+    },
+    () => {
+      locating.value = false
+      smartHint.value = 'Location permission denied — pick a state instead.'
+    },
+    { timeout: 8000 },
+  )
+}
+
+// #3 — quiz ↔ filters: saving a profile pre-fills the matching filters, so the
+// ranking is legible as removable chips instead of invisible magic.
+function applyProfileToFilters(savedProfile) {
+  profile.value = savedProfile
+  const answers = savedProfile?.answers ?? {}
+  if (answers.size && answers.size !== 'any') {
+    selectedSize.value = answers.size[0].toUpperCase() + answers.size.slice(1)
+  }
+  const quizTraits = [
+    answers.kids === 'yes' && 'kids',
+    answers.home === 'apartment' && 'apartment',
+    answers.grooming === 'low' && 'lowshed',
+  ].filter(Boolean)
+  if (quizTraits.length) traits.value = [...new Set([...traits.value, ...quizTraits])]
 }
 
 // Filters the user has set — each card badges which of these its link carries.
@@ -362,13 +453,34 @@ onMounted(() => {
           :us-states="US_STATES"
           :site-count="visibleSites.length"
           :covered-states="coveredStates"
+          :locating="locating"
           @open-all="openAll"
           @open-quiz="quizOpen = true"
           @clear="resetSearch"
+          @near-me="locateMe"
         />
       </aside>
 
       <section>
+        <form class="mb-2" @submit.prevent="runSmartSearch">
+          <label class="input input-bordered flex w-full max-w-2xl items-center gap-2">
+            <svg class="h-4 w-4 opacity-50" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+              stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="11" cy="11" r="7" />
+              <path d="m21 21-4.3-4.3" />
+            </svg>
+            <input
+              v-model="smartQuery"
+              type="text"
+              class="grow"
+              placeholder="Try “golden retriever near seattle” or “small apartment dog in MD”"
+            />
+            <button type="submit" class="btn btn-primary btn-sm -mr-2">Search</button>
+          </label>
+        </form>
+        <p v-if="smartHint" class="text-base-content/60 mb-3 text-xs">ℹ️ {{ smartHint }}</p>
+        <div v-else class="mb-3" />
+
         <div role="tablist" class="tabs tabs-box mb-5 w-fit">
           <button
             role="tab"
@@ -586,7 +698,7 @@ onMounted(() => {
       v-if="quizOpen"
       @close="quizOpen = false"
       @select="pickQuizBreed"
-      @profile-saved="profile = $event"
+      @profile-saved="applyProfileToFilters"
     />
     <SafetyGuide v-if="guideOpen" @close="guideOpen = false" />
   </main>
