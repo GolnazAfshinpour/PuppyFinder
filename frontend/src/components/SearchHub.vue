@@ -18,8 +18,14 @@ const props = defineProps({
 const emit = defineEmits([
   'update:breed', 'update:state', 'update:city', 'update:size', 'update:traits',
   'update:goal',
-  'open-all', 'open-quiz',
+  'open-all', 'open-quiz', 'clear',
 ])
+
+const anyFilterActive = computed(
+  () =>
+    props.breed || props.state || props.city.trim() || props.size ||
+    props.traits.length > 0 || props.goal !== 'both',
+)
 
 const GOALS = [
   { value: 'adopt', label: '🤝 Adopt' },
@@ -48,7 +54,17 @@ function toggleTrait(key) {
 <template>
   <section class="card bg-base-100 shadow-md">
     <div class="card-body gap-4">
-      <h2 class="font-display card-title text-lg font-semibold">Your search</h2>
+      <div class="flex items-baseline justify-between gap-2">
+        <h2 class="font-display card-title text-lg font-semibold">Your search</h2>
+        <button
+          v-if="anyFilterActive"
+          type="button"
+          class="link text-xs opacity-60 hover:opacity-100"
+          @click="emit('clear')"
+        >
+          Clear filters
+        </button>
+      </div>
 
       <label class="form-control">
         <span class="label-text mb-1 text-xs font-bold tracking-wide uppercase opacity-60">Breed</span>

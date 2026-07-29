@@ -89,6 +89,12 @@ function clearAllFilters() {
   traits.value = []
 }
 
+// The search card's "Clear filters" is a full reset — including the adopt/buy goal.
+function resetSearch() {
+  clearAllFilters()
+  goal.value = 'both'
+}
+
 // Filters the user has set — each card badges which of these its link carries.
 const wantedFilters = computed(() => {
   const wanted = []
@@ -300,6 +306,7 @@ onMounted(() => {
           :covered-states="coveredStates"
           @open-all="openAll"
           @open-quiz="quizOpen = true"
+          @clear="resetSearch"
         />
       </aside>
 
