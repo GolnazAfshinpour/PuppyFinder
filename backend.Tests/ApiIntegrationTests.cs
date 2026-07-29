@@ -279,6 +279,25 @@ public class ApiIntegrationTests(OfflineApiFactory factory) : IClassFixture<Offl
     }
 
     [Fact]
+    public async Task QuizScores_ReturnsEveryQuizBreed_WithSearchNames()
+    {
+        var response = await _client.PostAsJsonAsync("/api/quiz/scores", new
+        {
+            home = "apartment", activity = "low", kids = "no",
+            grooming = "low", size = "small", budget = "any",
+        }, Json);
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var scores = JsonDocument.Parse(await response.Content.ReadAsStringAsync()).RootElement;
+
+        // All 20 quiz breeds (teacup aliases excluded), each with a plain search name.
+        Assert.Equal(20, scores.GetArrayLength());
+        var poodle = scores.EnumerateArray().Single(s => s.GetProperty("slug").GetString() == "poodle");
+        Assert.Equal("Poodle", poodle.GetProperty("searchName").GetString()); // "(Standard)" stripped
+        Assert.All(scores.EnumerateArray(), s =>
+            Assert.InRange(s.GetProperty("matchPercent").GetInt32(), 0, 100));
+    }
+
+    [Fact]
     public async Task Quiz_InvalidAnswer_Returns400WithReason()
     {
         var response = await _client.PostAsJsonAsync("/api/quiz", new

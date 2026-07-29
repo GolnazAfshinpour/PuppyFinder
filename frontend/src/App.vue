@@ -1,6 +1,7 @@
 <script setup>
 import { computed, onMounted, ref, watch } from 'vue'
 import { breedMatches } from './breedFilters.js'
+import { clearProfile, loadProfile, rankListings } from './adopterProfile.js'
 import { fetchBreedImage } from './dogImages.js'
 import { buildSearchQuery, parseSearchUrl } from './searchUrl.js'
 import SearchHub from './components/SearchHub.vue'
@@ -42,6 +43,16 @@ const error = ref('')
 const listings = ref([])
 const sources = ref([])
 const coveredStates = ref([]) // states with at least one live listing right now
+
+// Saved quiz profile (localStorage): when present, listings are re-ranked by fit.
+const profile = ref(loadProfile())
+const rankedListings = computed(() =>
+  profile.value ? rankListings(listings.value, profile.value.scores) : listings.value,
+)
+function dropProfile() {
+  clearProfile()
+  profile.value = null
+}
 const loadingListings = ref(false)
 const listingsError = ref('')
 const listingsStale = ref(true)
@@ -337,9 +348,21 @@ onMounted(() => {
             <span class="loading loading-dots loading-md" />
           </p>
           <div v-else-if="listingsError" class="alert alert-error">{{ listingsError }}</div>
-          <ul v-else-if="listings.length" class="grid list-none gap-6 p-0 sm:grid-cols-2 xl:grid-cols-3">
-            <ListingCard v-for="l in listings" :key="l.id" :listing="l" />
-          </ul>
+          <template v-else-if="listings.length">
+            <div
+              v-if="profile"
+              class="alert alert-soft alert-info mb-4 flex flex-wrap items-center justify-between gap-2 py-2 text-sm"
+            >
+              <span>✨ Sorted by fit to your quiz profile — best matches first.</span>
+              <span class="flex gap-2">
+                <button type="button" class="link" @click="quizOpen = true">Retake quiz</button>
+                <button type="button" class="link opacity-70" @click="dropProfile">Clear profile</button>
+              </span>
+            </div>
+            <ul class="grid list-none gap-6 p-0 sm:grid-cols-2 xl:grid-cols-3">
+              <ListingCard v-for="l in rankedListings" :key="l.id" :listing="l" />
+            </ul>
+          </template>
           <div v-else class="card bg-base-100 shadow-md">
             <div class="card-body items-center text-center">
               <span class="text-4xl">🐾</span>
@@ -372,7 +395,12 @@ onMounted(() => {
       </section>
     </div>
 
-    <BreedQuiz v-if="quizOpen" @close="quizOpen = false" @select="pickQuizBreed" />
+    <BreedQuiz
+      v-if="quizOpen"
+      @close="quizOpen = false"
+      @select="pickQuizBreed"
+      @profile-saved="profile = $event"
+    />
     <SafetyGuide v-if="guideOpen" @close="guideOpen = false" />
   </main>
 </template>

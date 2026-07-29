@@ -1,9 +1,10 @@
 <script setup>
 import { computed, ref } from 'vue'
 import { fetchBreedImage } from '../dogImages.js'
+import { saveProfile } from '../adopterProfile.js'
 import PuppyLogo from './PuppyLogo.vue'
 
-const emit = defineEmits(['close', 'select'])
+const emit = defineEmits(['close', 'select', 'profile-saved'])
 
 const QUESTIONS = [
   {
@@ -65,6 +66,26 @@ const results = ref(null)
 const photos = ref({}) // slug → dog.ceo image url, filled in as fetches resolve
 const submitting = ref(false)
 const error = ref('')
+const profileSaved = ref(false)
+
+// Persist the answers as "my profile": fetch fit scores for every quiz breed,
+// store locally, and let the app re-rank live listings by fit.
+async function saveAsProfile() {
+  error.value = ''
+  try {
+    const res = await fetch('/api/quiz/scores', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(answers.value),
+    })
+    if (!res.ok) throw new Error(`API returned ${res.status}`)
+    const profile = saveProfile(answers.value, await res.json())
+    profileSaved.value = true
+    emit('profile-saved', profile)
+  } catch (e) {
+    error.value = `Could not save your profile (${e.message})`
+  }
+}
 
 const answered = computed(() => Object.values(answers.value).filter(Boolean).length)
 const complete = computed(() => answered.value === QUESTIONS.length)
@@ -97,6 +118,7 @@ async function submit() {
 function reset() {
   results.value = null
   error.value = ''
+  profileSaved.value = false
 }
 </script>
 
@@ -186,7 +208,21 @@ function reset() {
             </div>
           </div>
         </div>
-        <button type="button" class="btn btn-ghost btn-sm mt-3" @click="reset">← Change my answers</button>
+        <div class="mt-3 flex flex-wrap items-center gap-2">
+          <button type="button" class="btn btn-ghost btn-sm" @click="reset">← Change my answers</button>
+          <button
+            v-if="!profileSaved"
+            type="button"
+            class="btn btn-secondary btn-sm"
+            @click="saveAsProfile"
+          >
+            💾 Save as my profile
+          </button>
+          <span v-else class="text-success text-xs">
+            ✓ Saved — adoptable listings are now sorted by fit to you.
+          </span>
+        </div>
+        <p v-if="error && results" class="text-error mt-1 text-xs">{{ error }}</p>
       </template>
     </div>
   </div>

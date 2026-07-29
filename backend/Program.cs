@@ -140,6 +140,15 @@ app.MapPost("/api/quiz", (QuizAnswers answers) =>
         : Results.Ok(BreedMatcher.TopMatches(answers)))
 .WithName("MatchBreeds");
 
+// Every quiz breed scored — the saved adopter profile uses these to re-rank
+// live listings by fit (listing breed text matched against SearchName).
+app.MapPost("/api/quiz/scores", (QuizAnswers answers) =>
+    BreedMatcher.Validate(answers) is { } problem
+        ? Results.BadRequest(problem)
+        : Results.Ok(BreedMatcher.TopMatches(answers, count: int.MaxValue)
+            .Select(m => new { m.Slug, m.SearchName, m.MatchPercent })))
+.WithName("QuizScores");
+
 app.MapGet("/api/sites", async (string? breed, string? state, string? city, BreedCatalogService catalog, CancellationToken ct) =>
 {
     Breed? selected = null;

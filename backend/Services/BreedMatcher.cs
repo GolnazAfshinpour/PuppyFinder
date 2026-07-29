@@ -17,7 +17,8 @@ public record BreedMatch(
     string Blurb,
     int MatchPercent,
     IReadOnlyList<string> Reasons,
-    string? ImagePath = null); // dog.ceo photo path for the result card
+    string? ImagePath = null,   // dog.ceo photo path for the result card
+    string? SearchName = null); // plain breed name — what shelters' free-text breed fields contain
 
 /// <summary>
 /// Scores quiz answers against breed traits. Each of the six dimensions
@@ -117,7 +118,8 @@ public static class BreedMatcher
                 .Distinct()
                 .Take(3)
                 .ToList(),
-            ImagePath: breed.DogCeoPath);
+            ImagePath: breed.DogCeoPath,
+            SearchName: breed.SearchName.Split('(')[0].Trim());
     }
 
     private static bool IsAdjacentSize(string breedSize, string wanted) =>
