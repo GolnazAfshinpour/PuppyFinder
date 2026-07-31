@@ -4,6 +4,10 @@ import { computed, ref } from 'vue'
 const props = defineProps({
   listing: { type: Object, required: true },
   favorite: { type: Boolean, default: false },
+  // Set when this dog matched a size/age filter only because the shelter left
+  // that field blank. Stating it is more useful than either hiding the dog or
+  // pretending it's a confirmed match.
+  unconfirmedNote: { type: String, default: '' },
 })
 
 defineEmits(['toggle-favorite', 'viewed'])
@@ -67,6 +71,7 @@ const metaLine = computed(() => {
         </span>
       </div>
       <p v-if="metaLine" class="text-sm opacity-70">{{ metaLine }}</p>
+      <p v-if="unconfirmedNote" class="text-xs opacity-60 italic">{{ unconfirmedNote }}</p>
       <p class="text-sm font-medium">{{ listing.breed }}</p>
       <p class="text-sm opacity-70">📍 {{ listing.city }}, {{ listing.state }}</p>
       <p v-if="listing.contactInfo" class="text-sm font-medium">

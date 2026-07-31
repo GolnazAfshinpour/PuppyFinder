@@ -1,6 +1,7 @@
 <script setup>
 import { computed } from 'vue'
 import { TRAITS, breedMatches } from '../breedFilters.js'
+import { AGES } from '../searchUrl.js'
 
 const props = defineProps({
   breeds: { type: Array, required: true },
@@ -9,35 +10,50 @@ const props = defineProps({
   state: { type: String, default: '' },
   city: { type: String, default: '' },
   size: { type: String, default: '' },
+  age: { type: String, default: '' },
   traits: { type: Array, default: () => [] },
   goal: { type: String, default: 'both' },
-  siteCount: { type: Number, default: 0 },
-  coveredStates: { type: Array, default: () => [] }, // states with live shelter listings
+  coverage: { type: Array, default: () => [] }, // [{ state, count, cities }] — live dogs right now
   locating: { type: Boolean, default: false }, // geolocation lookup in flight
 })
 
 const emit = defineEmits([
-  'update:breed', 'update:state', 'update:city', 'update:size', 'update:traits',
+  'update:breed', 'update:state', 'update:city', 'update:size', 'update:age', 'update:traits',
   'update:goal',
-  'open-all', 'open-quiz', 'clear', 'near-me',
+  'open-quiz', 'clear', 'near-me',
 ])
 
 const anyFilterActive = computed(
   () =>
-    props.breed || props.state || props.city.trim() || props.size ||
+    props.breed || props.state || props.city.trim() || props.size || props.age ||
     props.traits.length > 0 || props.goal !== 'both',
 )
 
+// Goal leads the panel because it isn't a refiner — it decides whether the page
+// shows live adoptable dogs or the vetted breeder marketplaces.
 const GOALS = [
-  { value: 'adopt', label: '🤝 Adopt' },
+  { value: 'adopt', label: '🤝 Adopt a rescue dog' },
   { value: 'buy', label: '🛍️ Buy from a breeder' },
   { value: 'both', label: 'Show me both' },
 ]
 
 const SIZES = ['Teacup', 'Small', 'Medium', 'Large']
 
-// Size and must-have traits narrow the breed list; trait data exist for the
-// curated breeds only.
+// Age leads the physical filters: it's the single most-asked question of a
+// puppy search, and the one filter this site is named after.
+const AGE_HINTS = {
+  Puppy: 'Under 1 year',
+  Young: '1–2 years',
+  Adult: '3–7 years',
+  Senior: '8 years and up',
+}
+
+const liveCount = computed(() =>
+  props.coverage.reduce((total, c) => total + c.count, 0),
+)
+
+// Size and the breed-narrowing traits prune the breed list; trait data exist for
+// the curated breeds only.
 const filteredBreeds = computed(() =>
   props.breeds.filter((b) => breedMatches(b, { size: props.size, traits: props.traits })),
 )
@@ -67,6 +83,22 @@ function toggleTrait(key) {
         </button>
       </div>
 
+      <div>
+        <span class="label-text mb-1 block text-xs font-bold tracking-wide uppercase opacity-60">I want to…</span>
+        <div class="join join-vertical w-full">
+          <button
+            v-for="g in GOALS"
+            :key="g.value"
+            type="button"
+            class="btn join-item justify-start"
+            :class="goal === g.value ? 'btn-primary' : 'btn-outline'"
+            @click="emit('update:goal', g.value)"
+          >
+            {{ g.label }}
+          </button>
+        </div>
+      </div>
+
       <label class="form-control">
         <span class="label-text mb-1 text-xs font-bold tracking-wide uppercase opacity-60">Breed</span>
         <select
@@ -82,6 +114,32 @@ function toggleTrait(key) {
         </p>
       </label>
 
+      <div>
+        <span class="label-text mb-1 block text-xs font-bold tracking-wide uppercase opacity-60">Age</span>
+        <div class="flex flex-wrap gap-1.5">
+          <button
+            type="button"
+            class="btn btn-sm"
+            :class="age === '' ? 'btn-primary' : 'btn-outline'"
+            @click="emit('update:age', '')"
+          >
+            Any age
+          </button>
+          <button
+            v-for="a in AGES"
+            :key="a"
+            type="button"
+            class="btn btn-sm"
+            :class="age === a ? 'btn-primary' : 'btn-outline'"
+            :title="AGE_HINTS[a]"
+            @click="emit('update:age', a)"
+          >
+            {{ a }}
+          </button>
+        </div>
+        <p v-if="age" class="mt-1 text-xs opacity-60">{{ AGE_HINTS[age] }}</p>
+      </div>
+
       <label class="form-control">
         <span class="label-text mb-1 flex items-baseline justify-between text-xs font-bold tracking-wide uppercase opacity-60">
           State
@@ -96,9 +154,12 @@ function toggleTrait(key) {
         >
           <option value="">Anywhere in the US</option>
           <option v-for="s in usStates" :key="s" :value="s">
-            {{ s }}{{ coveredStates.includes(s) ? ' · live shelter dogs' : '' }}
+            {{ s }}{{ coverage.find((c) => c.state === s) ? ` · ${coverage.find((c) => c.state === s).count} live dogs` : '' }}
           </option>
         </select>
+        <p v-if="liveCount" class="mt-1 text-xs opacity-60">
+          {{ liveCount }} dogs in our live feeds right now. Other states fall back to the site directory.
+        </p>
       </label>
 
       <label class="form-control">
@@ -140,7 +201,13 @@ function toggleTrait(key) {
       </div>
 
       <div>
-        <span class="label-text mb-1 block text-xs font-bold tracking-wide uppercase opacity-60">Must-haves</span>
+        <!-- Named for what it actually does. These score against our breed table,
+             so they prune the breed list above — shelter feeds carry no temperament
+             data, and a filter that quietly does nothing to the results is worse
+             than no filter. -->
+        <span class="label-text mb-1 block text-xs font-bold tracking-wide uppercase opacity-60">
+          Narrow the breed list
+        </span>
         <div class="flex flex-wrap gap-1.5">
           <button
             v-for="t in TRAITS"
@@ -155,33 +222,9 @@ function toggleTrait(key) {
         </div>
       </div>
 
-      <div>
-        <span class="label-text mb-1 block text-xs font-bold tracking-wide uppercase opacity-60">I want to…</span>
-        <div class="join join-vertical w-full">
-          <button
-            v-for="g in GOALS"
-            :key="g.value"
-            type="button"
-            class="btn join-item justify-start"
-            :class="goal === g.value ? 'btn-primary' : 'btn-outline'"
-            @click="emit('update:goal', g.value)"
-          >
-            {{ g.label }}
-          </button>
-        </div>
-      </div>
-
-      <div class="mt-1 flex flex-col gap-2">
-        <button type="button" class="btn btn-primary w-full" @click="emit('open-all')">
-          Open all {{ siteCount }} sites ↗
-        </button>
-        <button type="button" class="btn btn-outline w-full" @click="emit('open-quiz')">
-          🐾 Take the breed quiz
-        </button>
-      </div>
-      <p class="text-center text-xs opacity-60">
-        Your browser may ask to allow pop-ups — allow once.
-      </p>
+      <button type="button" class="btn btn-outline mt-1 w-full" @click="emit('open-quiz')">
+        🐾 Not sure? Take the breed quiz
+      </button>
     </div>
   </section>
 </template>

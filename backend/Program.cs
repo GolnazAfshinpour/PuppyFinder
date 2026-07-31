@@ -86,21 +86,24 @@ if (app.Environment.IsDevelopment())
 
 app.UseCors(FrontendCors);
 
-app.MapGet("/api/listings", async (string? breed, string? state, string? city, string? size, ListingAggregator aggregator, BreedCatalogService catalog, CancellationToken ct) =>
+app.MapGet("/api/listings", async (string? breed, string? state, string? city, string? size,
+    string? age, string? sort, bool? includeUnlisted,
+    ListingAggregator aggregator, BreedCatalogService catalog, CancellationToken ct) =>
 {
     var listings = (await aggregator.GetListingsAsync(ct)).AsEnumerable();
 
-    string? searchText = null;
-    if (!string.IsNullOrWhiteSpace(breed))
-    {
-        // The UI sends catalog slugs; shelters store free-text breed names, so match
-        // on the breed's search name ("labrador-retriever" → "Labrador Retriever"),
-        // minus any parenthetical qualifier ("Poodle (Standard)" → "Poodle").
-        searchText = (await catalog.FindAsync(breed, ct))?.SearchName ?? breed;
-        searchText = searchText.Split('(')[0].Trim();
-    }
+    var filter = new ListingFilter(
+        BreedSearchText: await ResolveBreedTextAsync(breed, catalog, ct),
+        State: state,
+        City: city,
+        Size: size,
+        AgeGroup: age,
+        IncludeUnlisted: includeUnlisted ?? true);
 
-    return Results.Ok(ListingQuery.Filter(listings, searchText, state, city, size));
+    var matches = ListingQuery.Filter(listings, filter)
+        .Select(l => l with { Unconfirmed = ListingQuery.Unconfirmed(l, filter) });
+
+    return Results.Ok(ListingQuery.Sort(matches, sort, filter));
 })
 .WithName("GetListings");
 
@@ -108,13 +111,20 @@ app.MapGet("/api/sources", (ListingAggregator aggregator) =>
     Results.Ok(aggregator.GetSourceStatuses()))
 .WithName("GetSources");
 
-// States that currently have at least one live adoptable listing — derived from
-// the data itself so it stays correct as feeds are added (or RescueGroups arrives).
+// Where we actually have live dogs right now, with counts — derived from the data
+// itself so it stays correct as feeds are added (or RescueGroups arrives). The UI
+// states this plainly instead of showing an empty grid in uncovered areas.
 app.MapGet("/api/coverage", async (ListingAggregator aggregator, CancellationToken ct) =>
     Results.Ok((await aggregator.GetListingsAsync(ct))
-        .Select(l => l.State.ToUpperInvariant())
-        .Distinct()
-        .Order()
+        .GroupBy(l => l.State.ToUpperInvariant())
+        .Select(g => new
+        {
+            State = g.Key,
+            Count = g.Count(),
+            Cities = g.Select(l => l.City).Distinct().Order().ToList(),
+        })
+        .OrderByDescending(c => c.Count)
+        .ThenBy(c => c.State)
         .ToList()))
 .WithName("GetCoverage");
 
@@ -195,6 +205,11 @@ app.MapPost("/api/alerts", async (AlertRequest request, AlertStore store, AlertC
         return Results.BadRequest($"Unknown breed '{request.Breed}'.");
     }
 
+    if (!string.IsNullOrWhiteSpace(request.Age) && !AgeParser.IsGroup(request.Age))
+    {
+        return Results.BadRequest($"Unknown age group '{request.Age}' — expected one of {string.Join(", ", AgeParser.Groups)}.");
+    }
+
     var subscription = new AlertSubscription(
         Id: Guid.NewGuid().ToString("N")[..12],
         Email: request.Email.Trim(),
@@ -202,7 +217,8 @@ app.MapPost("/api/alerts", async (AlertRequest request, AlertStore store, AlertC
         State: NullIfBlank(request.State)?.ToUpperInvariant(),
         City: NullIfBlank(request.City),
         Size: NullIfBlank(request.Size),
-        CreatedAt: DateTimeOffset.UtcNow);
+        CreatedAt: DateTimeOffset.UtcNow,
+        Age: NullIfBlank(request.Age));
 
     // Seed the seen-set with everything currently listed, so signup alerts only
     // about dogs that appear from now on (the UI already shows today's matches).
@@ -217,14 +233,14 @@ app.MapPost("/api/alerts", async (AlertRequest request, AlertStore store, AlertC
     }
 
     var saved = await store.AddAsync(subscription, ct);
-    return Results.Ok(new { saved.Id, saved.Email, saved.Breed, saved.State, saved.City, saved.Size });
+    return Results.Ok(new { saved.Id, saved.Email, saved.Breed, saved.State, saved.City, saved.Size, saved.Age });
 })
 .WithName("CreateAlert");
 
 app.MapGet("/api/alerts", async (string email, AlertStore store, CancellationToken ct) =>
     Results.Ok((await store.GetAllAsync(ct))
         .Where(s => s.Email.Equals(email, StringComparison.OrdinalIgnoreCase))
-        .Select(s => new { s.Id, s.Email, s.Breed, s.State, s.City, s.Size, s.CreatedAt })))
+        .Select(s => new { s.Id, s.Email, s.Breed, s.State, s.City, s.Size, s.Age, s.CreatedAt })))
 .WithName("ListAlerts");
 
 app.MapDelete("/api/alerts/{id}", async (string id, string email, AlertStore store, CancellationToken ct) =>
@@ -243,7 +259,21 @@ app.Run();
 static string? NullIfBlank(string? value) =>
     string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 
-public record AlertRequest(string Email, string? Breed, string? State, string? City, string? Size);
+// The UI sends catalog slugs; shelters store free-text breed names, so match on the
+// breed's search name ("labrador-retriever" → "Labrador Retriever"), minus any
+// parenthetical qualifier ("Poodle (Standard)" → "Poodle").
+static async Task<string?> ResolveBreedTextAsync(string? slug, BreedCatalogService catalog, CancellationToken ct)
+{
+    if (string.IsNullOrWhiteSpace(slug))
+    {
+        return null;
+    }
+
+    var searchName = (await catalog.FindAsync(slug, ct))?.SearchName ?? slug;
+    return searchName.Split('(')[0].Trim();
+}
+
+public record AlertRequest(string Email, string? Breed, string? State, string? City, string? Size, string? Age = null);
 
 // Exposes the implicit Program class to WebApplicationFactory in integration tests.
 public partial class Program;

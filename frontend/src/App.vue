@@ -7,7 +7,7 @@ import { parseQuery } from './smartSearch.js'
 import { fetchBreedImage } from './dogImages.js'
 import { buildSearchQuery, parseSearchUrl } from './searchUrl.js'
 import SearchHub from './components/SearchHub.vue'
-import SiteCard from './components/SiteCard.vue'
+import ResultsFallback from './components/ResultsFallback.vue'
 import ListingCard from './components/ListingCard.vue'
 import AlertSignup from './components/AlertSignup.vue'
 import BreedQuiz from './components/BreedQuiz.vue'
@@ -32,22 +32,25 @@ const selectedBreed = ref(fromUrl.breed) // breed slug
 const selectedState = ref(fromUrl.state)
 const selectedCity = ref(fromUrl.city)
 const selectedSize = ref(fromUrl.size)
+const selectedAge = ref(fromUrl.age) // Puppy | Young | Adult | Senior
 const traits = ref(fromUrl.traits)
 const goal = ref(fromUrl.goal)
-const tab = ref(fromUrl.tab) // 'sites' = link-out cards, 'adopt' = live shelter listings
+const sort = ref(fromUrl.sort)
 const quizOpen = ref(false)
 const guideOpen = ref(false)
 const filtersOpen = ref(false) // mobile-only filter drawer state
-const loadingSites = ref(true)
 const error = ref('')
 
-// Live listings are kept fully separate from the site-search cards: they only
-// load and render inside the "Adoptable now" tab.
+// Real dogs are the page now — they load on arrival rather than behind a tab.
+// The site directory moved below them as the fallback for everywhere our feeds
+// don't reach, which is most of the country.
 const listings = ref([])
 const sources = ref([])
-const coveredStates = ref([]) // states with at least one live listing right now
+const coverage = ref([]) // [{ state, count, cities }] — where live dogs exist right now
 // Auto-broadened results shown when the exact search is empty: {listings, note}.
 const broadened = ref(null)
+const loadingListings = ref(false)
+const listingsError = ref('')
 
 // Multi-session memory: saved dogs + recently viewed (localStorage snapshots).
 const favorites = ref(loadFavorites())
@@ -66,29 +69,57 @@ const displayListings = computed(() =>
   listings.value.length ? listings.value : (broadened.value?.listings ?? []),
 )
 const rankedListings = computed(() =>
-  profile.value ? rankListings(displayListings.value, profile.value.scores) : displayListings.value,
+  // An explicit sort is the user's instruction and outranks the saved profile.
+  profile.value && !sort.value
+    ? rankListings(displayListings.value, profile.value.scores)
+    : displayListings.value,
 )
 function dropProfile() {
   clearProfile()
   profile.value = null
 }
-const loadingListings = ref(false)
-const listingsError = ref('')
-const listingsStale = ref(true)
 
 const selectedBreedName = computed(
   () => breeds.value.find((b) => b.slug === selectedBreed.value)?.displayName ?? '',
 )
 
-const visibleSites = computed(() => {
-  if (goal.value === 'adopt') return sites.value.filter((s) => s.kind === 'Adopt')
-  if (goal.value === 'buy') return sites.value.filter((s) => s.kind !== 'Adopt')
-  return sites.value
+const liveCount = computed(() => coverage.value.reduce((total, c) => total + c.count, 0))
+
+// Buying means the site directory leads: no breeder marketplace publishes a
+// feed, so we have no listings of our own to show — say so instead of an
+// empty grid.
+const buying = computed(() => goal.value === 'buy')
+
+const resultsHeading = computed(() => {
+  const count = rankedListings.value.length
+  const puppies = selectedAge.value === 'Puppy'
+  const plural = puppies ? 'puppies' : 'dogs'
+  const subject = count === 1 ? (puppies ? 'puppy' : 'dog') : plural
+  if (!count) return `No adoptable ${plural}`
+  // Broadened results aren't matches — claiming "60 adoptable dogs" under a TX
+  // filter that returned nothing would be a lie the banner below then contradicts.
+  if (!listings.value.length && broadened.value) return `Showing ${count} ${subject}`
+  const parts = [`${count} adoptable ${subject}`]
+  if (selectedAge.value && !puppies) parts.push(`· ${selectedAge.value}`)
+  return parts.join(' ')
 })
 
+// Why a given dog is in the list despite a filter it has no data for.
+function unconfirmedNote(listing) {
+  if (!listing.unconfirmed) return ''
+  const missing = [
+    selectedSize.value && !listing.size && 'size',
+    selectedAge.value && !listing.ageGroup && 'age',
+  ].filter(Boolean)
+  if (!missing.length) return ''
+  return `This shelter didn't list a ${missing.join(' or ')} — shown so you don't miss them.`
+}
+
 // Active filters as removable chips above the results (table-stakes search UX).
+const TRAIT_LABELS = { kids: 'Good with kids', apartment: 'Apartment-friendly', lowshed: 'Low-shedding' }
 const activeChips = computed(() => {
   const chips = []
+  if (selectedAge.value) chips.push({ key: 'age', label: selectedAge.value, clear: () => (selectedAge.value = '') })
   if (selectedSize.value) chips.push({ key: 'size', label: `Size: ${selectedSize.value}`, clear: () => (selectedSize.value = '') })
   for (const t of traits.value) {
     chips.push({ key: `trait-${t}`, label: TRAIT_LABELS[t] ?? t, clear: () => (traits.value = traits.value.filter((x) => x !== t)) })
@@ -98,12 +129,12 @@ const activeChips = computed(() => {
   if (selectedCity.value.trim() && selectedState.value) chips.push({ key: 'city', label: selectedCity.value.trim(), clear: () => (selectedCity.value = '') })
   return chips
 })
-const TRAIT_LABELS = { kids: 'Good with kids', apartment: 'Apartment-friendly', lowshed: 'Low-shedding' }
 function clearAllFilters() {
   selectedBreed.value = ''
   selectedState.value = ''
   selectedCity.value = ''
   selectedSize.value = ''
+  selectedAge.value = ''
   traits.value = []
 }
 
@@ -113,7 +144,20 @@ function resetSearch() {
   goal.value = 'both'
 }
 
-// #5 — one smart search box: dictionary NL parsing into the same filters.
+// Shelters leave size and age blank constantly, so those filters keep unknowns by
+// default (see ListingQuery) — this lets someone who wants a hard match say so.
+// Deliberately not in the shareable URL: it's a refinement of another filter, and
+// it only appears when there's actually something to refine.
+const strictMatch = ref(false)
+const unconfirmedCount = computed(() => rankedListings.value.filter((l) => l.unconfirmed).length)
+
+const SORTS = [
+  { value: '', label: 'Best match' },
+  { value: 'youngest', label: 'Youngest first' },
+  { value: 'oldest', label: 'Oldest first' },
+]
+
+// One smart search box: dictionary NL parsing into the same filters.
 const smartQuery = ref('')
 const smartHint = ref('')
 function runSmartSearch() {
@@ -147,6 +191,7 @@ function runSmartSearch() {
   if (parsed.breed) selectedBreed.value = parsed.breed
   if (parsed.state) selectedState.value = parsed.state
   if (parsed.size) selectedSize.value = parsed.size
+  if (parsed.age) selectedAge.value = parsed.age
   if (parsed.traits.length) traits.value = [...new Set([...traits.value, ...parsed.traits])]
   if (parsed.goal) goal.value = parsed.goal
   if (parsed.inferredState) hints.push(`assuming ${parsed.city} is in ${parsed.inferredState}`)
@@ -156,14 +201,15 @@ function runSmartSearch() {
   }
   if (parsed.nearMe) locateMe()
   if (parsed.unmatched.length) hints.push(`didn't understand: ${parsed.unmatched.map((u) => `“${u}”`).join(', ')}`)
-  const appliedAny = parsed.breed || parsed.state || parsed.size || parsed.traits.length || parsed.goal || parsed.city || parsed.nearMe
-  if (!appliedAny && smartQuery.value.trim()) hints.unshift('try mentioning a breed, size, trait, or state')
+  const appliedAny = parsed.breed || parsed.state || parsed.size || parsed.age || parsed.traits.length ||
+    parsed.goal || parsed.city || parsed.nearMe
+  if (!appliedAny && smartQuery.value.trim()) hints.unshift('try mentioning a breed, age, size, trait, or state')
   smartHint.value = hints.join(' · ')
   if (appliedAny) smartQuery.value = ''
 }
 
-// #4 — "near me": browser geolocation reverse-geocoded to state + city
-// (keyless bigdatacloud endpoint), with a manual fallback message on denial.
+// "Near me": browser geolocation reverse-geocoded to state + city (keyless
+// bigdatacloud endpoint), with a manual fallback message on denial.
 const locating = ref(false)
 function locateMe() {
   smartHint.value = ''
@@ -200,7 +246,7 @@ function locateMe() {
   )
 }
 
-// #3 — quiz ↔ filters: saving a profile pre-fills the matching filters, so the
+// Quiz ↔ filters: saving a profile pre-fills the matching filters, so the
 // ranking is legible as removable chips instead of invisible magic.
 function applyProfileToFilters(savedProfile) {
   profile.value = savedProfile
@@ -216,7 +262,7 @@ function applyProfileToFilters(savedProfile) {
   if (quizTraits.length) traits.value = [...new Set([...traits.value, ...quizTraits])]
 }
 
-// Filters the user has set — each card badges which of these its link carries.
+// Filters the user has set — the fallback card badges which of these its link carries.
 const wantedFilters = computed(() => {
   const wanted = []
   if (selectedBreed.value) wanted.push('breed')
@@ -234,7 +280,6 @@ watch(selectedBreed, async (slug) => {
 })
 
 async function loadSites() {
-  loadingSites.value = true
   error.value = ''
   try {
     const params = new URLSearchParams()
@@ -245,9 +290,7 @@ async function loadSites() {
     if (!res.ok) throw new Error(`API returned ${res.status}`)
     sites.value = await res.json()
   } catch (e) {
-    error.value = `Could not load sites — is the backend running? (${e.message})`
-  } finally {
-    loadingSites.value = false
+    error.value = `Could not load the site directory — is the backend running? (${e.message})`
   }
 }
 
@@ -257,6 +300,9 @@ function listingParams(overrides = {}) {
     state: selectedState.value,
     city: selectedCity.value.trim() && selectedState.value ? selectedCity.value.trim() : '',
     size: selectedSize.value,
+    age: selectedAge.value,
+    sort: sort.value,
+    includeUnlisted: strictMatch.value ? 'false' : '',
     ...overrides,
   }
   const params = new URLSearchParams()
@@ -274,14 +320,16 @@ async function fetchListings(params) {
 
 // Zero results is our job to fix, not the user's (only ~20% rework a failed
 // search themselves): relax one constraint at a time until dogs appear, and
-// say exactly what was relaxed.
+// say exactly what was relaxed. State goes last — with feeds in two states,
+// widening geography means dogs a thousand miles away.
 async function broadenSearch() {
   const relaxations = [
     { overrides: { city: '' }, note: `outside ${selectedCity.value.trim()} (all of ${selectedState.value})`, applies: () => selectedCity.value.trim() && selectedState.value },
     { overrides: { size: '' }, note: 'of any size', applies: () => selectedSize.value },
+    { overrides: { age: '' }, note: 'of any age', applies: () => selectedAge.value },
     { overrides: { breed: '' }, note: 'of any breed', applies: () => selectedBreed.value },
     { overrides: { state: '', city: '' }, note: 'across all states with live feeds', applies: () => selectedState.value },
-    { overrides: { breed: '', state: '', city: '', size: '' }, note: 'available right now (all filters relaxed)', applies: () => true },
+    { overrides: { breed: '', state: '', city: '', size: '', age: '' }, note: 'available right now (all filters relaxed)', applies: () => true },
   ]
   for (const relaxation of relaxations) {
     if (!relaxation.applies()) continue
@@ -304,13 +352,12 @@ async function loadListings() {
     const [listRes, srcRes, covRes] = await Promise.all([
       fetchListings(listingParams()),
       sources.value.length ? Promise.resolve(null) : fetch('/api/sources'),
-      coveredStates.value.length ? Promise.resolve(null) : fetch('/api/coverage'),
+      coverage.value.length ? Promise.resolve(null) : fetch('/api/coverage'),
     ])
     listings.value = listRes
     broadened.value = listRes.length ? null : await broadenSearch()
     if (srcRes?.ok) sources.value = await srcRes.json()
-    if (covRes?.ok) coveredStates.value = await covRes.json()
-    listingsStale.value = false
+    if (covRes?.ok) coverage.value = await covRes.json()
   } catch (e) {
     listingsError.value = `Could not load listings (${e.message})`
   } finally {
@@ -331,13 +378,7 @@ async function loadBreeds() {
       selectedBreed.value = ''
     }
   } catch {
-    // hub still works without the dropdown contents
-  }
-}
-
-function openAll() {
-  for (const site of visibleSites.value) {
-    window.open(site.linkUrl, '_blank', 'noopener')
+    // the page still works without the dropdown contents
   }
 }
 
@@ -347,27 +388,19 @@ function pickQuizBreed(slug) {
 }
 
 watch([selectedBreed, selectedState], loadSites)
-
-// Refresh listings when their filters change — immediately if the adopt tab is
-// open, otherwise lazily on the next tab switch.
-watch([selectedBreed, selectedState, selectedSize], () => {
-  listingsStale.value = true
-  if (tab.value === 'adopt') loadListings()
-})
-watch(tab, () => {
-  if (tab.value === 'adopt' && listingsStale.value) loadListings()
-})
+watch([selectedBreed, selectedState, selectedSize, selectedAge, sort, strictMatch], loadListings)
 
 // Keep the address bar in sync (replace, not push — no history spam).
-watch([selectedBreed, selectedState, selectedCity, selectedSize, traits, goal, tab], () => {
+watch([selectedBreed, selectedState, selectedCity, selectedSize, selectedAge, traits, goal, sort], () => {
   const query = buildSearchQuery({
     breed: selectedBreed.value,
     state: selectedState.value,
     city: selectedCity.value,
     size: selectedSize.value,
+    age: selectedAge.value,
     traits: traits.value,
     goal: goal.value,
-    tab: tab.value,
+    sort: sort.value,
   })
   history.replaceState(null, '', query ? `?${query}` : window.location.pathname)
 })
@@ -378,8 +411,7 @@ watch(selectedCity, () => {
   clearTimeout(cityTimer)
   cityTimer = setTimeout(() => {
     loadSites()
-    listingsStale.value = true
-    if (tab.value === 'adopt') loadListings()
+    loadListings()
   }, 450)
 })
 
@@ -395,15 +427,7 @@ watch([selectedSize, traits], () => {
 onMounted(() => {
   loadBreeds()
   loadSites()
-  if (tab.value === 'adopt') loadListings()
-  // Coverage feeds the "· live shelter dogs" hints in the State dropdown,
-  // so it's wanted even before the adopt tab is opened.
-  fetch('/api/coverage')
-    .then((r) => (r.ok ? r.json() : []))
-    .then((states) => {
-      if (states.length && !coveredStates.value.length) coveredStates.value = states
-    })
-    .catch(() => {})
+  loadListings()
 })
 </script>
 
@@ -428,25 +452,34 @@ onMounted(() => {
     <!-- Editorial hero: one headline doing the brand work, numeric trust under it. -->
     <header class="mb-8 text-center">
       <h1 class="font-display mx-auto max-w-2xl text-3xl leading-[1.1] font-semibold tracking-tight sm:text-5xl">
-        Every puppy site.
-        <span class="text-primary">One honest search.</span>
+        Find your dog.
+        <span class="text-primary">Not another website.</span>
       </h1>
       <p class="text-base-content/70 mx-auto mt-3 max-w-xl text-base">
-        Search 14 marketplaces and rescues at once, browse live shelter dogs, and know
-        exactly who to trust before any money changes hands.
+        Real adoptable dogs from live shelter feeds, plus an honest guide to the 14 sites
+        worth using for everywhere we don't reach yet.
       </p>
       <div class="mt-4 flex flex-wrap justify-center gap-2">
-        <span class="badge badge-outline">14 sites, honestly ranked</span>
-        <span class="badge badge-outline">Live shelter feeds</span>
-        <span class="badge badge-outline">Free email alerts</span>
-        <span class="badge badge-outline">Scam-safety guide built in</span>
+        <button
+          type="button"
+          class="badge badge-lg cursor-pointer"
+          :class="selectedAge === 'Puppy' ? 'badge-primary' : 'badge-outline'"
+          @click="selectedAge = selectedAge === 'Puppy' ? '' : 'Puppy'"
+        >
+          🐶 Puppies only
+        </button>
+        <button type="button" class="badge badge-lg badge-outline cursor-pointer" @click="locateMe">
+          {{ locating ? 'Locating…' : '📍 Near me' }}
+        </button>
+        <span v-if="liveCount" class="badge badge-lg badge-outline">{{ liveCount }} live dogs</span>
+        <span class="badge badge-lg badge-outline">Scam-safety guide built in</span>
       </div>
     </header>
 
     <!-- Mobile: filters live behind a toggle so dogs stay above the fold. -->
     <div class="mb-4 lg:hidden">
       <button type="button" class="btn btn-outline btn-block" @click="filtersOpen = !filtersOpen">
-        {{ filtersOpen ? '✕ Hide filters' : `⚙︎ Filters${wantedFilters.length || selectedSize || traits.length ? ' (active)' : ''}` }}
+        {{ filtersOpen ? '✕ Hide filters' : `⚙︎ Filters${activeChips.length ? ` (${activeChips.length})` : ''}` }}
       </button>
     </div>
 
@@ -460,14 +493,13 @@ onMounted(() => {
           v-model:state="selectedState"
           v-model:city="selectedCity"
           v-model:size="selectedSize"
+          v-model:age="selectedAge"
           v-model:traits="traits"
           v-model:goal="goal"
           :breeds="breeds"
           :us-states="US_STATES"
-          :site-count="visibleSites.length"
-          :covered-states="coveredStates"
+          :coverage="coverage"
           :locating="locating"
-          @open-all="openAll"
           @open-quiz="quizOpen = true"
           @clear="resetSearch"
           @near-me="locateMe"
@@ -486,32 +518,13 @@ onMounted(() => {
               v-model="smartQuery"
               type="text"
               class="grow"
-              placeholder="Try “golden retriever near seattle” or “small apartment dog in MD”"
+              placeholder="Try “golden retriever puppy near seattle” or “small senior dog in MD”"
             />
             <button type="submit" class="btn btn-primary btn-sm -mr-2">Search</button>
           </label>
         </form>
         <p v-if="smartHint" class="text-base-content/60 mb-3 text-xs">ℹ️ {{ smartHint }}</p>
         <div v-else class="mb-3" />
-
-        <div role="tablist" class="tabs tabs-box mb-5 w-fit">
-          <button
-            role="tab"
-            class="tab gap-1"
-            :class="{ 'tab-active': tab === 'sites' }"
-            @click="tab = 'sites'"
-          >
-            🔗 Search the sites
-          </button>
-          <button
-            role="tab"
-            class="tab gap-1"
-            :class="{ 'tab-active': tab === 'adopt' }"
-            @click="tab = 'adopt'"
-          >
-            🐶 Adoptable now
-          </button>
-        </div>
 
         <div v-if="activeChips.length" class="mb-4 flex flex-wrap items-center gap-1.5">
           <button
@@ -527,77 +540,167 @@ onMounted(() => {
           <button type="button" class="link text-xs opacity-60" @click="clearAllFilters">Clear all</button>
         </div>
 
-        <template v-if="tab === 'sites'">
-          <h2 class="mb-5 flex items-center gap-3 text-2xl font-bold">
-            <img
-              v-if="breedPhoto"
-              :src="breedPhoto"
-              :alt="selectedBreedName"
-              class="ring-primary/40 h-12 w-12 shrink-0 rounded-full object-cover shadow ring-2"
-            />
+        <!-- Buying: we have no breeder listings of our own, so the vetted-marketplace
+             guide is the answer rather than a consolation prize below an empty grid. -->
+        <template v-if="buying">
+          <ResultsFallback
+            :sites="sites"
+            :wanted="wantedFilters"
+            goal="buy"
+            :breed-name="selectedBreedName"
+            :state="selectedState"
+            :coverage="coverage"
+            :result-count="0"
+            flush
+            @open-guide="guideOpen = true"
+          />
+          <div v-if="listings.length" class="alert alert-soft alert-info mt-6 flex flex-wrap items-center justify-between gap-2 py-2 text-sm">
             <span>
-              Your matching sites
-              <span v-if="selectedBreedName" class="text-primary">for {{ selectedBreedName }}s</span>
+              🐶 <strong>{{ listings.length }}</strong> adoptable
+              {{ listings.length === 1 ? 'dog' : 'dogs' }} also match this search — usually
+              vaccinated, neutered, and a fraction of the price.
             </span>
-          </h2>
-          <p v-if="loadingSites" class="text-center text-base-content/60">
-            <span class="loading loading-dots loading-md" />
-          </p>
-          <div v-else-if="error" class="alert alert-error">{{ error }}</div>
-          <ul v-else class="grid list-none gap-6 p-0 sm:grid-cols-2">
-            <SiteCard
-              v-for="site in visibleSites"
-              :key="site.id"
-              :site="site"
-              :wanted="wantedFilters"
-              @open-guide="guideOpen = true"
-            />
-          </ul>
-
-          <p class="mt-10 text-center text-sm text-base-content/60">
-            PuppyFinder links you directly to each site's own listings — always verify a breeder
-            or rescue yourself before sending money.
-          </p>
+            <button type="button" class="link" @click="goal = 'adopt'">See them</button>
+          </div>
         </template>
 
         <template v-else>
-          <h2 class="mb-1 text-2xl font-bold">
-            Adoptable dogs right now
-            <span v-if="selectedBreedName" class="text-primary">— {{ selectedBreedName }}s</span>
-          </h2>
-          <p class="mb-1 text-sm text-base-content/60">
+          <div class="mb-1 flex flex-wrap items-end justify-between gap-3">
+            <h2 class="flex items-center gap-3 text-2xl font-bold">
+              <img
+                v-if="breedPhoto"
+                :src="breedPhoto"
+                :alt="selectedBreedName"
+                class="ring-primary/40 h-12 w-12 shrink-0 rounded-full object-cover shadow ring-2"
+              />
+              <span>
+                {{ resultsHeading }}
+                <span v-if="selectedBreedName" class="text-primary">— {{ selectedBreedName }}s</span>
+              </span>
+            </h2>
+            <label v-if="rankedListings.length > 1" class="flex items-center gap-2 text-xs">
+              <span class="font-bold tracking-wide uppercase opacity-60">Sort</span>
+              <select v-model="sort" class="select select-bordered select-sm">
+                <option v-for="s in SORTS" :key="s.value" :value="s.value">{{ s.label }}</option>
+              </select>
+            </label>
+          </div>
+          <p class="mb-5 text-sm text-base-content/60">
             Live from public shelter feeds{{ activeSources.length ? ` (${activeSources.join(', ')})` : '' }}
             — refreshed every few minutes.
           </p>
-          <p v-if="coveredStates.length" class="mb-1 flex flex-wrap items-center gap-1 text-sm text-base-content/60">
-            States with live dogs right now:
-            <button
-              v-for="s in coveredStates"
-              :key="s"
-              type="button"
-              class="badge badge-sm cursor-pointer"
-              :class="selectedState === s ? 'badge-primary' : 'badge-outline'"
-              @click="selectedState = selectedState === s ? '' : s"
-            >
-              {{ s }}
+
+          <div
+            v-if="!listings.length && broadened"
+            class="alert alert-soft alert-warning mb-4 flex flex-wrap items-center justify-between gap-2 py-2 text-sm"
+          >
+            <span>
+              No dogs match your exact search — showing
+              <strong>{{ broadened.listings.length }} dogs</strong> {{ broadened.note }} instead.
+            </span>
+            <button type="button" class="link" @click="clearAllFilters">Clear my filters</button>
+          </div>
+          <div
+            v-if="profile && !sort"
+            class="alert alert-soft alert-info mb-4 flex flex-wrap items-center justify-between gap-2 py-2 text-sm"
+          >
+            <span>✨ Sorted by fit to your quiz profile — best matches first.</span>
+            <span class="flex gap-2">
+              <button type="button" class="link" @click="quizOpen = true">Retake quiz</button>
+              <button type="button" class="link opacity-70" @click="dropProfile">Clear profile</button>
+            </span>
+          </div>
+
+          <div
+            v-if="unconfirmedCount || strictMatch"
+            class="alert alert-soft mb-4 flex flex-wrap items-center justify-between gap-2 py-2 text-sm"
+          >
+            <span v-if="unconfirmedCount">
+              {{ unconfirmedCount }} of these
+              {{ rankedListings.length }} didn't have a
+              {{ selectedSize && selectedAge ? 'size or age' : selectedSize ? 'size' : 'age' }}
+              listed by the shelter. They're included so you don't miss them.
+            </span>
+            <span v-else>Showing only dogs the shelter explicitly listed — some may be hidden.</span>
+            <button type="button" class="link whitespace-nowrap" @click="strictMatch = !strictMatch">
+              {{ strictMatch ? 'Include unlisted again' : 'Show only confirmed matches' }}
             </button>
-            <span class="opacity-70">— more states as feeds are added.</span>
-          </p>
-          <p v-if="traits.length" class="mb-5 text-xs text-base-content/50">
-            ℹ️ Must-have traits narrow the breed picker only — shelter feeds don't include
-            temperament data, so they aren't applied here.
-          </p>
-          <div v-else class="mb-5" />
+          </div>
 
-          <AlertSignup
-            :breed="selectedBreed"
-            :breed-name="selectedBreedName"
-            :state="selectedState"
-            :city="selectedCity"
-            :size="selectedSize"
-          />
+          <ul v-if="loadingListings" class="grid list-none gap-6 p-0 sm:grid-cols-2 xl:grid-cols-3" aria-hidden="true">
+            <li v-for="n in 6" :key="n" class="card bg-base-100 overflow-hidden">
+              <div class="skeleton h-44 rounded-none" />
+              <div class="space-y-2 p-4">
+                <div class="skeleton h-5 w-2/5" />
+                <div class="skeleton h-4 w-4/5" />
+                <div class="skeleton h-4 w-3/5" />
+              </div>
+            </li>
+          </ul>
+          <div v-else-if="listingsError" class="alert alert-error">{{ listingsError }}</div>
+          <ul
+            v-else-if="rankedListings.length"
+            data-testid="dog-results"
+            class="grid list-none gap-6 p-0 sm:grid-cols-2 xl:grid-cols-3"
+          >
+            <ListingCard
+              v-for="l in rankedListings"
+              :key="l.id"
+              :listing="l"
+              :favorite="favoriteIds.has(l.id)"
+              :unconfirmed-note="unconfirmedNote(l)"
+              @toggle-favorite="onToggleFavorite(l)"
+              @viewed="onViewed(l)"
+            />
+          </ul>
+          <div v-else class="card bg-base-100 shadow-md">
+            <div class="card-body items-center text-center">
+              <span class="text-4xl">🐾</span>
+              <p class="font-semibold">No live listings match your filters.</p>
+              <p class="text-sm opacity-70">
+                Our own feeds only reach a few counties so far — the sites below cover the
+                whole country.
+              </p>
+              <div class="flex flex-wrap justify-center gap-2">
+                <button
+                  v-for="area in coverage.filter((c) => c.state !== selectedState)"
+                  :key="area.state"
+                  type="button"
+                  class="btn btn-outline btn-sm"
+                  @click="selectedState = area.state"
+                >
+                  🐶 {{ area.count }} dogs in {{ area.state }}
+                </button>
+              </div>
+              <div v-if="recent.length" class="mt-4 w-full text-left">
+                <p class="mb-2 text-sm font-semibold">Dogs you looked at recently:</p>
+                <ul class="space-y-2">
+                  <li v-for="r in recent.slice(0, 4)" :key="r.id" class="flex items-center gap-3 text-sm">
+                    <img v-if="r.imageUrl" :src="r.imageUrl" :alt="r.name" referrerpolicy="no-referrer"
+                      class="h-9 w-9 rounded-lg object-cover" />
+                    <span v-else class="bg-base-300 grid h-9 w-9 place-items-center rounded-lg">🐶</span>
+                    <span class="min-w-0 flex-1 truncate">{{ r.name }} — {{ r.breed }}</span>
+                    <a :href="r.listingUrl" target="_blank" rel="noopener noreferrer" class="link whitespace-nowrap">
+                      Open ↗
+                    </a>
+                  </li>
+                </ul>
+              </div>
+            </div>
+          </div>
 
-          <details v-if="favorites.length" class="collapse-arrow border-base-300 bg-base-100 collapse mb-5 border">
+          <div class="mt-6">
+            <AlertSignup
+              :breed="selectedBreed"
+              :breed-name="selectedBreedName"
+              :state="selectedState"
+              :city="selectedCity"
+              :size="selectedSize"
+              :age="selectedAge"
+            />
+          </div>
+
+          <details v-if="favorites.length" class="collapse-arrow border-base-300 bg-base-100 collapse mt-4 border">
             <summary class="collapse-title font-semibold">❤️ Your saved dogs ({{ favorites.length }})</summary>
             <div class="collapse-content">
               <ul class="space-y-2">
@@ -618,91 +721,19 @@ onMounted(() => {
               </ul>
             </div>
           </details>
-          <ul v-if="loadingListings" class="grid list-none gap-6 p-0 sm:grid-cols-2 xl:grid-cols-3" aria-hidden="true">
-            <li v-for="n in 6" :key="n" class="card bg-base-100 overflow-hidden">
-              <div class="skeleton h-44 rounded-none" />
-              <div class="space-y-2 p-4">
-                <div class="skeleton h-5 w-2/5" />
-                <div class="skeleton h-4 w-4/5" />
-                <div class="skeleton h-4 w-3/5" />
-              </div>
-            </li>
-          </ul>
-          <div v-else-if="listingsError" class="alert alert-error">{{ listingsError }}</div>
-          <template v-else-if="displayListings.length">
-            <div
-              v-if="!listings.length && broadened"
-              class="alert alert-soft alert-warning mb-4 flex flex-wrap items-center justify-between gap-2 py-2 text-sm"
-            >
-              <span>
-                No dogs match your exact search — showing
-                <strong>{{ broadened.listings.length }} dogs</strong> {{ broadened.note }} instead.
-              </span>
-              <button type="button" class="link" @click="clearAllFilters">Clear my filters</button>
-            </div>
-            <div
-              v-if="profile"
-              class="alert alert-soft alert-info mb-4 flex flex-wrap items-center justify-between gap-2 py-2 text-sm"
-            >
-              <span>✨ Sorted by fit to your quiz profile — best matches first.</span>
-              <span class="flex gap-2">
-                <button type="button" class="link" @click="quizOpen = true">Retake quiz</button>
-                <button type="button" class="link opacity-70" @click="dropProfile">Clear profile</button>
-              </span>
-            </div>
-            <ul class="grid list-none gap-6 p-0 sm:grid-cols-2 xl:grid-cols-3">
-              <ListingCard
-                v-for="l in rankedListings"
-                :key="l.id"
-                :listing="l"
-                :favorite="favoriteIds.has(l.id)"
-                @toggle-favorite="onToggleFavorite(l)"
-                @viewed="onViewed(l)"
-              />
-            </ul>
-          </template>
-          <div v-else class="card bg-base-100 shadow-md">
-            <div class="card-body items-center text-center">
-              <span class="text-4xl">🐾</span>
-              <p class="font-semibold">No live listings match your filters.</p>
-              <p v-if="selectedState && !coveredStates.includes(selectedState)" class="text-sm opacity-70">
-                No shelter feed covers {{ selectedState }} yet — right now live listings exist in
-                {{ coveredStates.join(' and ') || 'no states' }}. The site search tab covers the whole country.
-              </p>
-              <p v-else class="text-sm opacity-70">
-                Try loosening the breed or size filter — or use the site search tab,
-                which covers the whole country.
-              </p>
-              <div class="flex flex-wrap justify-center gap-2">
-                <button
-                  v-for="s in coveredStates.filter((c) => c !== selectedState)"
-                  :key="s"
-                  type="button"
-                  class="btn btn-outline btn-sm"
-                  @click="selectedState = s"
-                >
-                  🐶 Show {{ s }} dogs
-                </button>
-                <button type="button" class="btn btn-outline btn-sm" @click="tab = 'sites'">
-                  ← Back to site search
-                </button>
-              </div>
-              <div v-if="recent.length" class="mt-4 w-full text-left">
-                <p class="mb-2 text-sm font-semibold">Dogs you looked at recently:</p>
-                <ul class="space-y-2">
-                  <li v-for="r in recent.slice(0, 4)" :key="r.id" class="flex items-center gap-3 text-sm">
-                    <img v-if="r.imageUrl" :src="r.imageUrl" :alt="r.name" referrerpolicy="no-referrer"
-                      class="h-9 w-9 rounded-lg object-cover" />
-                    <span v-else class="bg-base-300 grid h-9 w-9 place-items-center rounded-lg">🐶</span>
-                    <span class="min-w-0 flex-1 truncate">{{ r.name }} — {{ r.breed }}</span>
-                    <a :href="r.listingUrl" target="_blank" rel="noopener noreferrer" class="link whitespace-nowrap">
-                      Open ↗
-                    </a>
-                  </li>
-                </ul>
-              </div>
-            </div>
-          </div>
+
+          <div v-if="error" class="alert alert-error mt-6">{{ error }}</div>
+          <ResultsFallback
+            v-else
+            :sites="sites"
+            :wanted="wantedFilters"
+            :goal="goal"
+            :breed-name="selectedBreedName"
+            :state="selectedState"
+            :coverage="coverage"
+            :result-count="rankedListings.length"
+            @open-guide="guideOpen = true"
+          />
         </template>
       </section>
     </div>

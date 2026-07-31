@@ -1,12 +1,19 @@
 # PuppyFinder
 
-Search once — land on the right page of every legit puppy site. PuppyFinder is a central hub over the popular, legitimate US puppy websites:
+Search for a dog, not for a website. PuppyFinder shows real adoptable dogs from live
+shelter feeds, and falls back to an honest guide to the 14 legitimate US puppy sites
+for everywhere those feeds don't reach yet.
 
-- **Universal search hub** — pick breed + state + adopt/buy, and every site card deep-links to that site's filtered results; "Open results on all sites" launches them all in tabs
+- **Dogs first** — searching returns actual listings (photo, age, size, shelter phone number), filtered by breed / age / state / city / size and sortable by age
+- **Age filter** — Puppy (under 1 yr) / Young / Adult / Senior, parsed out of the free-text ages the feeds publish (`AgeParser`)
+- **Honest coverage** — the UI states where our feeds do and don't reach instead of showing an empty grid, and recommends **one** national site that carries your filters rather than opening fourteen tabs
+- **Missing data is "unknown", not "no"** — shelters leave size and age blank constantly, so those dogs stay in the results, labelled, ranked below confirmed matches, with a "show only confirmed matches" escape hatch
 - **Breed finder quiz** — six lifestyle questions score against a breed-traits table and recommend your top 3 breeds (`POST /api/quiz`)
-- **Site guide** — each site card shows what actually differs: vetting level, typical prices, how the dog gets to you, and who the site is best for
+- **Site guide** — for breeder searches (where no legitimate feed exists) each site card shows what actually differs: vetting level, typical prices, delivery, and documented cautions
+- **Saved-search alerts** — email when new matching dogs appear (`POST /api/alerts`)
 
-Layout: search filters live in a left sidebar (sticky on desktop); matching sites render on the right. The live-listings backend (`/api/listings`, open-data + RescueGroups providers) still runs but is not currently displayed in the UI.
+Layout: filters live in a left sidebar (sticky on desktop, collapsed on mobile);
+dog results fill the right, with the site directory below them as the fallback tier.
 
 ## Where the listings come from
 
@@ -36,11 +43,18 @@ The Vite dev server proxies `/api/*` to the backend.
 
 | Endpoint | Description |
 |---|---|
-| `GET /api/listings?breed=&state=` | Aggregated real dog listings (filtered) |
+| `GET /api/listings?breed=&state=&city=&size=&age=&sort=&includeUnlisted=` | Aggregated real dog listings, filtered and sorted. Each result carries derived `ageMonths` / `ageGroup` and an `unconfirmed` flag (matched only because a field was blank). |
+| `GET /api/coverage` | Where live dogs exist right now: `[{ state, count, cities }]` |
 | `GET /api/sources` | Per-source status: enabled, count, last error |
 | `GET /api/breeds` | Curated breed list for the dropdown |
-| `GET /api/sites?breed=&state=` | Deep links into each source site (footer chips) |
+| `GET /api/sites?breed=&state=&city=` | Deep links into each source site, plus which filters each link carries |
+| `POST /api/alerts` | Save an email alert for a search (`breed`, `state`, `city`, `size`, `age`) |
 
 ## Architecture
 
-Sources implement `IListingProvider` (`backend/Services/`); `ListingAggregator` merges enabled providers and caches for 10 minutes. `SocrataProvider` is config-driven — adding another city/county open-data feed is one more `SocrataDataset` entry in `Program.cs`. `SiteCatalog.cs` holds the deep-link URL patterns for the footer.
+Sources implement `IListingProvider` (`backend/Services/`); `ListingAggregator` merges enabled providers and caches for 10 minutes. `SocrataProvider` is config-driven — adding another city/county open-data feed is one more `SocrataDataset` entry in `Program.cs`. `SiteCatalog.cs` holds the deep-link URL patterns.
+
+`ListingQuery` is the single definition of what a filter means, shared by `/api/listings`
+and the alert checker so a saved alert can never match differently from the search UI.
+`AgeParser` turns feed ages into months and groups. Neither knows about HTTP, so both
+are unit-tested directly.

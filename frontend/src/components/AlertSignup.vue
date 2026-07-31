@@ -7,6 +7,7 @@ const props = defineProps({
   state: { type: String, default: '' },
   city: { type: String, default: '' },
   size: { type: String, default: '' },
+  age: { type: String, default: '' },
 })
 
 const email = ref('')
@@ -19,6 +20,7 @@ const loadingAlerts = ref(false)
 
 function describeAlert(a) {
   const parts = []
+  if (a.age) parts.push(a.age)
   if (a.size) parts.push(a.size)
   parts.push(a.breed ? a.breed.replaceAll('-', ' ') : 'any breed')
   if (a.city && a.state) parts.push(`in ${a.city}, ${a.state}`)
@@ -62,6 +64,7 @@ async function removeAlert(alert) {
 
 const filterSummary = computed(() => {
   const parts = []
+  if (props.age) parts.push(props.age)
   if (props.size) parts.push(props.size)
   parts.push(props.breedName || 'any breed')
   if (props.city && props.state) parts.push(`in ${props.city}, ${props.state}`)
@@ -85,6 +88,7 @@ async function save() {
         state: props.state || null,
         city: props.state ? props.city.trim() || null : null,
         size: props.size || null,
+        age: props.age || null,
       }),
     })
     if (!res.ok) throw new Error((await res.text()).replaceAll('"', '') || `API returned ${res.status}`)

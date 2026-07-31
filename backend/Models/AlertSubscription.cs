@@ -12,7 +12,9 @@ public record AlertSubscription(
     string? State,
     string? City,
     string? Size,
-    DateTimeOffset CreatedAt)
+    DateTimeOffset CreatedAt,
+    string? Age = null) // Puppy | Young | Adult | Senior — defaulted so alerts saved
+                        // before the age filter existed still deserialize.
 {
     public HashSet<string> SeenListingIds { get; init; } = [];
 }

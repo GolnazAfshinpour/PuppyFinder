@@ -32,6 +32,15 @@ const SIZE_WORDS = [
   [['large', 'big', 'giant'], 'Large'],
 ]
 
+// Longest phrases first within each group, and Puppy before Young, so
+// "young puppy" resolves to Puppy rather than Young.
+const AGE_WORDS = [
+  [['young puppy', 'puppy', 'puppies', 'pup', 'pups', 'baby'], 'Puppy'],
+  [['young adult', 'young', 'adolescent'], 'Young'],
+  [['fully grown', 'adult', 'grown'], 'Adult'],
+  [['senior', 'elderly', 'older', 'old'], 'Senior'],
+]
+
 const TRAIT_WORDS = [
   [['good with kids', 'kid friendly', 'kids', 'children', 'family dog', 'family'], 'kids'],
   [['apartment friendly', 'apartment', 'condo', 'city dog'], 'apartment'],
@@ -62,14 +71,16 @@ const CITY_STATES = {
 
 // Words that carry no filter meaning; whatever else is left over is reported
 // back so the user knows what wasn't understood.
+// "puppy" and friends are no longer filler — they resolve to the Puppy age
+// group now that age is a real filter.
 const FILLER = new Set([
   'a', 'an', 'the', 'i', 'want', 'looking', 'for', 'find', 'me', 'my', 'us',
-  'dog', 'dogs', 'puppy', 'puppies', 'pup', 'in', 'near', 'around', 'nearby',
+  'dog', 'dogs', 'in', 'near', 'around', 'nearby',
   'with', 'that', 'is', 'and', 'or', 'to', 'of', 'good',
 ])
 
 export function parseQuery(text, { breeds = [], usStates = [] } = {}) {
-  const result = { breed: '', state: '', city: '', size: '', traits: [], goal: '', nearMe: false, inferredState: '', unmatched: [] }
+  const result = { breed: '', state: '', city: '', size: '', age: '', traits: [], goal: '', nearMe: false, inferredState: '', unmatched: [] }
   if (!text?.trim()) return result
 
   // 2-letter state abbreviations only when typed uppercase ("MD") — otherwise
@@ -118,6 +129,16 @@ export function parseQuery(text, { breeds = [], usStates = [] } = {}) {
       break
     }
   }
+
+  for (const [words, age] of AGE_WORDS) {
+    if (words.some(consume)) {
+      result.age = age
+      break
+    }
+  }
+  // Mop up any age words the winning group left behind ("young puppy" → Puppy,
+  // with no stray "young" surfacing as an unmatched word).
+  if (result.age) for (const [words] of AGE_WORDS) words.forEach(consume)
 
   for (const [words, trait] of TRAIT_WORDS) {
     if (words.some(consume)) result.traits.push(trait)

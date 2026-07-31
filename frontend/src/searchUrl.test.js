@@ -3,7 +3,7 @@ import { buildSearchQuery, parseSearchUrl } from './searchUrl.js'
 
 const US_STATES = ['TX', 'NY', 'CA', 'ME']
 
-const defaults = { breed: '', state: '', city: '', size: '', traits: [], goal: 'both', tab: 'sites' }
+const defaults = { breed: '', state: '', city: '', size: '', age: '', traits: [], goal: 'both', sort: '' }
 
 describe('parseSearchUrl', () => {
   it('returns clean defaults for an empty query', () => {
@@ -12,27 +12,39 @@ describe('parseSearchUrl', () => {
 
   it('restores a full search', () => {
     expect(
-      parseSearchUrl('?breed=golden-retriever&state=TX&city=Houston&size=Large&traits=kids,lowshed&goal=buy&tab=adopt', US_STATES),
+      parseSearchUrl(
+        '?breed=golden-retriever&state=TX&city=Houston&size=Large&age=Puppy&traits=kids,lowshed&goal=buy&sort=youngest',
+        US_STATES,
+      ),
     ).toEqual({
       breed: 'golden-retriever',
       state: 'TX',
       city: 'Houston',
       size: 'Large',
+      age: 'Puppy',
       traits: ['kids', 'lowshed'],
       goal: 'buy',
-      tab: 'adopt',
+      sort: 'youngest',
     })
   })
 
-  it('normalizes case for state and size', () => {
-    const parsed = parseSearchUrl('?state=tx&size=large', US_STATES)
+  it('normalizes case for state, size and age', () => {
+    const parsed = parseSearchUrl('?state=tx&size=large&age=SENIOR', US_STATES)
     expect(parsed.state).toBe('TX')
     expect(parsed.size).toBe('Large')
+    expect(parsed.age).toBe('Senior')
   })
 
   it('drops values that fail validation instead of erroring', () => {
-    const parsed = parseSearchUrl('?state=ZZ&size=gigantic&goal=steal&traits=&tab=nonsense', US_STATES)
+    const parsed = parseSearchUrl(
+      '?state=ZZ&size=gigantic&age=teenager&goal=steal&traits=&sort=nearest',
+      US_STATES,
+    )
     expect(parsed).toEqual(defaults)
+  })
+
+  it('ignores the retired tab parameter from older shared links', () => {
+    expect(parseSearchUrl('?tab=adopt&breed=beagle', US_STATES)).toEqual({ ...defaults, breed: 'beagle' })
   })
 })
 
@@ -51,9 +63,10 @@ describe('buildSearchQuery', () => {
       state: 'NY',
       city: 'New York',
       size: 'Small',
+      age: 'Young',
       traits: ['apartment'],
       goal: 'adopt',
-      tab: 'adopt',
+      sort: 'oldest',
     }
     expect(parseSearchUrl(`?${buildSearchQuery(state)}`, US_STATES)).toEqual(state)
   })

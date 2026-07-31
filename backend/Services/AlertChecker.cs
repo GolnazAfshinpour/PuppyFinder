@@ -90,7 +90,12 @@ public sealed class AlertChecker(
             breedText = breedText.Split('(')[0].Trim();
         }
 
-        return ListingQuery.Filter(listings, breedText, subscription.State, subscription.City, subscription.Size);
+        return ListingQuery.Filter(listings, new ListingFilter(
+            BreedSearchText: breedText,
+            State: subscription.State,
+            City: subscription.City,
+            Size: subscription.Size,
+            AgeGroup: subscription.Age));
     }
 
     private static string BuildEmailBody(AlertSubscription subscription, IReadOnlyList<Listing> fresh)
@@ -106,7 +111,7 @@ public sealed class AlertChecker(
 
         var filters = string.Join(" · ", new[]
         {
-            subscription.Breed, subscription.Size, subscription.City, subscription.State,
+            subscription.Age, subscription.Breed, subscription.Size, subscription.City, subscription.State,
         }.Where(f => !string.IsNullOrWhiteSpace(f)));
 
         return $"""

@@ -90,25 +90,52 @@ Honesty beats marketing — cautions and coverage limits are stated plainly.
 
 ## 7. Search UX rules
 
-- Filter groups ordered by decision-relevance (Baymard/NN/g): Breed → State →
-  City → Size → Must-haves → Goal. Refiners never above decision-drivers.
-- Options carry availability context where cheap ("MD · live shelter dogs").
+- **The page is dogs, not websites.** A search returns listings; the 14-site
+  directory sits below them as the fallback for everywhere our feeds don't reach.
+  Every primary CTA on the default screen used to be an exit link — that inverted
+  the product into a directory of search engines.
+- Filter groups ordered by decision-relevance (Baymard/NN/g): Goal → Breed →
+  Age → State → City → Size → breed-list narrowing. Goal leads because it isn't a
+  refiner — it decides whether the page shows adoptable dogs or breeder
+  marketplaces. Refiners never above decision-drivers.
+- Filter priority follows observed adopter behaviour (Adopt-a-Pet, 6.5M searches,
+  Mar 2024): distance/location > breed (39% of searches) > age > size (16%) >
+  sex > good-with > colour/coat (last; never volunteered by users).
+- **A filter must filter the results.** Never ship one that quietly does something
+  else — the breed-list narrowers are labelled "Narrow the breed list", not
+  "Must-haves", because that is all they do.
+- Options carry availability context where cheap ("MD · 42 live dogs").
 - Active filters render as removable chips above results + "Clear all"
   (clear-all stays a quiet text link, physically apart from primary CTAs).
 - Desktop filters update live; the sidebar is sticky with internal scroll
   (`max-h` + `overflow-y-auto`) so an expanded panel never clips.
 - Mobile: filters collapse behind a toggle; results stay above the fold.
 - Loading = skeleton cards matching the real layout, never spinners.
-- Zero results auto-broaden: relax one constraint at a time (city → size →
+- **Missing data is "unknown", not "no".** Industry-wide only a fraction of shelter
+  listings have complete profiles, so a filter that drops every blank field deletes
+  most of the inventory and the user concludes there are no dogs. Unknowns stay in,
+  labelled on the card, ranked below confirmed matches, with a "show only confirmed
+  matches" opt-out. (Live example: `size=Small` returns 6 dogs, 5 with no size on
+  file — the old hard-drop returned 1.)
+- Zero results auto-broaden: relax one constraint at a time (city → size → age →
   breed → state → all), state exactly what was relaxed, offer one-tap clear
   and the saved-search alert. The user should never have to rework a failed
-  search themselves.
+  search themselves. Broadened results never claim to be matches — the heading
+  reads "Showing N dogs", not "N adoptable dogs".
+- **One handoff, not fourteen.** Where our feeds fall short, recommend a single
+  site, ranked by no-caution first, then by how much of the user's search its URL
+  actually carries. "Open all 14 sites" handed the work straight back to the user.
 - Multi-session memory is anonymous: favorites + recently-viewed live in
   localStorage as listing snapshots (they must survive dogs leaving the feed).
 - The smart search box parses free text into these same filters (dictionary
   matching only — never a model that can hallucinate inventory); contradictions
   resolve toward the more specific intent with an explanatory hint. "Near me"
   geolocates to state+city with a manual fallback on denial.
-- Known gaps (documented, not yet built): per-option result counts, true
-  distance sort (needs per-listing coordinates — arrives with RescueGroups),
-  compare-selected view for the 14-site directory.
+- Known gaps (documented, not yet built): **ZIP + radius search and a true
+  distance sort** — the single biggest miss, since both leaders treat distance as
+  an always-on default; needs per-listing coordinates, which arrive with
+  RescueGroups. Also: adoption fee on the card (81% of adopters rank it the most
+  important item on a profile, and we show it nowhere), real "good with
+  kids/dogs/cats" listing fields (+56% adoption likelihood), breed typeahead
+  instead of a 179-option `<select>`, an in-app dog detail page instead of
+  ejecting to petharbor.com, and a compare view for saved dogs.

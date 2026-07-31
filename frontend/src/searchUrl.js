@@ -3,33 +3,37 @@
 
 const GOALS = ['adopt', 'buy', 'both']
 const SIZES = ['Teacup', 'Small', 'Medium', 'Large']
-const TABS = ['sites', 'adopt']
+export const AGES = ['Puppy', 'Young', 'Adult', 'Senior']
+const SORTS = ['youngest', 'oldest']
 
+// `tab` used to select between the site directory and the listings. Results are
+// now one list, so a shared pre-July-2026 URL simply loses the parameter.
 export function parseSearchUrl(search, usStates) {
   const params = new URLSearchParams(search)
   const state = (params.get('state') ?? '').toUpperCase()
-  const size = SIZES.find((s) => s.toLowerCase() === (params.get('size') ?? '').toLowerCase())
+  const match = (values, raw) => values.find((v) => v.toLowerCase() === (raw ?? '').toLowerCase())
   const goal = params.get('goal')
-  const tab = params.get('tab')
   return {
     breed: params.get('breed') ?? '',
     state: usStates.includes(state) ? state : '',
     city: params.get('city') ?? '',
-    size: size ?? '',
+    size: match(SIZES, params.get('size')) ?? '',
+    age: match(AGES, params.get('age')) ?? '',
     traits: (params.get('traits') ?? '').split(',').filter(Boolean),
     goal: GOALS.includes(goal) ? goal : 'both',
-    tab: TABS.includes(tab) ? tab : 'sites',
+    sort: match(SORTS, params.get('sort')) ?? '',
   }
 }
 
-export function buildSearchQuery({ breed, state, city, size, traits, goal, tab }) {
+export function buildSearchQuery({ breed, state, city, size, age, traits, goal, sort }) {
   const params = new URLSearchParams()
   if (breed) params.set('breed', breed)
   if (state) params.set('state', state)
   if (city.trim() && state) params.set('city', city.trim())
   if (size) params.set('size', size)
+  if (age) params.set('age', age)
   if (traits.length) params.set('traits', traits.join(','))
   if (goal !== 'both') params.set('goal', goal)
-  if (tab !== 'sites') params.set('tab', tab)
+  if (sort) params.set('sort', sort)
   return params.toString()
 }

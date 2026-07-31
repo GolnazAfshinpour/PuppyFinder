@@ -46,6 +46,20 @@ describe('parseQuery', () => {
     expect(parseQuery('poodle puppies', ctx).breed).toBe('poodle')
   })
 
+  it('parses the age group — the filter the product is named after', () => {
+    expect(parseQuery('poodle puppies', ctx).age).toBe('Puppy')
+    expect(parseQuery('senior dog near me', ctx).age).toBe('Senior')
+    expect(parseQuery('young adult golden retriever', ctx).age).toBe('Young')
+    expect(parseQuery('golden retriever', ctx).age).toBe('')
+  })
+
+  it('resolves "young puppy" to Puppy without leaving "young" unmatched', () => {
+    const r = parseQuery('young puppy in TX', ctx)
+    expect(r.age).toBe('Puppy')
+    expect(r.state).toBe('TX')
+    expect(r.unmatched).toEqual([])
+  })
+
   it('infers the state from a known metro city', () => {
     const r = parseQuery('golden retriever near seattle', ctx)
     expect(r.city).toBe('Seattle')
