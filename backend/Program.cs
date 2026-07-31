@@ -139,11 +139,28 @@ app.MapGet("/api/coverage", async (ListingAggregator aggregator, CancellationTok
         .ToList()))
 .WithName("GetCoverage");
 
+// What a quoted puppy price says about the seller. Buying is the app's main path,
+// and a below-market price is the highest-signal scam check a buyer can run.
+app.MapGet("/api/price-check", async (string? breed, int price, BreedCatalogService catalog, CancellationToken ct) =>
+    Results.Ok(PriceCheck.Evaluate(
+        string.IsNullOrWhiteSpace(breed) ? null : await catalog.FindAsync(breed, ct),
+        price)))
+.WithName("CheckPrice");
+
 app.MapGet("/api/breeds", async (BreedCatalogService catalog, CancellationToken ct) =>
     Results.Ok((await catalog.GetBreedsAsync(ct)).Select(b => new
     {
         b.Slug,
         b.DisplayName,
+        // Buying is the primary path, so the price range travels with every breed.
+        // Zero means "no verified range" (the dog.ceo catalog entries) — null, not 0,
+        // so the UI can't render "$0".
+        PriceLow = b.PriceHigh > 0 ? b.PriceLow : (int?)null,
+        PriceHigh = b.PriceHigh > 0 ? b.PriceHigh : (int?)null,
+        TypicalPrice = b.PriceHigh > 0 ? b.TypicalPrice : null,
+        Blurb = b.Blurb.Length > 0 ? b.Blurb : null,
+        Energy = b.PriceHigh > 0 ? b.Energy : (int?)null,
+        Grooming = b.PriceHigh > 0 ? b.Grooming : (int?)null,
         // Size and traits are only meaningful for curated breeds; external
         // catalog entries default to neutral values without real data, so they're
         // reported as unknown for filtering.

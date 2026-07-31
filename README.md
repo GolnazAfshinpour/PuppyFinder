@@ -1,10 +1,14 @@
 # PuppyFinder
 
-Search for a dog, not for a website. PuppyFinder shows real adoptable dogs from live
-shelter feeds, and falls back to an honest guide to the 14 legitimate US puppy sites
-for everywhere those feeds don't reach yet.
+Buy a puppy without getting scammed. PuppyFinder's primary path is **buying**: what a
+breed actually costs, which marketplaces really vet their breeders, and a price check
+that catches the most common fraud. Adoption is a real secondary path, backed by live
+shelter feeds.
 
-- **Dogs first** — searching returns actual listings (photo, age, size, shelter phone number), filtered by breed / age / state / city / size and sortable by age
+- **Verified price ranges** — 25 curated breeds carry a real typical-price range, plus what legitimately moves a price inside it (health testing, pedigree, colour, transport)
+- **Price scam check** (`GET /api/price-check`) — screens a quoted price against the breed's range. A far-below-market quote is the most reported hook in puppy fraud; a *plausible* quote is explicitly never presented as an all-clear, because competent scammers price realistically
+- **Honest marketplace guide** — 7 breeder sites rated on vetting, price, delivery and documented cautions; no breeder marketplace publishes a data feed, and the UI says so rather than faking listings
+- **Dogs first (adoption path)** — searching returns actual listings (photo, age, size, shelter phone number), filtered by breed / age / state / city / size and sortable by age
 - **Age filter** — Puppy (under 1 yr) / Young / Adult / Senior, parsed out of the free-text ages the feeds publish (`AgeParser`)
 - **In-app dog detail view** — full bio, shelter phone number and the animal ID to quote, with one outbound "start the adoption" link. Addressable as `?dog=<id>`, so a single dog is shareable; a dog that has since been adopted says so rather than erroring
 - **Honest coverage** — the UI states where our feeds do and don't reach instead of showing an empty grid, and recommends **one** national site that carries your filters rather than opening fourteen tabs
@@ -48,7 +52,8 @@ The Vite dev server proxies `/api/*` to the backend.
 | `GET /api/listings/{id}` | One dog, so a shared `?dog=` link opens regardless of the visitor's filters. 404 = adopted or pulled from the feed. |
 | `GET /api/coverage` | Where live dogs exist right now: `[{ state, count, cities }]` |
 | `GET /api/sources` | Per-source status: enabled, count, last error |
-| `GET /api/breeds` | Curated breed list for the dropdown |
+| `GET /api/breeds` | Breed list with verified price ranges (`priceLow`/`priceHigh`/`typicalPrice`; null = unverified) |
+| `GET /api/price-check?breed=&price=` | Verdict on a quoted price: `Unknown` / `Free` / `FarBelow` / `Below` / `Typical` / `Above` |
 | `GET /api/sites?breed=&state=&city=` | Deep links into each source site, plus which filters each link carries |
 | `POST /api/alerts` | Save an email alert for a search (`breed`, `state`, `city`, `size`, `age`) |
 
@@ -58,5 +63,5 @@ Sources implement `IListingProvider` (`backend/Services/`); `ListingAggregator` 
 
 `ListingQuery` is the single definition of what a filter means, shared by `/api/listings`
 and the alert checker so a saved alert can never match differently from the search UI.
-`AgeParser` turns feed ages into months and groups. Neither knows about HTTP, so both
-are unit-tested directly.
+`AgeParser` turns feed ages into months and groups. `PriceCheck` holds the scam-screening
+thresholds and copy. None of them know about HTTP, so all are unit-tested directly.

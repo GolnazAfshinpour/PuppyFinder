@@ -1,7 +1,10 @@
 // Round-trips the search state through the page URL so searches are
 // bookmarkable and shareable. Only set filters appear; defaults stay clean.
 
+// Buying is the app's primary path, so it's the default and never appears in the
+// URL; 'adopt' and 'both' are the explicit choices.
 const GOALS = ['adopt', 'buy', 'both']
+const DEFAULT_GOAL = 'buy'
 const SIZES = ['Teacup', 'Small', 'Medium', 'Large']
 export const AGES = ['Puppy', 'Young', 'Adult', 'Senior']
 const SORTS = ['youngest', 'oldest']
@@ -20,7 +23,7 @@ export function parseSearchUrl(search, usStates) {
     size: match(SIZES, params.get('size')) ?? '',
     age: match(AGES, params.get('age')) ?? '',
     traits: (params.get('traits') ?? '').split(',').filter(Boolean),
-    goal: GOALS.includes(goal) ? goal : 'both',
+    goal: GOALS.includes(goal) ? goal : DEFAULT_GOAL,
     sort: match(SORTS, params.get('sort')) ?? '',
     // Which dog's detail view is open. Ids are server-generated slugs, so anything
     // unexpected here just fails the lookup and shows the "no longer listed" state.
@@ -36,7 +39,7 @@ export function buildSearchQuery({ breed, state, city, size, age, traits, goal, 
   if (size) params.set('size', size)
   if (age) params.set('age', age)
   if (traits.length) params.set('traits', traits.join(','))
-  if (goal !== 'both') params.set('goal', goal)
+  if (goal !== DEFAULT_GOAL) params.set('goal', goal)
   if (sort) params.set('sort', sort)
   if (dog) params.set('dog', dog)
   return params.toString()

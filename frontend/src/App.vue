@@ -10,6 +10,8 @@ import SearchHub from './components/SearchHub.vue'
 import ResultsFallback from './components/ResultsFallback.vue'
 import ListingCard from './components/ListingCard.vue'
 import DogDetail from './components/DogDetail.vue'
+import BreedCost from './components/BreedCost.vue'
+import PriceCheck from './components/PriceCheck.vue'
 import AlertSignup from './components/AlertSignup.vue'
 import BreedQuiz from './components/BreedQuiz.vue'
 import SafetyGuide from './components/SafetyGuide.vue'
@@ -97,9 +99,12 @@ function dropProfile() {
   profile.value = null
 }
 
-const selectedBreedName = computed(
-  () => breeds.value.find((b) => b.slug === selectedBreed.value)?.displayName ?? '',
+const selectedBreedInfo = computed(
+  () => breeds.value.find((b) => b.slug === selectedBreed.value) ?? null,
 )
+const selectedBreedName = computed(() => selectedBreedInfo.value?.displayName ?? '')
+// How many breeds we can price-check — a real number for the hero, not a claim.
+const pricedBreedCount = computed(() => breeds.value.filter((b) => b.priceLow != null).length)
 
 const liveCount = computed(() => coverage.value.reduce((total, c) => total + c.count, 0))
 
@@ -156,10 +161,10 @@ function clearAllFilters() {
   traits.value = []
 }
 
-// The search card's "Clear filters" is a full reset — including the adopt/buy goal.
+// The search card's "Clear filters" is a full reset — back to the buying default.
 function resetSearch() {
   clearAllFilters()
-  goal.value = 'both'
+  goal.value = 'buy'
 }
 
 // Shelters leave size and age blank constantly, so those filters keep unknowns by
@@ -471,27 +476,30 @@ onMounted(() => {
     <!-- Editorial hero: one headline doing the brand work, numeric trust under it. -->
     <header class="mb-8 text-center">
       <h1 class="font-display mx-auto max-w-2xl text-3xl leading-[1.1] font-semibold tracking-tight sm:text-5xl">
-        Find your dog.
-        <span class="text-primary">Not another website.</span>
+        Buy a puppy.
+        <span class="text-primary">Don't get scammed.</span>
       </h1>
       <p class="text-base-content/70 mx-auto mt-3 max-w-xl text-base">
-        Real adoptable dogs from live shelter feeds, plus an honest guide to the 14 sites
-        worth using for everywhere we don't reach yet.
+        What your breed really costs, which marketplaces actually vet their breeders,
+        and a price check that catches the most common fraud before you send a cent.
       </p>
       <div class="mt-4 flex flex-wrap justify-center gap-2">
+        <span v-if="pricedBreedCount" class="badge badge-lg badge-outline">
+          {{ pricedBreedCount }} verified price ranges
+        </span>
+        <span class="badge badge-lg badge-outline">7 breeder marketplaces, honestly rated</span>
+        <button type="button" class="badge badge-lg badge-outline cursor-pointer" @click="guideOpen = true">
+          🛡️ Scam-safety checklist
+        </button>
         <button
+          v-if="liveCount"
           type="button"
           class="badge badge-lg cursor-pointer"
-          :class="selectedAge === 'Puppy' ? 'badge-primary' : 'badge-outline'"
-          @click="selectedAge = selectedAge === 'Puppy' ? '' : 'Puppy'"
+          :class="goal === 'adopt' ? 'badge-primary' : 'badge-outline'"
+          @click="goal = goal === 'adopt' ? 'buy' : 'adopt'"
         >
-          🐶 Puppies only
+          🤝 Or adopt ({{ liveCount }} live)
         </button>
-        <button type="button" class="badge badge-lg badge-outline cursor-pointer" @click="locateMe">
-          {{ locating ? 'Locating…' : '📍 Near me' }}
-        </button>
-        <span v-if="liveCount" class="badge badge-lg badge-outline">{{ liveCount }} live dogs</span>
-        <span class="badge badge-lg badge-outline">Scam-safety guide built in</span>
       </div>
     </header>
 
@@ -537,7 +545,9 @@ onMounted(() => {
               v-model="smartQuery"
               type="text"
               class="grow"
-              placeholder="Try “golden retriever puppy near seattle” or “small senior dog in MD”"
+              :placeholder="buying
+                ? 'Try “french bulldog” or “small apartment dog”'
+                : 'Try “golden retriever puppy near seattle” or “small senior dog in MD”'"
             />
             <button type="submit" class="btn btn-primary btn-sm -mr-2">Search</button>
           </label>
@@ -561,8 +571,40 @@ onMounted(() => {
 
         <!-- Buying: we have no breeder listings of our own, so the vetted-marketplace
              guide is the answer rather than a consolation prize below an empty grid. -->
+        <!-- The buying path, in the order the decision actually happens: what it
+             should cost → is this quote sane → where to look → who to trust. No
+             marketplace publishes a feed, so there are no listings of our own to
+             show; the useful thing we can give a buyer is the price floor and the
+             vetting differences between sites. -->
         <template v-if="buying">
+          <div class="flex flex-col gap-5">
+            <BreedCost
+              :breed="selectedBreedInfo"
+              :breeds="breeds"
+              @pick-breed="selectedBreed = $event"
+              @open-quiz="quizOpen = true"
+            />
+            <PriceCheck
+              :breed-slug="selectedBreed"
+              :breed-name="selectedBreedName"
+              @open-guide="guideOpen = true"
+            />
+            <div
+              v-if="listings.length"
+              class="alert alert-soft alert-info flex flex-wrap items-center justify-between gap-2 py-2 text-sm"
+            >
+              <span>
+                🐶 <strong>{{ listings.length }}</strong> adoptable
+                {{ listings.length === 1 ? 'dog matches' : 'dogs match' }} this search — usually
+                already vaccinated and neutered, for a fraction of these prices.
+              </span>
+              <button type="button" class="link" @click="goal = 'adopt'">See them</button>
+            </div>
+          </div>
+
+          <div v-if="error" class="alert alert-error mt-6">{{ error }}</div>
           <ResultsFallback
+            v-else
             :sites="sites"
             :wanted="wantedFilters"
             goal="buy"
@@ -570,17 +612,9 @@ onMounted(() => {
             :state="selectedState"
             :coverage="coverage"
             :result-count="0"
-            flush
             @open-guide="guideOpen = true"
           />
-          <div v-if="listings.length" class="alert alert-soft alert-info mt-6 flex flex-wrap items-center justify-between gap-2 py-2 text-sm">
-            <span>
-              🐶 <strong>{{ listings.length }}</strong> adoptable
-              {{ listings.length === 1 ? 'dog' : 'dogs' }} also match this search — usually
-              vaccinated, neutered, and a fraction of the price.
-            </span>
-            <button type="button" class="link" @click="goal = 'adopt'">See them</button>
-          </div>
+
         </template>
 
         <template v-else>

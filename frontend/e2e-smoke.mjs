@@ -1,13 +1,16 @@
 // E2E smoke test: drives the running app (vite on 5173 + API on 5133) in headless
-// Chromium and checks that the search filters actually change the adoptable
-// listings. Run with: npm run test:e2e
+// Chromium. Buying is the primary path, so that's what the landing checks cover;
+// the adoption path is exercised after switching goals. Run with: npm run test:e2e
 import { chromium } from 'playwright'
 
 const browser = await chromium.launch()
-const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } })
+const page = await browser.newPage({ viewport: { width: 1440, height: 1100 } })
 const apiCalls = []
 page.on('request', (r) => {
-  if (r.url().includes('/api/listings')) apiCalls.push(r.url().replace('http://localhost:5173', ''))
+  const url = r.url()
+  if (url.includes('/api/listings') || url.includes('/api/price-check')) {
+    apiCalls.push(url.replace('http://localhost:5173', ''))
+  }
 })
 page.on('console', (m) => {
   if (m.type() === 'error') console.log('CONSOLE ERROR:', m.text())
@@ -18,73 +21,93 @@ page.on('pageerror', (e) => console.log('PAGE ERROR:', e.message))
 // to contain the word "meet" and used to be counted as dogs.
 const cards = () => page.locator('[data-testid="dog-results"] > li')
 const settle = () => page.waitForTimeout(2500)
+const breedSelect = 'select:below(:text("BREED"))'
 
-// Dogs are the landing page now — there's no tab to click first.
+// ---------- buying: the default path ----------
 await page.goto('http://localhost:5173')
-await page.waitForSelector('text=adoptable', { timeout: 15000 })
+await page.waitForSelector('h1', { timeout: 15000 })
+await settle()
+const hero = await page.locator('h1').innerText()
+const buyDefault = (await page.locator('h2:has-text("Puppies from breeders")').count()) === 1
+console.log('landing hero:', JSON.stringify(hero.replace(/\n/g, ' ')))
+console.log('buying is the default path:', buyDefault)
+
+// A breed's verified price range is the anchor the whole scam check hangs off.
+await page.selectOption(breedSelect, 'french-bulldog')
+await settle()
+const priceRange = (await page.locator('.text-primary.text-4xl').innerText()).trim()
+console.log('breed price range shown:', priceRange)
+
+// The core feature: a far-below-market quote must be flagged as a warning.
+await page.fill('input[aria-label*="quoted"]', '800')
+await page.click('button:has-text("Check this price")')
+await page.waitForTimeout(1200)
+const scamAlert = page.locator('[data-testid="price-verdict"]')
+const scamText = await scamAlert.innerText()
+const scamFlagged = (await scamAlert.getAttribute('class')).includes('alert-error')
+console.log('scam quote flagged:', scamFlagged, '|', scamText.split('\n')[0])
+
+// ...and a plausible quote must NOT read as an all-clear.
+await page.fill('input[aria-label*="quoted"]', '4000')
+await page.click('button:has-text("Check this price")')
+await page.waitForTimeout(1200)
+const okText = await page.locator('[data-testid="price-verdict"]').innerText()
+const typicalHonest = okText.includes('not a safety check')
+console.log('typical quote stays honest:', typicalHonest)
+
+// Changing breed must invalidate a stale verdict rather than mislabel it.
+await page.selectOption(breedSelect, 'beagle')
+await settle()
+const verdictCleared = (await page.locator('text=not a safety check').count()) === 0
+console.log('verdict clears when breed changes:', verdictCleared)
+
+// ---------- adopting: the secondary path ----------
+await page.click('button:has-text("Adopt a rescue dog")')
 await settle()
 const countAll = await cards().count()
-console.log('landing, no filters:', countAll, 'cards')
+console.log('adopt mode, breed=beagle:', countAll, 'cards')
 
-// Age is the filter this product is named after.
-await page.click('.badge:has-text("Puppies only")')
+await page.selectOption(breedSelect, '')
+await settle()
+const countAny = await cards().count()
+console.log('any breed:', countAny, 'cards')
+
+await page.click('button:has-text("Puppy")')
 await settle()
 const countPuppies = await cards().count()
 console.log('age=Puppy:', countPuppies, 'cards')
-await page.click('.badge:has-text("Puppies only")') // back off
+await page.click('button:has-text("Any age")')
 await settle()
-
-await page.selectOption('select:below(:text("State"))', 'WA')
-await settle()
-const countWa = await cards().count()
-console.log('state=WA:', countWa, 'cards')
 
 await page.selectOption('select:below(:text("State"))', 'MD')
 await settle()
 const countMd = await cards().count()
 console.log('state=MD:', countMd, 'cards')
 
-// Sorting reorders without dropping anyone.
-// Targeted by its options: ":below(text=Sort)" also matches the sidebar selects.
 await page.selectOption('select:has(option[value="youngest"])', 'youngest')
 await settle()
 const countSorted = await cards().count()
 console.log('sort=youngest:', countSorted, 'cards')
 
-// The site directory is now the fallback below the dogs, not the front door.
-const fallback = await page.locator('summary:has-text("Compare all")').count()
-console.log('site directory present as fallback:', fallback === 1)
-
-// Buying switches the page over to the vetted-marketplace guide, because we have
-// no breeder listings of our own to show.
-await page.click('button:has-text("Buy from a breeder")')
-await settle()
-const breederHeading = await page.locator('h2:has-text("Puppies from breeders")').count()
-console.log('goal=buy shows the breeder guide:', breederHeading === 1)
-
-// Dogs open in an in-app detail view instead of ejecting to petharbor.com, and
-// that view is addressable so a single dog can be shared.
-await page.goto('http://localhost:5173')
-await page.waitForTimeout(3000)
+// ---------- the in-app dog detail view ----------
 await page.click('[data-testid="dog-results"] > li a:has-text("Meet")')
-await page.waitForTimeout(800)
+await page.waitForTimeout(900)
 const detailOpen = await page.locator('[role="dialog"]').count()
-const detailAddressable = page.url().includes('?dog=')
+const detailAddressable = new URL(page.url()).searchParams.has('dog')
 const sharedId = new URL(page.url()).searchParams.get('dog')
 console.log('detail opens in-app:', detailOpen === 1, '| addressable:', detailAddressable)
 
 await page.keyboard.press('Escape')
 await page.waitForTimeout(500)
-const detailClosed = (await page.locator('[role="dialog"]').count()) === 0 && !page.url().includes('?dog=')
+const detailClosed = (await page.locator('[role="dialog"]').count()) === 0
+  && !new URL(page.url()).searchParams.has('dog')
 console.log('Escape closes it and clears the param:', detailClosed)
 
-// A shared link carries no filters, so this also proves the fetch-by-id path.
 await page.goto(`http://localhost:5173/?dog=${sharedId}`)
 await page.waitForTimeout(3000)
 const sharedResolves = (await page.locator('#dog-detail-name').count()) === 1
 console.log('shared ?dog= link resolves:', sharedResolves)
 
-// A dog that has since been adopted is a happy ending, not an error page.
 await page.goto('http://localhost:5173/?dog=montgomery-county-animal-services-a000000')
 await page.waitForTimeout(2500)
 const goneHandled = (await page.locator('text=no longer listed').count()) === 1
@@ -95,12 +118,17 @@ await page.screenshot({ path: (process.env.SCRATCH ?? '.') + '/adopt-tab.png', f
 await browser.close()
 
 const checks = {
-  'landing shows dogs, not websites': countAll > 0,
-  'puppy filter narrows the list': countPuppies > 0 && countPuppies < countAll,
-  'state filters narrow the list': countWa < countAll && countMd < countAll,
+  'buying is the default path': buyDefault,
+  'hero leads on buying': /buy/i.test(hero),
+  'breed price range is shown': /^\$[\d,]+–\$[\d,]+$/.test(priceRange),
+  'below-market quote is flagged': scamFlagged && /below the typical/.test(scamText),
+  'typical quote is not an all-clear': typicalHonest,
+  'stale verdict clears on breed change': verdictCleared,
+  'adopt mode lists dogs': countAny > 0,
+  'breed filter narrows adoption results': countAll < countAny,
+  'puppy filter narrows the list': countPuppies > 0 && countPuppies < countAny,
+  'state filter narrows the list': countMd < countAny,
   'sorting keeps the same dogs': countSorted === countMd,
-  'directory demoted to fallback': fallback === 1,
-  'buy mode shows the breeder guide': breederHeading === 1,
   'detail view opens in-app': detailOpen === 1 && detailAddressable,
   'detail view closes on Escape': detailClosed,
   'shared dog link resolves': sharedResolves,

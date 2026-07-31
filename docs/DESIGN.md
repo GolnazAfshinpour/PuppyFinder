@@ -98,7 +98,16 @@ Honesty beats marketing — cautions and coverage limits are stated plainly.
 
 ## 7. Search UX rules
 
-- **The page is dogs, not websites.** A search returns listings; the 14-site
+- **Buying is the primary path** (owner decision, July 2026), so `buy` is the default
+  goal and never appears in the URL. Buy mode runs in decision order: what the breed
+  costs → is this quote sane → where to look → who to trust. Adoption stays a real
+  secondary path, offered right after the price panels — the moment a four-figure
+  range makes it most persuasive — never as a guilt trip.
+- **A safety check must not read as an all-clear.** The price check says out loud that
+  a believable price proves nothing, because scammers price realistically. Warnings
+  use `alert-error`; everything else stays calm, since a page that alarms at every
+  number trains people to ignore it.
+- **The page is dogs, not websites** (adoption path). A search returns listings; the 14-site
   directory sits below them as the fallback for everywhere our feeds don't reach.
   Every primary CTA on the default screen used to be an exit link — that inverted
   the product into a directory of search engines.

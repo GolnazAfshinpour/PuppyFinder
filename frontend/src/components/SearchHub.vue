@@ -114,7 +114,7 @@ function toggleTrait(key) {
         </p>
       </label>
 
-      <div>
+      <div v-if="goal !== 'buy'">
         <span class="label-text mb-1 block text-xs font-bold tracking-wide uppercase opacity-60">Age</span>
         <div class="flex flex-wrap gap-1.5">
           <button
@@ -154,10 +154,13 @@ function toggleTrait(key) {
         >
           <option value="">Anywhere in the US</option>
           <option v-for="s in usStates" :key="s" :value="s">
-            {{ s }}{{ coverage.find((c) => c.state === s) ? ` · ${coverage.find((c) => c.state === s).count} live dogs` : '' }}
+            {{ s }}{{ goal !== 'buy' && coverage.find((c) => c.state === s) ? ` · ${coverage.find((c) => c.state === s).count} live dogs` : '' }}
           </option>
         </select>
-        <p v-if="liveCount" class="mt-1 text-xs opacity-60">
+        <p v-if="goal === 'buy'" class="mt-1 text-xs opacity-60">
+          Used to open each marketplace already filtered to your state.
+        </p>
+        <p v-else-if="liveCount" class="mt-1 text-xs opacity-60">
           {{ liveCount }} dogs in our live feeds right now. Other states fall back to the site directory.
         </p>
       </label>

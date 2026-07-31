@@ -3,7 +3,7 @@ import { buildSearchQuery, parseSearchUrl } from './searchUrl.js'
 
 const US_STATES = ['TX', 'NY', 'CA', 'ME']
 
-const defaults = { breed: '', state: '', city: '', size: '', age: '', traits: [], goal: 'both', sort: '', dog: '' }
+const defaults = { breed: '', state: '', city: '', size: '', age: '', traits: [], goal: 'buy', sort: '', dog: '' }
 
 describe('parseSearchUrl', () => {
   it('returns clean defaults for an empty query', () => {
@@ -61,7 +61,14 @@ describe('buildSearchQuery', () => {
   })
 
   it('omits defaults and city-without-state', () => {
-    expect(buildSearchQuery({ ...defaults, city: 'Houston', goal: 'both' })).toBe('')
+    expect(buildSearchQuery({ ...defaults, city: 'Houston', goal: 'buy' })).toBe('')
+  })
+
+  it('treats buy as the default goal and only serializes the others', () => {
+    expect(buildSearchQuery({ ...defaults, goal: 'buy' })).toBe('')
+    expect(buildSearchQuery({ ...defaults, goal: 'adopt' })).toBe('goal=adopt')
+    expect(parseSearchUrl('', US_STATES).goal).toBe('buy')
+    expect(parseSearchUrl('?goal=nonsense', US_STATES).goal).toBe('buy')
   })
 
   it('round-trips through parseSearchUrl', () => {
