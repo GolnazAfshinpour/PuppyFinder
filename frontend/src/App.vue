@@ -103,8 +103,13 @@ const selectedBreedInfo = computed(
   () => breeds.value.find((b) => b.slug === selectedBreed.value) ?? null,
 )
 const selectedBreedName = computed(() => selectedBreedInfo.value?.displayName ?? '')
-// How many breeds we can price-check — a real number for the hero, not a claim.
+// Two different numbers, deliberately. `pricedBreedCount` is what we can check at
+// all; `verifiedBreedCount` is what we can actually stand behind — the hero shows
+// the second, so the badge cannot overstate the data by construction.
 const pricedBreedCount = computed(() => breeds.value.filter((b) => b.priceLow != null).length)
+const verifiedBreedCount = computed(
+  () => breeds.value.filter((b) => b.confidence === 'verified').length,
+)
 
 const liveCount = computed(() => coverage.value.reduce((total, c) => total + c.count, 0))
 
@@ -484,8 +489,11 @@ onMounted(() => {
         and a price check that catches the most common fraud before you send a cent.
       </p>
       <div class="mt-4 flex flex-wrap justify-center gap-2">
-        <span v-if="pricedBreedCount" class="badge badge-lg badge-outline">
-          {{ pricedBreedCount }} verified price ranges
+        <span v-if="verifiedBreedCount" class="badge badge-lg badge-outline">
+          {{ verifiedBreedCount }} sourced price ranges
+        </span>
+        <span v-else-if="pricedBreedCount" class="badge badge-lg badge-outline">
+          {{ pricedBreedCount }} breed price estimates
         </span>
         <span class="badge badge-lg badge-outline">7 breeder marketplaces, honestly rated</span>
         <button type="button" class="badge badge-lg badge-outline cursor-pointer" @click="guideOpen = true">

@@ -62,6 +62,19 @@ public record Site(
 /// </summary>
 public static class SiteCatalog
 {
+    /// <summary>
+    /// Slugs of the hand-curated breeds — the ones with real trait scores for the
+    /// quiz and filters. Callers previously inferred this from "has a price", which
+    /// stopped being equivalent once prices moved to the database.
+    /// </summary>
+    public static bool IsCurated(string slug) => CuratedSlugs.Value.Contains(slug);
+
+    // Lazy, not a plain static initializer: static fields initialize in declaration
+    // order, and Breeds is declared below this — eager initialization would read it
+    // as null and throw during type init.
+    private static readonly Lazy<HashSet<string>> CuratedSlugs = new(() =>
+        new HashSet<string>(Breeds.Select(b => b.Slug), StringComparer.OrdinalIgnoreCase));
+
     public static readonly IReadOnlyList<Breed> Breeds =
     [
         new("australian-shepherd", "Australian Shepherd", "australian-shepherd",

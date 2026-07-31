@@ -142,6 +142,60 @@ ever existed — had ~14,000 orgs, and even that was never "all". The product
 consequence: partial coverage is a permanent first-class state, which is why the UI
 states where our feeds reach and hands off to one national site elsewhere.
 
+## Price provenance (July 2026)
+
+**The gap this closes:** the breed price ranges in `SiteCatalog.cs` were added in the
+first feature commit (`9ce94b1`) with no citation, and this file — which records
+URL-pattern verification and API research in detail — said nothing about where they came
+from. They were almost certainly model-generated from training data. The UI then called
+them "verified" in four places and built the scam check on top.
+
+Prices now live in SQLite (`backend/data/prices.db`, gitignored — derived data) with an
+append-only observation table. Every figure carries a source URL, a verbatim supporting
+quote, and a retrieval date. `SiteCatalog`'s numbers are a **seed only**.
+
+**The original 25 are imported as `unverified`**, with an observation whose publisher
+reads `legacy hardcoded (unsourced)`. That is deliberate: trusting them is the bug, so
+grandfathering them in as verified would defeat the exercise. They keep working; they
+stop claiming.
+
+### There is no authoritative source, and that shapes everything
+
+Checked before designing the research job:
+
+| Candidate | Outcome |
+|---|---|
+| Good Dog breed pages | Publish **no** price or range at all (verified by fetching `/breeds/french-bulldog`), and no listing prices |
+| Breed parent clubs | Deliberately avoid quoting figures — their codes of ethics make pricing the breeder's responsibility to set |
+| AKC | Buyer guidance, no prices. AKC Marketplace has real asking prices but no API, Cloudflare, client-side rendering — scraping already ruled out above |
+
+What exists is pet-insurance/financial publishers and affiliate breed-content sites. Raw
+figures look wildly inconsistent (Akita: $650–2,000 / $1,000–2,500 / $1,500–3,500) — but
+**most of that is conflated scope, not disagreement.** For French Bulldog, $1,500–4,500
+was pet-quality standard colour, $5,000–10,000 was rare colours, and ~$5,000 was an
+average folding both together. Three different questions reported as one.
+
+### Rules the research job follows
+
+- **Scope normalization.** Every figure is tagged `pet_standard` / `show_or_pedigree` /
+  `rare_colour` / `rescue` / `unscoped`. **Only `pet_standard` feeds the published
+  range.** A source giving one undifferentiated number is `unscoped` and excluded — that
+  is the point, not a limitation.
+- **Tiered sources.** Tier A = editorially accountable publishers (insurance, financial,
+  veterinary). Tier B = breed-content sites, which do real research but run on affiliate
+  revenue. **Tier B alone can never reach `verified`.**
+- **Excluded as price authority.** Anyone *selling* the breed (conflicted), and the
+  classifieds we caution users about — Lancaster, Greenfield, Puppies.com, Craigslist.
+  Their listing prices are *what the scam check screens against*; letting them set the
+  floor would drag it down and quietly disarm the feature.
+- **Independence.** Two domains reporting byte-identical ranges is copied content, so it
+  collapses to one source rather than counting as corroboration.
+- **Extraction, never estimation.** No source URL and verbatim quote → no write. A breed
+  with nothing citable stays `unverified`. An empty result is a correct answer.
+- **Confidence is a property of the data**, surfaced through `/api/breeds` and
+  `/api/price-sources`, so the UI reads it rather than asserting "verified" itself. The
+  hero badge counts only `verified` breeds and therefore cannot overstate.
+
 ## Roadmap
 
 1. **Phase 1 (blocked on the key, requested July 2026):** RescueGroups v5 →

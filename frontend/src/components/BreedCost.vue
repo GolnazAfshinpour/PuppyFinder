@@ -1,5 +1,6 @@
 <script setup>
 import { computed } from 'vue'
+import PriceProvenance from './PriceProvenance.vue'
 
 const props = defineProps({
   breed: { type: Object, default: null }, // the selected breed from /api/breeds
@@ -49,9 +50,12 @@ const ONGOING_COSTS = [
           </p>
           <p class="font-display text-primary mt-1 text-4xl font-semibold">{{ breed.typicalPrice }}</p>
           <p class="mt-1 text-sm opacity-70">
-            Typical US purchase price from a breeder. Anything far below this is the
+            What a puppy from a breeder tends to go for. Anything far below this is the
             single most reported puppy-scam signal — check a quote below.
           </p>
+          <!-- The range labels its own reliability; the copy never asserts more than
+               the data supports. -->
+          <PriceProvenance :breed="breed" class="mt-2" />
         </div>
 
         <p v-if="breed.blurb" class="border-base-300 border-l-2 pl-3 text-sm italic opacity-80">
@@ -84,17 +88,16 @@ const ONGOING_COSTS = [
         </details>
       </template>
 
-      <!-- Breed chosen, but outside our verified set. Say so plainly. -->
+      <!-- Breed chosen, but we have no range for it at all. Say so plainly. -->
       <template v-else-if="breed">
         <div>
           <p class="text-xs font-bold tracking-wide uppercase opacity-60">
             {{ breed.displayName }}
           </p>
-          <p class="mt-1 text-lg font-semibold">We don't have a verified price range for this breed yet</p>
+          <p class="mt-1 text-lg font-semibold">We don't have a price range for this breed yet</p>
           <p class="mt-1 text-sm opacity-70">
-            We only publish ranges we've checked, and this isn't one of them. Get quotes from at
-            least three breeders to find the going rate yourself — then treat any quote that
-            undercuts the rest sharply as the outlier, not the bargain.
+            Get quotes from at least three breeders to find the going rate yourself — then treat
+            any quote that undercuts the rest sharply as the outlier, not the bargain.
           </p>
         </div>
         <div class="flex flex-wrap gap-2">

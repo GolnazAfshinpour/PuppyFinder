@@ -1,4 +1,5 @@
 using PuppyFinder.Api.Data;
+using PuppyFinder.Api.Models;
 using PuppyFinder.Api.Services;
 
 namespace PuppyFinder.Api.Tests;
@@ -106,5 +107,85 @@ public class PriceCheckTests
             Assert.False(string.IsNullOrWhiteSpace(verdict.Headline));
             Assert.True(verdict.Detail.Length > 80, $"${price} verdict needs real guidance, not a label");
         }
+    }
+
+    // ---- confidence: the verdict must never read as more authoritative than its data ----
+
+    private static PuppyFinder.Api.Models.BreedPrice Backing(string confidence, int sources = 0) =>
+        new("french-bulldog", 3000, 6000, confidence, sources, DateTimeOffset.UtcNow);
+
+    [Fact]
+    public void AnUnsourcedRangeSaysSoOnEveryVerdict()
+    {
+        // The regression that started all this: a range nobody can source reading with
+        // the same authority as three cited ones.
+        int[] prices = [0, 800, 2900, 4500, 9000];
+
+        foreach (var price in prices)
+        {
+            var verdict = PriceCheck.Evaluate(Frenchie, price, Backing(PriceConfidence.Unverified));
+            Assert.Contains("isn't sourced yet", verdict.Detail);
+            Assert.Equal(PriceConfidence.Unverified, verdict.Confidence);
+        }
+    }
+
+    [Fact]
+    public void DefaultingWithNoBackingRecordIsTreatedAsUnsourced()
+    {
+        // A caller that forgets to pass provenance must get the cautious reading,
+        // not the confident one.
+        var verdict = PriceCheck.Evaluate(Frenchie, 4500);
+
+        Assert.Equal(PriceConfidence.Unverified, verdict.Confidence);
+        Assert.Contains("isn't sourced yet", verdict.Detail);
+    }
+
+    [Fact]
+    public void AVerifiedRangeCitesItsSourceCountInsteadOfHedging()
+    {
+        var verdict = PriceCheck.Evaluate(Frenchie, 4500, Backing(PriceConfidence.Verified, 3));
+
+        Assert.Contains("3 independent sources", verdict.Detail);
+        Assert.DoesNotContain("isn't sourced yet", verdict.Detail);
+        // The core honesty line survives regardless of confidence.
+        Assert.Contains("not a safety check", verdict.Detail);
+    }
+
+    [Fact]
+    public void AContestedRangeTellsYouNotToTrustTheMidpoint()
+    {
+        var verdict = PriceCheck.Evaluate(Frenchie, 4500, Backing(PriceConfidence.Contested, 3));
+
+        Assert.Contains("disagree materially", verdict.Detail);
+        Assert.Contains("midpoint means little", verdict.Detail);
+    }
+
+    [Fact]
+    public void ASingleSourceRangeIsCalledARoughMarker()
+    {
+        var verdict = PriceCheck.Evaluate(Frenchie, 4500, Backing(PriceConfidence.SingleSource, 1));
+
+        Assert.Contains("single source", verdict.Detail);
+    }
+
+    [Fact]
+    public void ConfidenceCaveatsDoNotWeakenTheScamWarning()
+    {
+        var verdict = PriceCheck.Evaluate(Frenchie, 800, Backing(PriceConfidence.Unverified));
+
+        // Still a warning, still names the percentage — the caveat is additive.
+        Assert.True(verdict.IsWarning);
+        Assert.Equal("FarBelow", verdict.Level);
+        Assert.Contains("73% below", verdict.Headline);
+    }
+
+    [Fact]
+    public void TheNoRangeVerdictIsNotCaveatedTwice()
+    {
+        // Nothing was measured against, so a provenance caveat would be noise.
+        var verdict = PriceCheck.Evaluate(Unpriced, 800, null);
+
+        Assert.Equal("Unknown", verdict.Level);
+        Assert.DoesNotContain("isn't sourced yet", verdict.Detail);
     }
 }

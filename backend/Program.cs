@@ -25,6 +25,10 @@ builder.Services.AddHttpClient("dogceo", client =>
     client.Timeout = TimeSpan.FromSeconds(15);
     client.DefaultRequestHeaders.UserAgent.ParseAdd("PuppyFinder/1.0");
 });
+// Breed prices live in SQLite with their provenance, not in source: every figure
+// carries a source URL, a verbatim quote, and a retrieval date. See docs/SOURCES.md.
+builder.Services.AddSingleton<PriceDb>();
+builder.Services.AddSingleton<PriceStore>();
 builder.Services.AddSingleton<BreedCatalogService>();
 
 // Government open-data feeds — public JSON, no API key needed.
@@ -86,6 +90,10 @@ if (app.Environment.IsDevelopment())
 
 app.UseCors(FrontendCors);
 
+// First run imports the previously-hardcoded ranges as 'unverified' — they keep
+// working but stop claiming a provenance they never had.
+await app.Services.GetRequiredService<PriceStore>().SeedFromCatalogAsync(CancellationToken.None);
+
 app.MapGet("/api/listings", async (string? breed, string? state, string? city, string? size,
     string? age, string? sort, bool? includeUnlisted,
     ListingAggregator aggregator, BreedCatalogService catalog, CancellationToken ct) =>
@@ -141,14 +149,49 @@ app.MapGet("/api/coverage", async (ListingAggregator aggregator, CancellationTok
 
 // What a quoted puppy price says about the seller. Buying is the app's main path,
 // and a below-market price is the highest-signal scam check a buyer can run.
-app.MapGet("/api/price-check", async (string? breed, int price, BreedCatalogService catalog, CancellationToken ct) =>
-    Results.Ok(PriceCheck.Evaluate(
-        string.IsNullOrWhiteSpace(breed) ? null : await catalog.FindAsync(breed, ct),
-        price)))
+app.MapGet("/api/price-check", async (string? breed, int price,
+    BreedCatalogService catalog, PriceStore prices, CancellationToken ct) =>
+{
+    var selected = string.IsNullOrWhiteSpace(breed) ? null : await catalog.FindAsync(breed, ct);
+    var backing = selected is null ? null : await prices.FindAsync(selected.Slug, ct);
+    return Results.Ok(PriceCheck.Evaluate(selected, price, backing));
+})
 .WithName("CheckPrice");
 
-app.MapGet("/api/breeds", async (BreedCatalogService catalog, CancellationToken ct) =>
-    Results.Ok((await catalog.GetBreedsAsync(ct)).Select(b => new
+// The sources behind a breed's range — what the UI cites instead of asserting
+// "verified" on its own.
+app.MapGet("/api/price-sources", async (string breed, PriceStore prices, CancellationToken ct) =>
+{
+    var live = await prices.FindAsync(breed, ct);
+    var observations = await prices.GetObservationsAsync(breed, ObservationStatus.Accepted, ct);
+    return Results.Ok(new
+    {
+        Breed = breed,
+        live?.Confidence,
+        SourceCount = live?.SourceCount ?? 0,
+        live?.SpreadRatio,
+        UpdatedAt = live?.UpdatedAt,
+        Sources = observations.Select(o => new
+        {
+            o.Publisher,
+            o.PublisherTier,
+            o.SourceUrl,
+            o.Quote,
+            o.Scope,
+            o.PriceLow,
+            o.PriceHigh,
+            o.PublishedAt,
+            o.RedFlagQuote,
+            o.RetrievedAt,
+        }),
+    });
+})
+.WithName("GetPriceSources");
+
+app.MapGet("/api/breeds", async (BreedCatalogService catalog, PriceStore prices, CancellationToken ct) =>
+{
+    var live = await prices.GetAllAsync(ct);
+    return Results.Ok((await catalog.GetBreedsAsync(ct)).Select(b => new
     {
         b.Slug,
         b.DisplayName,
@@ -158,18 +201,25 @@ app.MapGet("/api/breeds", async (BreedCatalogService catalog, CancellationToken 
         PriceLow = b.PriceHigh > 0 ? b.PriceLow : (int?)null,
         PriceHigh = b.PriceHigh > 0 ? b.PriceHigh : (int?)null,
         TypicalPrice = b.PriceHigh > 0 ? b.TypicalPrice : null,
+        // How well the range is backed, so the UI can label it honestly instead of
+        // asserting "verified" on its own.
+        Confidence = live.GetValueOrDefault(b.Slug)?.Confidence ?? PriceConfidence.Unverified,
+        SourceCount = live.GetValueOrDefault(b.Slug)?.SourceCount ?? 0,
+        SpreadRatio = live.GetValueOrDefault(b.Slug)?.SpreadRatio,
+        PriceUpdatedAt = live.GetValueOrDefault(b.Slug)?.UpdatedAt,
         Blurb = b.Blurb.Length > 0 ? b.Blurb : null,
-        Energy = b.PriceHigh > 0 ? b.Energy : (int?)null,
-        Grooming = b.PriceHigh > 0 ? b.Grooming : (int?)null,
+        Energy = SiteCatalog.IsCurated(b.Slug) ? b.Energy : (int?)null,
+        Grooming = SiteCatalog.IsCurated(b.Slug) ? b.Grooming : (int?)null,
         // Size and traits are only meaningful for curated breeds; external
         // catalog entries default to neutral values without real data, so they're
         // reported as unknown for filtering.
-        Size = b.PriceHigh > 0 ? b.Size : null,
-        KidFriendly = b.PriceHigh > 0 ? b.KidFriendly : (int?)null,
-        ApartmentFriendly = b.PriceHigh > 0 ? b.ApartmentFriendly : (int?)null,
-        Shedding = b.PriceHigh > 0 ? b.Shedding : (int?)null,
+        Size = SiteCatalog.IsCurated(b.Slug) ? b.Size : null,
+        KidFriendly = SiteCatalog.IsCurated(b.Slug) ? b.KidFriendly : (int?)null,
+        ApartmentFriendly = SiteCatalog.IsCurated(b.Slug) ? b.ApartmentFriendly : (int?)null,
+        Shedding = SiteCatalog.IsCurated(b.Slug) ? b.Shedding : (int?)null,
         ImagePath = b.DogCeoPath,
-    })))
+    }));
+})
 .WithName("GetBreeds");
 
 app.MapPost("/api/quiz", (QuizAnswers answers) =>

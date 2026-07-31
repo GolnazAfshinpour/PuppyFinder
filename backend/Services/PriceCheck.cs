@@ -1,4 +1,5 @@
 using PuppyFinder.Api.Data;
+using PuppyFinder.Api.Models;
 
 namespace PuppyFinder.Api.Services;
 
@@ -10,7 +11,13 @@ public record PriceVerdict(
     bool IsWarning,      // render as a caution rather than reassurance
     int? PriceLow = null,
     int? PriceHigh = null,
-    int? PercentAway = null); // how far outside the range, as a % of the nearest bound
+    int? PercentAway = null,  // how far outside the range, as a % of the nearest bound
+    /// <summary>
+    /// How well the range itself is backed (see <see cref="PriceConfidence"/>). The UI
+    /// must not present a verdict as more authoritative than the data behind it.
+    /// </summary>
+    string Confidence = PriceConfidence.Unverified,
+    int SourceCount = 0);
 
 /// <summary>
 /// Screens a quoted puppy price against the breed's typical range.
@@ -26,8 +33,46 @@ public static class PriceCheck
     /// <summary>Below this fraction of the low end, price alone is a serious red flag.</summary>
     private const double FarBelowFactor = 0.5;
 
-    public static PriceVerdict Evaluate(Breed? breed, int price)
+    public static PriceVerdict Evaluate(Breed? breed, int price, BreedPrice? backing = null) =>
+        WithConfidenceCaveat(EvaluateAgainstRange(breed, price, backing), backing);
+
+    /// <summary>
+    /// Appends a plain statement of how well the range is backed. Without this the
+    /// verdict reads with the same authority whether it's measured against three
+    /// cited sources or a number nobody can source — which is the exact failure this
+    /// whole pipeline exists to fix.
+    /// </summary>
+    private static PriceVerdict WithConfidenceCaveat(PriceVerdict verdict, BreedPrice? backing)
     {
+        // Nothing to caveat: no range was used in the first place.
+        if (verdict.Level == "Unknown")
+        {
+            return verdict;
+        }
+
+        var caveat = verdict.Confidence switch
+        {
+            PriceConfidence.Verified =>
+                $" This range comes from {verdict.SourceCount} independent sources — tap to see them.",
+            PriceConfidence.Contested =>
+                " Treat that range loosely: our sources disagree materially about this breed, so the"
+                + " spread is wide and the midpoint means little. Three local quotes will tell you more.",
+            PriceConfidence.SingleSource =>
+                " That range rests on a single source, so treat it as a rough marker rather than a"
+                + " going rate.",
+            // Includes the original hardcoded numbers. Say it outright.
+            _ => " One caveat on the range itself: it's our own estimate and isn't sourced yet, so"
+                 + " use it as a rough orientation only and get three quotes of your own.",
+        };
+
+        return verdict with { Detail = verdict.Detail + caveat };
+    }
+
+    private static PriceVerdict EvaluateAgainstRange(Breed? breed, int price, BreedPrice? backing)
+    {
+        var confidence = backing?.Confidence ?? PriceConfidence.Unverified;
+        var sources = backing?.SourceCount ?? 0;
+
         // Curated breeds carry real ranges; the dog.ceo catalog entries don't
         // (PriceHigh 0). Saying so beats inventing a number to judge against.
         if (breed is null || breed.PriceHigh <= 0 || breed.PriceLow <= 0)
@@ -37,10 +82,12 @@ public static class PriceCheck
                 "We don't have a verified price range for this breed",
                 breed is null
                     ? "Pick a breed from the list and we'll compare the quote against its typical range."
-                    : $"We only publish ranges we've verified, and {breed.DisplayName} isn't one of them yet. "
+                    : $"We don't have a range for {breed.DisplayName} yet. "
                       + "Get quotes from at least three breeders to establish the going rate yourself — "
                       + "and treat any one that undercuts the others sharply as the outlier, not the bargain.",
-                IsWarning: false);
+                IsWarning: false,
+                Confidence: confidence,
+                SourceCount: sources);
         }
 
         var low = breed.PriceLow;
@@ -56,7 +103,7 @@ public static class PriceCheck
                 + "by accident. \"Free to a good home, just pay shipping\" is one of the oldest scam scripts "
                 + "there is — the shipping fee is the product, and the puppy doesn't exist.",
                 IsWarning: true,
-                low, high);
+                low, high, null, confidence, sources);
         }
 
         if (price < low * FarBelowFactor)
@@ -68,7 +115,7 @@ public static class PriceCheck
                 + "won't do a live video call, wants a wire transfer, gift cards, Zelle or crypto, or adds fees "
                 + "after you commit, walk away — those four together are the whole playbook.",
                 IsWarning: true,
-                low, high, PercentBelow(price, low));
+                low, high, PercentBelow(price, low), confidence, sources);
         }
 
         if (price < low)
@@ -80,7 +127,7 @@ public static class PriceCheck
                 + "transport, or a breeder without champion lines. Ask directly why it's priced below market. "
                 + "A real breeder has a straight answer; a scammer has a story.",
                 IsWarning: false,
-                low, high, PercentBelow(price, low));
+                low, high, PercentBelow(price, low), confidence, sources);
         }
 
         if (price > high)
@@ -93,7 +140,7 @@ public static class PriceCheck
                 + "results for both parents, registration papers, and the contract. \"Rare\" colours often mean "
                 + "disqualifying ones that carry health problems.",
                 IsWarning: false,
-                low, high, PercentAbove(price, high));
+                low, high, PercentAbove(price, high), confidence, sources);
         }
 
         return new PriceVerdict(
@@ -103,7 +150,7 @@ public static class PriceCheck
             + "price realistically for exactly this reason. Everything else still has to hold up: see the puppy "
             + "and its mother live, get health testing on paper, and never send money by wire, gift card or crypto.",
             IsWarning: false,
-            low, high);
+            low, high, null, confidence, sources);
     }
 
     private static int PercentBelow(int price, int low) => (int)Math.Round((low - price) * 100.0 / low);

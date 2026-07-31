@@ -43,10 +43,17 @@ async function check() {
 
 // Warnings shout, everything else stays calm — a page that alarms at every number
 // trains people to ignore it.
+// One exception to the calm/shout split: a green "success" on a Typical verdict
+// implies we checked the range, so it's only earned when the range is actually
+// sourced. Against an unsourced estimate it drops to neutral info — the verdict text
+// already says so, and the colour shouldn't contradict it.
 const alertClass = computed(() => {
   if (!verdict.value) return ''
   if (verdict.value.isWarning) return 'alert-error'
-  return { Typical: 'alert-success', Above: 'alert-warning', Unknown: 'alert-info' }[verdict.value.level] ?? 'alert-info'
+  if (verdict.value.level === 'Typical') {
+    return verdict.value.confidence === 'verified' ? 'alert-success' : 'alert-info'
+  }
+  return { Above: 'alert-warning', Unknown: 'alert-info' }[verdict.value.level] ?? 'alert-info'
 })
 </script>
 
@@ -58,7 +65,7 @@ const alertClass = computed(() => {
         <p class="text-sm opacity-70">
           A price far below market is the most reported hook in puppy fraud. This compares a
           quote against
-          <template v-if="breedName">what a {{ breedName }} really sells for.</template>
+          <template v-if="breedName">our range for a {{ breedName }}.</template>
           <template v-else>the breed's real range — pick a breed for the sharpest answer.</template>
         </p>
       </div>

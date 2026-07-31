@@ -8,9 +8,13 @@ namespace PuppyFinder.Api.Services;
 /// full breed catalog from the free, keyless dog.ceo API. Curated entries win on
 /// conflicts; external breeds get neutral traits and are used for the dropdown
 /// and deep links only (the quiz scores curated breeds exclusively).
+///
+/// Prices are then overlaid from <see cref="PriceStore"/>, which is authoritative:
+/// the numbers in <see cref="SiteCatalog"/> are only an unsourced seed.
 /// </summary>
 public sealed class BreedCatalogService(
     IHttpClientFactory httpClientFactory,
+    PriceStore priceStore,
     ILogger<BreedCatalogService> logger)
 {
     private const string BreedsUrl = "https://dog.ceo/api/breeds/list/all";
@@ -72,7 +76,7 @@ public sealed class BreedCatalogService(
                 logger.LogWarning("dog.ceo fetch failed, using curated breeds only: {Message}", ex.Message);
             }
 
-            _cached = merged.Values.OrderBy(b => b.DisplayName).ToList();
+            _cached = await OverlayPricesAsync(merged.Values, cancellationToken);
             return _cached;
         }
         finally
@@ -80,6 +84,25 @@ public sealed class BreedCatalogService(
             _lock.Release();
         }
     }
+
+    /// <summary>
+    /// Replaces each breed's seed price with the live DB value. A breed absent from
+    /// the DB keeps zeroes, which every caller already reads as "no verified range".
+    /// </summary>
+    private async Task<IReadOnlyList<Breed>> OverlayPricesAsync(
+        IEnumerable<Breed> breeds, CancellationToken cancellationToken)
+    {
+        var prices = await priceStore.GetAllAsync(cancellationToken);
+        return breeds
+            .Select(b => prices.TryGetValue(b.Slug, out var price)
+                ? b with { PriceLow = price.PriceLow, PriceHigh = price.PriceHigh }
+                : b with { PriceLow = 0, PriceHigh = 0 })
+            .OrderBy(b => b.DisplayName)
+            .ToList();
+    }
+
+    /// <summary>Drops the merged catalog so the next read picks up refreshed prices.</summary>
+    public void InvalidatePrices() => _cached = null;
 
     public async Task<Breed?> FindAsync(string slug, CancellationToken cancellationToken) =>
         (await GetBreedsAsync(cancellationToken))

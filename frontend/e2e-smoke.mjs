@@ -38,6 +38,14 @@ await settle()
 const priceRange = (await page.locator('.text-primary.text-4xl').innerText()).trim()
 console.log('breed price range shown:', priceRange)
 
+// The range must label its own reliability, and the hero must not overstate it.
+// This is the regression that motivated the whole provenance pipeline: unsourced
+// numbers presented as "verified".
+const heroBadges = (await page.locator('header .badge').allInnerTexts()).join(' | ')
+const provenance = await page.locator('text=/isn\'t sourced yet|independent sources?|disagree materially/').count()
+console.log('hero badges:', heroBadges)
+console.log('range states its provenance:', provenance > 0)
+
 // The core feature: a far-below-market quote must be flagged as a warning.
 await page.fill('input[aria-label*="quoted"]', '800')
 await page.click('button:has-text("Check this price")')
@@ -121,6 +129,9 @@ const checks = {
   'buying is the default path': buyDefault,
   'hero leads on buying': /buy/i.test(hero),
   'breed price range is shown': /^\$[\d,]+–\$[\d,]+$/.test(priceRange),
+  'range states its own provenance': provenance > 0,
+  // "verified" may only appear once the data actually says so; today it does not.
+  'hero does not claim unearned verification': !/verified/i.test(heroBadges),
   'below-market quote is flagged': scamFlagged && /below the typical/.test(scamText),
   'typical quote is not an all-clear': typicalHonest,
   'stale verdict clears on breed change': verdictCleared,

@@ -4,5 +4,10 @@ node_modules/
 dist/
 .vite/
 .DS_Store
-backend/data/
+# Runtime artifacts only — NOT the whole directory. backend/Data/ holds source
+# (SiteCatalog.cs, PriceDb.cs) alongside generated files, and on a case-insensitive
+# filesystem a `backend/data/` rule silently swallows new source files too.
+backend/data/alerts.json
+backend/data/outbox/
+backend/data/prices.db*
 frontend/adopt-tab.png
