@@ -103,6 +103,17 @@ Honesty beats marketing — cautions and coverage limits are stated plainly.
   costs → is this quote sane → where to look → who to trust. Adoption stays a real
   secondary path, offered right after the price panels — the moment a four-figure
   range makes it most persuasive — never as a guilt trip.
+- **A safety feature that can't be sourced is switched off, not caveated.** The price
+  scam check returns `Unavailable` unless the breed's range came from independent cited
+  sources. A caveat is the right tool for a *soft* claim ("size not listed"); it is the
+  wrong tool for "this seller is defrauding you", where being wrong in either direction
+  does real harm — a legitimate breeder accused, or a real scam waved through. The gate
+  lives in `PriceCheck.Evaluate`, not just the UI, so no caller can bypass it, and it's
+  keyed on data rather than a feature flag so each breed switches on by itself.
+- **When a feature is off, replace it with something that works.** Price screening off
+  doesn't mean a blank panel: the buy path shows the five checks that need no price at
+  all (three quotes, live video, health testing on paper, never wire/gift-card/crypto,
+  walk away from post-commitment fees).
 - **A safety check must not read as an all-clear.** The price check says out loud that
   a believable price proves nothing, because scammers price realistically. Warnings
   use `alert-error`; everything else stays calm, since a page that alarms at every

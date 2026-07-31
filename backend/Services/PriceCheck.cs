@@ -33,8 +33,45 @@ public static class PriceCheck
     /// <summary>Below this fraction of the low end, price alone is a serious red flag.</summary>
     private const double FarBelowFactor = 0.5;
 
-    public static PriceVerdict Evaluate(Breed? breed, int price, BreedPrice? backing = null) =>
-        WithConfidenceCaveat(EvaluateAgainstRange(breed, price, backing), backing);
+    /// <summary>
+    /// True when we can defensibly screen a quote for this breed — i.e. the range
+    /// came from independent cited sources.
+    /// </summary>
+    public static bool CanScreen(BreedPrice? backing) =>
+        backing?.Confidence == PriceConfidence.Verified;
+
+    public static PriceVerdict Evaluate(Breed? breed, int price, BreedPrice? backing = null)
+    {
+        // Owner decision (July 2026): no scam screening until the database holds
+        // sourced ranges. Enforced here rather than only in the UI, so no caller —
+        // API consumer, future job, or a component someone forgets to gate — can
+        // render a fraud verdict measured against a number we can't attribute.
+        //
+        // This is deliberately data-driven, not a feature flag: each breed starts
+        // screening the moment its range reaches `verified`, and nothing has to be
+        // switched on by hand.
+        if (!CanScreen(backing))
+        {
+            return Unavailable(breed, backing);
+        }
+
+        return WithConfidenceCaveat(EvaluateAgainstRange(breed, price, backing), backing);
+    }
+
+    private static PriceVerdict Unavailable(Breed? breed, BreedPrice? backing) => new(
+        "Unavailable",
+        "We're not price-checking this breed yet",
+        breed is null
+            ? "Pick a breed to see whether we can check quotes for it yet."
+            : $"Telling you a {breed.DisplayName} quote is a scam means measuring it against a "
+              + "number we can stand behind, and we don't have a sourced range for this breed yet. "
+              + "We'd rather say nothing than wrongly accuse a legitimate breeder — or reassure you "
+              + "about a real scam. Until then: get quotes from three breeders, treat the one that "
+              + "sharply undercuts the others as the outlier rather than the bargain, and run the "
+              + "safety checklist, which doesn't depend on price at all.",
+        IsWarning: false,
+        Confidence: backing?.Confidence ?? PriceConfidence.Unverified,
+        SourceCount: backing?.SourceCount ?? 0);
 
     /// <summary>
     /// Appends a plain statement of how well the range is backed. Without this the

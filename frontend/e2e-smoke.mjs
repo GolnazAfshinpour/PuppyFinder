@@ -32,42 +32,23 @@ const buyDefault = (await page.locator('h2:has-text("Puppies from breeders")').c
 console.log('landing hero:', JSON.stringify(hero.replace(/\n/g, ' ')))
 console.log('buying is the default path:', buyDefault)
 
-// A breed's verified price range is the anchor the whole scam check hangs off.
+// Price screening is gated on sourced data (owner decision, July 2026). With
+// nothing verified in the DB, the checker and the headline range must both be
+// absent — and the hero must not promise a check it doesn't offer.
 await page.selectOption(breedSelect, 'french-bulldog')
 await settle()
-const priceRange = (await page.locator('.text-primary.text-4xl').innerText()).trim()
-console.log('breed price range shown:', priceRange)
+const heroSub = await page.locator('header p').first().innerText()
+const checkerPresent = await page.locator('text=Been quoted a price').count()
+const rangeShown = await page.locator('.text-primary.text-4xl').count()
+const priceFreeAdvice = await page.locator('text=What to check before you send money').count()
+console.log('checker offered:', checkerPresent, '| range shown:', rangeShown, '| price-free advice:', priceFreeAdvice)
 
-// The range must label its own reliability, and the hero must not overstate it.
-// This is the regression that motivated the whole provenance pipeline: unsourced
-// numbers presented as "verified".
-const heroBadges = (await page.locator('header .badge').allInnerTexts()).join(' | ')
-const provenance = await page.locator('text=/isn\'t sourced yet|independent sources?|disagree materially/').count()
-console.log('hero badges:', heroBadges)
-console.log('range states its provenance:', provenance > 0)
-
-// The core feature: a far-below-market quote must be flagged as a warning.
-await page.fill('input[aria-label*="quoted"]', '800')
-await page.click('button:has-text("Check this price")')
-await page.waitForTimeout(1200)
-const scamAlert = page.locator('[data-testid="price-verdict"]')
-const scamText = await scamAlert.innerText()
-const scamFlagged = (await scamAlert.getAttribute('class')).includes('alert-error')
-console.log('scam quote flagged:', scamFlagged, '|', scamText.split('\n')[0])
-
-// ...and a plausible quote must NOT read as an all-clear.
-await page.fill('input[aria-label*="quoted"]', '4000')
-await page.click('button:has-text("Check this price")')
-await page.waitForTimeout(1200)
-const okText = await page.locator('[data-testid="price-verdict"]').innerText()
-const typicalHonest = okText.includes('not a safety check')
-console.log('typical quote stays honest:', typicalHonest)
-
-// Changing breed must invalidate a stale verdict rather than mislabel it.
-await page.selectOption(breedSelect, 'beagle')
-await settle()
-const verdictCleared = (await page.locator('text=not a safety check').count()) === 0
-console.log('verdict clears when breed changes:', verdictCleared)
+// The API must refuse too, not just the UI — a direct call can't produce a verdict.
+const gated = await page.evaluate(async () => {
+  const res = await fetch('/api/price-check?breed=french-bulldog&price=800')
+  return res.json()
+})
+console.log('api verdict level:', gated.level, '| isWarning:', gated.isWarning)
 
 // ---------- adopting: the secondary path ----------
 await page.click('button:has-text("Adopt a rescue dog")')
@@ -128,13 +109,13 @@ await browser.close()
 const checks = {
   'buying is the default path': buyDefault,
   'hero leads on buying': /buy/i.test(hero),
-  'breed price range is shown': /^\$[\d,]+–\$[\d,]+$/.test(priceRange),
-  'range states its own provenance': provenance > 0,
-  // "verified" may only appear once the data actually says so; today it does not.
-  'hero does not claim unearned verification': !/verified/i.test(heroBadges),
-  'below-market quote is flagged': scamFlagged && /below the typical/.test(scamText),
-  'typical quote is not an all-clear': typicalHonest,
-  'stale verdict clears on breed change': verdictCleared,
+  'no price checker while data is unsourced': checkerPresent === 0,
+  'no price range shown while unsourced': rangeShown === 0,
+  'price-free advice shown instead': priceFreeAdvice === 1,
+  'hero does not promise a price check': !/price check/i.test(heroSub),
+  // Defence in depth: the gate is enforced server-side, so a direct API call
+  // cannot produce a scam verdict either.
+  'api refuses to screen unsourced ranges': gated.level === 'Unavailable' && gated.isWarning === false,
   'adopt mode lists dogs': countAny > 0,
   'breed filter narrows adoption results': countAll < countAny,
   'puppy filter narrows the list': countPuppies > 0 && countPuppies < countAny,

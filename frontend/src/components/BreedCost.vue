@@ -7,9 +7,14 @@ const props = defineProps({
   breeds: { type: Array, default: () => [] },
 })
 
-const emit = defineEmits(['pick-breed', 'open-quiz'])
+const emit = defineEmits(['pick-breed', 'open-quiz', 'open-guide'])
 
-const hasRange = computed(() => props.breed?.priceLow != null)
+// A range is only shown when it's sourced. Displaying "$2,500–$5,000" while
+// refusing to check quotes against it would invite the reader to do the same
+// comparison in their head, minus the caveat — the harm without the honesty.
+const hasRange = computed(
+  () => props.breed?.priceLow != null && props.breed?.confidence === 'verified',
+)
 
 // A few well-known ranges to orient someone who hasn't chosen yet — real data,
 // not a sales pitch, and it makes the "is my quote sane?" question concrete.
@@ -28,6 +33,16 @@ const PRICE_DRIVERS = [
   ['Breeder reputation', 'Established breeders with waitlists charge more and screen you harder. Both are good signs.'],
   ['Colour and markings', '"Rare" colours carry a premium — but in several breeds they are disqualifying colours linked to health problems.'],
   ['Location and transport', 'Whether flight or ground transport is included can swing the total by four figures.'],
+]
+
+// The checks that don't need a price to be useful — these are the substance of the
+// advice while price screening is switched off.
+const PRICE_FREE_CHECKS = [
+  'Get quotes from three breeders. The one that sharply undercuts the others is the outlier, not the bargain.',
+  'See the puppy and its mother on a live video call, or in person. A refusal here ends the conversation.',
+  'Ask for OFA, PennHIP or Embark results for both parents — on paper, not described.',
+  'Never pay by wire transfer, gift card, Zelle or crypto. Those are chosen because they are unrecoverable.',
+  'Walk away from any fee that appears after you commit — shipping insurance, a climate-controlled crate, a vaccine deposit.',
 ]
 
 // No invented totals: the point is that the sticker price is not the cost.
@@ -88,54 +103,36 @@ const ONGOING_COSTS = [
         </details>
       </template>
 
-      <!-- Breed chosen, but we have no range for it at all. Say so plainly. -->
-      <template v-else-if="breed">
-        <div>
-          <p class="text-xs font-bold tracking-wide uppercase opacity-60">
-            {{ breed.displayName }}
-          </p>
-          <p class="mt-1 text-lg font-semibold">We don't have a price range for this breed yet</p>
-          <p class="mt-1 text-sm opacity-70">
-            Get quotes from at least three breeders to find the going rate yourself — then treat
-            any quote that undercuts the rest sharply as the outlier, not the bargain.
-          </p>
-        </div>
-        <div class="flex flex-wrap gap-2">
-          <button
-            v-for="b in examples"
-            :key="b.slug"
-            type="button"
-            class="btn btn-outline btn-sm"
-            @click="emit('pick-breed', b.slug)"
-          >
-            {{ b.displayName }} {{ b.typicalPrice }}
-          </button>
-        </div>
-      </template>
-
-      <!-- Nothing chosen yet. -->
+      <!-- No sourced range: say what we don't know, then give advice that doesn't
+           depend on knowing it. -->
       <template v-else>
         <div>
-          <p class="font-display text-2xl font-semibold">Know the price before you talk to a seller</p>
+          <p class="font-display text-2xl font-semibold">
+            What to check before you send money
+          </p>
           <p class="mt-1 text-sm opacity-70">
-            Pick a breed and we'll show what it typically sells for, so you can spot a quote
-            that's too good to be true. That one number stops most puppy scams.
+            We're not publishing price ranges or checking quotes yet. Calling a quote a scam
+            means measuring it against a number we can stand behind, and we'd rather say
+            nothing than wrongly accuse a legitimate breeder — or reassure you about a real
+            one. Everything below works without a price.
           </p>
         </div>
+
+        <ul class="space-y-1.5 text-sm">
+          <li v-for="check in PRICE_FREE_CHECKS" :key="check" class="flex gap-2">
+            <span class="text-primary/80 shrink-0">•</span>
+            <span>{{ check }}</span>
+          </li>
+        </ul>
+
         <div class="flex flex-wrap gap-2">
-          <button
-            v-for="b in examples"
-            :key="b.slug"
-            type="button"
-            class="btn btn-outline btn-sm"
-            @click="emit('pick-breed', b.slug)"
-          >
-            {{ b.displayName }} {{ b.typicalPrice }}
+          <button type="button" class="btn btn-primary btn-sm" @click="emit('open-guide')">
+            🛡️ Full scam-safety checklist
+          </button>
+          <button v-if="!breed" type="button" class="btn btn-outline btn-sm" @click="emit('open-quiz')">
+            🐾 Not sure which breed? Take the quiz
           </button>
         </div>
-        <button type="button" class="link self-start text-sm" @click="emit('open-quiz')">
-          Not sure which breed yet? Take the quiz →
-        </button>
       </template>
     </div>
   </section>

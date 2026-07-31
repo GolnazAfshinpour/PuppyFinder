@@ -111,6 +111,12 @@ const verifiedBreedCount = computed(
   () => breeds.value.filter((b) => b.confidence === 'verified').length,
 )
 
+// Scam screening is offered per breed, and only where the range came from cited
+// sources. Owner decision (July 2026): no price-based fraud detection on numbers
+// we can't attribute. Data-driven rather than a flag, so each breed switches on by
+// itself once the research job verifies it.
+const canScreenSelectedBreed = computed(() => selectedBreedInfo.value?.confidence === 'verified')
+
 const liveCount = computed(() => coverage.value.reduce((total, c) => total + c.count, 0))
 
 // Buying means the site directory leads: no breeder marketplace publishes a
@@ -485,15 +491,12 @@ onMounted(() => {
         <span class="text-primary">Don't get scammed.</span>
       </h1>
       <p class="text-base-content/70 mx-auto mt-3 max-w-xl text-base">
-        What your breed really costs, which marketplaces actually vet their breeders,
-        and a price check that catches the most common fraud before you send a cent.
+        Which marketplaces actually vet their breeders, which ones have a complaint
+        record, and the checks that catch a scam before you send a cent.
       </p>
       <div class="mt-4 flex flex-wrap justify-center gap-2">
         <span v-if="verifiedBreedCount" class="badge badge-lg badge-outline">
           {{ verifiedBreedCount }} sourced price ranges
-        </span>
-        <span v-else-if="pricedBreedCount" class="badge badge-lg badge-outline">
-          {{ pricedBreedCount }} breed price estimates
         </span>
         <span class="badge badge-lg badge-outline">7 breeder marketplaces, honestly rated</span>
         <button type="button" class="badge badge-lg badge-outline cursor-pointer" @click="guideOpen = true">
@@ -591,8 +594,10 @@ onMounted(() => {
               :breeds="breeds"
               @pick-breed="selectedBreed = $event"
               @open-quiz="quizOpen = true"
+              @open-guide="guideOpen = true"
             />
             <PriceCheck
+              v-if="canScreenSelectedBreed"
               :breed-slug="selectedBreed"
               :breed-name="selectedBreedName"
               @open-guide="guideOpen = true"
@@ -604,7 +609,7 @@ onMounted(() => {
               <span>
                 🐶 <strong>{{ listings.length }}</strong> adoptable
                 {{ listings.length === 1 ? 'dog matches' : 'dogs match' }} this search — usually
-                already vaccinated and neutered, for a fraction of these prices.
+                already vaccinated and neutered, for a fraction of a breeder's price.
               </span>
               <button type="button" class="link" @click="goal = 'adopt'">See them</button>
             </div>

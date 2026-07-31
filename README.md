@@ -6,7 +6,7 @@ that catches the most common fraud. Adoption is a real secondary path, backed by
 shelter feeds.
 
 - **Price ranges that label their own reliability** — every range carries a `confidence` derived from its sources, so the UI never claims more than the data supports. Ranges live in SQLite with provenance (source URL, verbatim quote, retrieval date); the original hardcoded numbers are imported as `unverified` because no source was ever recorded for them. See [docs/SOURCES.md](docs/SOURCES.md)
-- **Price scam check** (`GET /api/price-check`) — screens a quoted price against the breed's range. A far-below-market quote is the most reported hook in puppy fraud; a *plausible* quote is explicitly never presented as an all-clear, because competent scammers price realistically
+- **Price scam check — currently switched off** (`GET /api/price-check`). The screening logic is built and tested, but it returns `Unavailable` for any breed whose range isn't `verified`, and today none are. Owner decision: don't run fraud detection on numbers we can't attribute. It re-enables per breed, automatically, as the research job sources each range — there is no flag to flip
 - **Honest marketplace guide** — 7 breeder sites rated on vetting, price, delivery and documented cautions; no breeder marketplace publishes a data feed, and the UI says so rather than faking listings
 - **Dogs first (adoption path)** — searching returns actual listings (photo, age, size, shelter phone number), filtered by breed / age / state / city / size and sortable by age
 - **Age filter** — Puppy (under 1 yr) / Young / Adult / Senior, parsed out of the free-text ages the feeds publish (`AgeParser`)

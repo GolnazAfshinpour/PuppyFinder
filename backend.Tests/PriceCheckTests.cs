@@ -18,6 +18,9 @@ public class PriceCheckTests
         Size: "Medium", Energy: 3, Grooming: 3, Shedding: 3, KidFriendly: 3, ApartmentFriendly: 3,
         PriceLow: 0, PriceHigh: 0, Blurb: "");
 
+    private static BreedPrice Verified(int sources = 3) =>
+        new("french-bulldog", 3000, 6000, PriceConfidence.Verified, sources, DateTimeOffset.UtcNow);
+
     [Theory]
     [InlineData(1000, "FarBelow")] // 67% under — the classic bait
     [InlineData(1499, "FarBelow")] // just under half the low end
@@ -29,12 +32,12 @@ public class PriceCheckTests
     [InlineData(6001, "Above")]
     [InlineData(12000, "Above")]
     public void ClassifiesAQuoteAgainstTheBreedRange(int price, string expectedLevel) =>
-        Assert.Equal(expectedLevel, PriceCheck.Evaluate(Frenchie, price).Level);
+        Assert.Equal(expectedLevel, PriceCheck.Evaluate(Frenchie, price, Verified()).Level);
 
     [Fact]
     public void FarBelowQuotesAreFlaggedAsWarningsWithThePercentage()
     {
-        var verdict = PriceCheck.Evaluate(Frenchie, 800);
+        var verdict = PriceCheck.Evaluate(Frenchie, 800, Verified());
 
         Assert.Equal("FarBelow", verdict.Level);
         Assert.True(verdict.IsWarning);
@@ -47,7 +50,7 @@ public class PriceCheckTests
     [Fact]
     public void FreePurebredsAreTreatedAsTheScamScriptTheyUsuallyAre()
     {
-        var verdict = PriceCheck.Evaluate(Frenchie, 0);
+        var verdict = PriceCheck.Evaluate(Frenchie, 0, Verified());
 
         Assert.Equal("Free", verdict.Level);
         Assert.True(verdict.IsWarning);
@@ -57,7 +60,7 @@ public class PriceCheckTests
     [Fact]
     public void AboveRangeIsNotTreatedAsAScam()
     {
-        var verdict = PriceCheck.Evaluate(Frenchie, 9000);
+        var verdict = PriceCheck.Evaluate(Frenchie, 9000, Verified());
 
         Assert.Equal("Above", verdict.Level);
         Assert.False(verdict.IsWarning);
@@ -69,7 +72,7 @@ public class PriceCheckTests
     {
         // The failure mode that would make this feature harmful: a plausible price
         // reading as "this seller is safe". Competent scammers price realistically.
-        var verdict = PriceCheck.Evaluate(Frenchie, 4500);
+        var verdict = PriceCheck.Evaluate(Frenchie, 4500, Verified());
 
         Assert.Equal("Typical", verdict.Level);
         Assert.Contains("not a safety check", verdict.Detail);
@@ -81,7 +84,9 @@ public class PriceCheckTests
     {
         var verdict = PriceCheck.Evaluate(Unpriced, 800);
 
-        Assert.Equal("Unknown", verdict.Level);
+        // "No range at all" and "range we can't vouch for" are the same outcome for
+        // the reader — no check — so they share a level. The copy still names the breed.
+        Assert.Equal("Unavailable", verdict.Level);
         Assert.Null(verdict.PriceLow);
         Assert.Contains("three breeders", verdict.Detail);
         Assert.Contains("Affenpinscher", verdict.Detail);
@@ -92,7 +97,7 @@ public class PriceCheckTests
     {
         var verdict = PriceCheck.Evaluate(null, 800);
 
-        Assert.Equal("Unknown", verdict.Level);
+        Assert.Equal("Unavailable", verdict.Level);
         Assert.Contains("Pick a breed", verdict.Detail);
     }
 
@@ -103,7 +108,7 @@ public class PriceCheckTests
 
         foreach (var price in prices)
         {
-            var verdict = PriceCheck.Evaluate(Frenchie, price);
+            var verdict = PriceCheck.Evaluate(Frenchie, price, Verified());
             Assert.False(string.IsNullOrWhiteSpace(verdict.Headline));
             Assert.True(verdict.Detail.Length > 80, $"${price} verdict needs real guidance, not a label");
         }
@@ -114,31 +119,55 @@ public class PriceCheckTests
     private static PuppyFinder.Api.Models.BreedPrice Backing(string confidence, int sources = 0) =>
         new("french-bulldog", 3000, 6000, confidence, sources, DateTimeOffset.UtcNow);
 
-    [Fact]
-    public void AnUnsourcedRangeSaysSoOnEveryVerdict()
+    [Theory]
+    [InlineData(PriceConfidence.Unverified)]
+    [InlineData(PriceConfidence.SingleSource)]
+    [InlineData(PriceConfidence.Contested)]
+    public void NoScreeningUntilTheRangeIsSourced(string confidence)
     {
-        // The regression that started all this: a range nobody can source reading with
-        // the same authority as three cited ones.
-        int[] prices = [0, 800, 2900, 4500, 9000];
+        // Owner decision: don't run fraud detection on numbers we can't attribute.
+        // A scam-shaped quote must produce no verdict rather than a confident one.
+        var verdict = PriceCheck.Evaluate(Frenchie, 800, Backing(confidence, sources: 2));
 
-        foreach (var price in prices)
-        {
-            var verdict = PriceCheck.Evaluate(Frenchie, price, Backing(PriceConfidence.Unverified));
-            Assert.Contains("isn't sourced yet", verdict.Detail);
-            Assert.Equal(PriceConfidence.Unverified, verdict.Confidence);
-        }
+        Assert.Equal("Unavailable", verdict.Level);
+        Assert.False(verdict.IsWarning);
+        // No range leaks out either — the number is the input to the same inference.
+        Assert.Null(verdict.PriceLow);
+        Assert.Null(verdict.PriceHigh);
+        Assert.Null(verdict.PercentAway);
     }
 
     [Fact]
-    public void DefaultingWithNoBackingRecordIsTreatedAsUnsourced()
+    public void TheUnavailableVerdictExplainsItselfAndOffersSomethingElse()
     {
-        // A caller that forgets to pass provenance must get the cautious reading,
-        // not the confident one.
-        var verdict = PriceCheck.Evaluate(Frenchie, 4500);
+        var verdict = PriceCheck.Evaluate(Frenchie, 800, Backing(PriceConfidence.Unverified));
 
-        Assert.Equal(PriceConfidence.Unverified, verdict.Confidence);
-        Assert.Contains("isn't sourced yet", verdict.Detail);
+        Assert.Contains("don't have a sourced range", verdict.Detail);
+        // It must not just refuse — it points at advice that doesn't depend on price.
+        Assert.Contains("three breeders", verdict.Detail);
+        Assert.Contains("safety checklist", verdict.Detail);
     }
+
+    [Fact]
+    public void MissingBackingIsTreatedAsUnscreenable()
+    {
+        // A caller that forgets to pass provenance must get the gate, not a verdict.
+        var verdict = PriceCheck.Evaluate(Frenchie, 800);
+
+        Assert.Equal("Unavailable", verdict.Level);
+    }
+
+    [Theory]
+    [InlineData(PriceConfidence.Unverified, false)]
+    [InlineData(PriceConfidence.SingleSource, false)]
+    [InlineData(PriceConfidence.Contested, false)]
+    [InlineData(PriceConfidence.Verified, true)]
+    public void CanScreenOnlyOnVerifiedData(string confidence, bool expected) =>
+        Assert.Equal(expected, PriceCheck.CanScreen(Backing(confidence)));
+
+    [Fact]
+    public void CanScreenIsFalseWithoutAnyBacking() =>
+        Assert.False(PriceCheck.CanScreen(null));
 
     [Fact]
     public void AVerifiedRangeCitesItsSourceCountInsteadOfHedging()
@@ -152,28 +181,10 @@ public class PriceCheckTests
     }
 
     [Fact]
-    public void AContestedRangeTellsYouNotToTrustTheMidpoint()
+    public void AVerifiedRangeStillWarnsHardOnAScamQuote()
     {
-        var verdict = PriceCheck.Evaluate(Frenchie, 4500, Backing(PriceConfidence.Contested, 3));
+        var verdict = PriceCheck.Evaluate(Frenchie, 800, Verified());
 
-        Assert.Contains("disagree materially", verdict.Detail);
-        Assert.Contains("midpoint means little", verdict.Detail);
-    }
-
-    [Fact]
-    public void ASingleSourceRangeIsCalledARoughMarker()
-    {
-        var verdict = PriceCheck.Evaluate(Frenchie, 4500, Backing(PriceConfidence.SingleSource, 1));
-
-        Assert.Contains("single source", verdict.Detail);
-    }
-
-    [Fact]
-    public void ConfidenceCaveatsDoNotWeakenTheScamWarning()
-    {
-        var verdict = PriceCheck.Evaluate(Frenchie, 800, Backing(PriceConfidence.Unverified));
-
-        // Still a warning, still names the percentage — the caveat is additive.
         Assert.True(verdict.IsWarning);
         Assert.Equal("FarBelow", verdict.Level);
         Assert.Contains("73% below", verdict.Headline);
@@ -185,7 +196,7 @@ public class PriceCheckTests
         // Nothing was measured against, so a provenance caveat would be noise.
         var verdict = PriceCheck.Evaluate(Unpriced, 800, null);
 
-        Assert.Equal("Unknown", verdict.Level);
-        Assert.DoesNotContain("isn't sourced yet", verdict.Detail);
+        // No range at all is a different state from "range we can't vouch for".
+        Assert.Equal("Unavailable", verdict.Level);
     }
 }

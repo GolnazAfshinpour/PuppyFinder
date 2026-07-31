@@ -159,6 +159,21 @@ reads `legacy hardcoded (unsourced)`. That is deliberate: trusting them is the b
 grandfathering them in as verified would defeat the exercise. They keep working; they
 stop claiming.
 
+### Screening is off until the data is sourced (owner decision, July 2026)
+
+`PriceCheck.Evaluate` returns an `Unavailable` verdict unless the breed's range is
+`verified`, and the UI hides both the checker and the headline range. Today that means
+screening is off for all 179 breeds.
+
+Enforced in the service rather than only in the UI, so an API consumer or a future job
+can't produce a fraud verdict from an unattributable number. It is keyed on data, not a
+feature flag: each breed begins screening the moment its range reaches `verified`, with
+nothing to switch on by hand and no way to accidentally ship unsourced screening again.
+
+The range is hidden alongside the check deliberately — showing "$2,500–$5,000" while
+refusing to check quotes against it just invites the reader to run the comparison
+themselves, without the caveat.
+
 ### There is no authoritative source, and that shapes everything
 
 Checked before designing the research job:
