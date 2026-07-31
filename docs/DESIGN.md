@@ -73,6 +73,14 @@ special. Never larger than `text-5xl` (3rem) — bigger reads as shouting.
   ("Male · Neutered · 2 Years · Medium") → breed → location → contact →
   one primary CTA ("Meet {name} ↗"). Max 1-2 badges per card, ever
   (Baymard/NN/g: badge piles kill 3-second scanning).
+- **Dog detail (`?dog=<id>`):** photo `object-contain` on a fixed-height warm
+  panel — shelter photos come in every aspect ratio and a fixed crop reliably
+  decapitated the dog. Then name + meta line → age/breed badges → full bio →
+  boxed shelter contact with the animal ID to quote → ONE outbound CTA. Cards link
+  here rather than to the source site: ejecting at peak intent lost people to
+  petharbor.com. Card links stay real `<a href>`s (middle-click works) with the
+  click intercepted. Escape and backdrop close; body scroll locks; a dog that left
+  the feed gets a "found a home" message, never an error.
 - **Site card:** Fraunces name + kind badge → description → icon rows
   (vetting/price/delivery/best-for) → caution alert (if any) → link-depth
   badges → one primary CTA.
@@ -137,5 +145,5 @@ Honesty beats marketing — cautions and coverage limits are stated plainly.
   RescueGroups. Also: adoption fee on the card (81% of adopters rank it the most
   important item on a profile, and we show it nowhere), real "good with
   kids/dogs/cats" listing fields (+56% adoption likelihood), breed typeahead
-  instead of a 179-option `<select>`, an in-app dog detail page instead of
-  ejecting to petharbor.com, and a compare view for saved dogs.
+  instead of a 179-option `<select>`, per-option result counts, and a compare view
+  for saved dogs.

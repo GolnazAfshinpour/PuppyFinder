@@ -89,4 +89,45 @@ public class SocrataProviderTests
     [InlineData("<b>Bold</b> bio  text", "Bold bio text")]
     public void CleanMemo_HandlesPlainAndMarkupText(string? memo, string expected) =>
         Assert.Equal(expected, SocrataProvider.CleanMemo(memo));
+
+    [Fact]
+    public void BuildId_KeysOnTheShelterAnimalRef_NotThePositionInTheFeed()
+    {
+        // The regression this replaces: the id embedded the row index, so adopting
+        // one dog re-numbered every dog after it — breaking saved favorites and
+        // recently-viewed, which are keyed on the id in localStorage.
+        var before = SocrataProvider.BuildId("Montgomery County Animal Services", "A542024", "Count Chocula");
+        var afterOthersLeftTheFeed = SocrataProvider.BuildId("Montgomery County Animal Services", "A542024", "Count Chocula");
+
+        Assert.Equal(before, afterOthersLeftTheFeed);
+        Assert.Equal("montgomery-county-animal-services-a542024", before);
+    }
+
+    [Fact]
+    public void BuildId_FallsBackToTheNameWhenTheFeedHasNoAnimalRef()
+    {
+        var id = SocrataProvider.BuildId("King County Pet Adoption", animalRef: null, "Count Chocula");
+
+        Assert.Equal("king-county-pet-adoption-count-chocula", id);
+    }
+
+    [Fact]
+    public void BuildId_DisambiguatesCollisions()
+    {
+        var used = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        var first = SocrataProvider.BuildId("Shelter", null, "Bella", used);
+        var second = SocrataProvider.BuildId("Shelter", null, "Bella", used);
+        var third = SocrataProvider.BuildId("Shelter", null, "Bella", used);
+
+        Assert.Equal(["shelter-bella", "shelter-bella-2", "shelter-bella-3"], new[] { first, second, third });
+    }
+
+    [Theory]
+    // Shelter names carry punctuation and bookkeeping markers; ids stay URL-safe.
+    [InlineData("Shelter", "*BELLARINA", "shelter-bellarina")]
+    [InlineData("Shelter", "Mary-Jane   Smith", "shelter-mary-jane-smith")]
+    [InlineData("Shelter", "!!!", "shelter-unknown")]
+    public void BuildId_ProducesUrlSafeIds(string source, string name, string expected) =>
+        Assert.Equal(expected, SocrataProvider.BuildId(source, null, name));
 }

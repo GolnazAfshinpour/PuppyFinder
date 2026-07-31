@@ -22,10 +22,13 @@ export function parseSearchUrl(search, usStates) {
     traits: (params.get('traits') ?? '').split(',').filter(Boolean),
     goal: GOALS.includes(goal) ? goal : 'both',
     sort: match(SORTS, params.get('sort')) ?? '',
+    // Which dog's detail view is open. Ids are server-generated slugs, so anything
+    // unexpected here just fails the lookup and shows the "no longer listed" state.
+    dog: params.get('dog') ?? '',
   }
 }
 
-export function buildSearchQuery({ breed, state, city, size, age, traits, goal, sort }) {
+export function buildSearchQuery({ breed, state, city, size, age, traits, goal, sort, dog }) {
   const params = new URLSearchParams()
   if (breed) params.set('breed', breed)
   if (state) params.set('state', state)
@@ -35,5 +38,6 @@ export function buildSearchQuery({ breed, state, city, size, age, traits, goal, 
   if (traits.length) params.set('traits', traits.join(','))
   if (goal !== 'both') params.set('goal', goal)
   if (sort) params.set('sort', sort)
+  if (dog) params.set('dog', dog)
   return params.toString()
 }

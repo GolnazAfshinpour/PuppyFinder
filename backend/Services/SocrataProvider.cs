@@ -46,6 +46,7 @@ public sealed class SocrataProvider(
 
         using var json = JsonDocument.Parse(payload);
         var listings = new List<Listing>();
+        var usedIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
         foreach (var row in json.RootElement.EnumerateArray())
         {
@@ -65,16 +66,22 @@ public sealed class SocrataProvider(
             var image = dataset.ImageField is null ? null : GetUrl(row, dataset.ImageField);
             var link = dataset.LinkField is null ? null : GetUrl(row, dataset.LinkField);
             var memo = dataset.MemoField is null ? null : Get(row, dataset.MemoField);
+            var animalRef = PetHarborAnimalId(image);
+            // Non-null: the blank-name rows were skipped above and CleanName always
+            // returns something. Hoisted so the id and the display name can't diverge.
+            var cleanName = CleanName(name);
 
             listings.Add(new Listing(
-                Id: $"{dataset.SourceName}-{listings.Count}-{name}".Replace(' ', '-').ToLowerInvariant(),
-                Name: ToTitleCase(CleanName(name)),
+                Id: BuildId(dataset.SourceName, animalRef, cleanName, usedIds),
+                Name: ToTitleCase(cleanName)!,
                 Breed: ExpandBreedAbbreviations(ToTitleCase(Get(row, dataset.BreedField))) ?? "Mixed Breed",
                 Age: ToTitleCase(Get(row, dataset.AgeField)),
                 Sex: NormalizeSex(Get(row, dataset.SexField)),
                 // Real shelter bios only (King County's memo); no generated filler —
-                // the UI already attributes the source.
-                Description: Truncate(CleanMemo(memo), 240),
+                // the UI already attributes the source. Kept long enough for the whole
+                // bio: the detail view shows all of it, and the card line-clamps in CSS,
+                // so truncating at card length here was throwing the bio away for both.
+                Description: Truncate(CleanMemo(memo), 1200),
                 City: ToTitleCase(dataset.CityField is null ? null : Get(row, dataset.CityField)) ?? dataset.DefaultCity,
                 State: dataset.State,
                 ImageUrl: IsImageUrl(image) ? UpgradeToHttps(image!) : null,
@@ -88,12 +95,51 @@ public sealed class SocrataProvider(
                 Size: NormalizeSize(dataset.SizeField is null ? null : Get(row, dataset.SizeField))
                       ?? SizeFromWeightText(memo),
                 ContactInfo: dataset.ContactInfo,
-                AnimalRef: PetHarborAnimalId(image)));
+                AnimalRef: animalRef));
         }
 
         logger.LogInformation("{Source} returned {Count} dog listings", dataset.SourceName, listings.Count);
         return listings;
     }
+
+    /// <summary>
+    /// A listing id that survives the feed changing underneath it. The id used to
+    /// include the row's array index, so adopting any one dog re-numbered every dog
+    /// after it — which silently broke saved favorites and recently-viewed, both of
+    /// which are keyed on the id in localStorage, and makes a shareable per-dog URL
+    /// impossible.
+    ///
+    /// The shelter's own animal ref ("A542024") is the stable key and both live feeds
+    /// publish it. Without one we fall back to the name and disambiguate duplicates
+    /// positionally — best-effort, and the only case that can still shift.
+    /// </summary>
+    public static string BuildId(string source, string? animalRef, string name, HashSet<string>? usedIds = null)
+    {
+        var baseId = $"{Slug(source)}-{Slug(animalRef ?? name)}";
+        if (usedIds is null || usedIds.Add(baseId))
+        {
+            return baseId;
+        }
+
+        var suffix = 2;
+        while (!usedIds.Add($"{baseId}-{suffix}"))
+        {
+            suffix++;
+        }
+
+        return $"{baseId}-{suffix}";
+    }
+
+    private static string Slug(string value)
+    {
+        var chars = value.Trim().ToLowerInvariant()
+            .Select(c => char.IsLetterOrDigit(c) ? c : '-');
+        return string.Join("", chars).Trim('-')
+            is { Length: > 0 } slug ? CollapseDashes(slug) : "unknown";
+    }
+
+    private static string CollapseDashes(string value) =>
+        System.Text.RegularExpressions.Regex.Replace(value, "-{2,}", "-");
 
     private static string? Get(JsonElement row, string field) =>
         row.TryGetProperty(field, out var value) && value.ValueKind == JsonValueKind.String

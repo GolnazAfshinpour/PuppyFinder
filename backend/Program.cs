@@ -107,6 +107,17 @@ app.MapGet("/api/listings", async (string? breed, string? state, string? city, s
 })
 .WithName("GetListings");
 
+// One dog by id, so a shared or bookmarked ?dog= link opens its detail view even
+// when the visitor's filters would exclude it (or they have none set at all).
+app.MapGet("/api/listings/{id}", async (string id, ListingAggregator aggregator, CancellationToken ct) =>
+    (await aggregator.GetListingsAsync(ct))
+        .FirstOrDefault(l => l.Id.Equals(id, StringComparison.OrdinalIgnoreCase)) is { } listing
+        ? Results.Ok(listing)
+        // Dogs leave the feeds when they're adopted — that's a success, and the UI
+        // says so rather than showing a generic error.
+        : Results.NotFound(new { Message = "This dog is no longer listed — they may have found a home." }))
+.WithName("GetListing");
+
 app.MapGet("/api/sources", (ListingAggregator aggregator) =>
     Results.Ok(aggregator.GetSourceStatuses()))
 .WithName("GetSources");

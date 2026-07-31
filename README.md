@@ -6,6 +6,7 @@ for everywhere those feeds don't reach yet.
 
 - **Dogs first** — searching returns actual listings (photo, age, size, shelter phone number), filtered by breed / age / state / city / size and sortable by age
 - **Age filter** — Puppy (under 1 yr) / Young / Adult / Senior, parsed out of the free-text ages the feeds publish (`AgeParser`)
+- **In-app dog detail view** — full bio, shelter phone number and the animal ID to quote, with one outbound "start the adoption" link. Addressable as `?dog=<id>`, so a single dog is shareable; a dog that has since been adopted says so rather than erroring
 - **Honest coverage** — the UI states where our feeds do and don't reach instead of showing an empty grid, and recommends **one** national site that carries your filters rather than opening fourteen tabs
 - **Missing data is "unknown", not "no"** — shelters leave size and age blank constantly, so those dogs stay in the results, labelled, ranked below confirmed matches, with a "show only confirmed matches" escape hatch
 - **Breed finder quiz** — six lifestyle questions score against a breed-traits table and recommend your top 3 breeds (`POST /api/quiz`)
@@ -44,6 +45,7 @@ The Vite dev server proxies `/api/*` to the backend.
 | Endpoint | Description |
 |---|---|
 | `GET /api/listings?breed=&state=&city=&size=&age=&sort=&includeUnlisted=` | Aggregated real dog listings, filtered and sorted. Each result carries derived `ageMonths` / `ageGroup` and an `unconfirmed` flag (matched only because a field was blank). |
+| `GET /api/listings/{id}` | One dog, so a shared `?dog=` link opens regardless of the visitor's filters. 404 = adopted or pulled from the feed. |
 | `GET /api/coverage` | Where live dogs exist right now: `[{ state, count, cities }]` |
 | `GET /api/sources` | Per-source status: enabled, count, last error |
 | `GET /api/breeds` | Curated breed list for the dropdown |

@@ -9,6 +9,7 @@ import { buildSearchQuery, parseSearchUrl } from './searchUrl.js'
 import SearchHub from './components/SearchHub.vue'
 import ResultsFallback from './components/ResultsFallback.vue'
 import ListingCard from './components/ListingCard.vue'
+import DogDetail from './components/DogDetail.vue'
 import AlertSignup from './components/AlertSignup.vue'
 import BreedQuiz from './components/BreedQuiz.vue'
 import SafetyGuide from './components/SafetyGuide.vue'
@@ -36,6 +37,7 @@ const selectedAge = ref(fromUrl.age) // Puppy | Young | Adult | Senior
 const traits = ref(fromUrl.traits)
 const goal = ref(fromUrl.goal)
 const sort = ref(fromUrl.sort)
+const openDogId = ref(fromUrl.dog) // '' = no detail view open
 const quizOpen = ref(false)
 const guideOpen = ref(false)
 const filtersOpen = ref(false) // mobile-only filter drawer state
@@ -58,10 +60,26 @@ const recent = ref(loadRecent())
 function onToggleFavorite(listing) {
   favorites.value = toggleFavorite(listing)
 }
-function onViewed(listing) {
+// Opening the detail view is the real "I'm interested" signal — the old card-click
+// straight out to petharbor.com is gone.
+function openDog(listing) {
+  openDogId.value = listing.id
   recent.value = recordViewed(listing)
 }
+function closeDog() {
+  openDogId.value = ''
+}
 const favoriteIds = computed(() => new Set(favorites.value.map((f) => f.id)))
+
+// The open dog, if we already have the full record in hand. Only the API-backed
+// lists count: favorites and recently-viewed are trimmed localStorage snapshots, so
+// resolving from those would render a detail view with half its fields missing.
+// Anything else (a shared ?dog= link, a saved dog) falls through to DogDetail
+// fetching by id — which also correctly reports dogs that have since been adopted.
+const openDogListing = computed(() =>
+  [...listings.value, ...(broadened.value?.listings ?? [])]
+    .find((l) => l.id === openDogId.value) ?? null,
+)
 
 // Saved quiz profile (localStorage): when present, listings are re-ranked by fit.
 const profile = ref(loadProfile())
@@ -391,7 +409,7 @@ watch([selectedBreed, selectedState], loadSites)
 watch([selectedBreed, selectedState, selectedSize, selectedAge, sort, strictMatch], loadListings)
 
 // Keep the address bar in sync (replace, not push — no history spam).
-watch([selectedBreed, selectedState, selectedCity, selectedSize, selectedAge, traits, goal, sort], () => {
+watch([selectedBreed, selectedState, selectedCity, selectedSize, selectedAge, traits, goal, sort, openDogId], () => {
   const query = buildSearchQuery({
     breed: selectedBreed.value,
     state: selectedState.value,
@@ -401,6 +419,7 @@ watch([selectedBreed, selectedState, selectedCity, selectedSize, selectedAge, tr
     traits: traits.value,
     goal: goal.value,
     sort: sort.value,
+    dog: openDogId.value,
   })
   history.replaceState(null, '', query ? `?${query}` : window.location.pathname)
 })
@@ -650,7 +669,7 @@ onMounted(() => {
               :favorite="favoriteIds.has(l.id)"
               :unconfirmed-note="unconfirmedNote(l)"
               @toggle-favorite="onToggleFavorite(l)"
-              @viewed="onViewed(l)"
+              @open="openDog(l)"
             />
           </ul>
           <div v-else class="card bg-base-100 shadow-md">
@@ -738,6 +757,15 @@ onMounted(() => {
       </section>
     </div>
 
+    <DogDetail
+      v-if="openDogId"
+      :listing="openDogListing"
+      :listing-id="openDogId"
+      :favorite="favoriteIds.has(openDogId)"
+      @close="closeDog"
+      @toggle-favorite="openDogListing && onToggleFavorite(openDogListing)"
+      @search-similar="closeDog(); clearAllFilters()"
+    />
     <BreedQuiz
       v-if="quizOpen"
       @close="quizOpen = false"

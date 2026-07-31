@@ -10,7 +10,12 @@ const props = defineProps({
   unconfirmedNote: { type: String, default: '' },
 })
 
-defineEmits(['toggle-favorite', 'viewed'])
+defineEmits(['toggle-favorite', 'open'])
+
+// A real href so middle-click and "open in new tab" still work, but the click is
+// intercepted into the in-app detail view. Deliberately just ?dog= with no filters:
+// sharing a dog should open that dog, not the sender's search.
+const detailHref = computed(() => `?dog=${encodeURIComponent(props.listing.id)}`)
 
 const imageFailed = ref(false)
 
@@ -57,11 +62,9 @@ const metaLine = computed(() => {
              whole card; other interactive elements sit above it via z-10. -->
         <h3 class="font-display card-title text-xl font-semibold">
           <a
-            :href="listing.listingUrl"
-            target="_blank"
-            rel="noopener noreferrer"
+            :href="detailHref"
             class="after:absolute after:inset-0 after:content-[''] focus-visible:outline-none"
-            @click="$emit('viewed')"
+            @click.prevent="$emit('open')"
           >
             {{ listing.name }}
           </a>
@@ -87,12 +90,10 @@ const metaLine = computed(() => {
       </p>
       <a
         class="btn btn-primary btn-block btn-sm relative z-10 mt-1"
-        :href="listing.listingUrl"
-        target="_blank"
-        rel="noopener noreferrer"
-        @click="$emit('viewed')"
+        :href="detailHref"
+        @click.prevent="$emit('open')"
       >
-        Meet {{ listing.name }} ↗
+        Meet {{ listing.name }}
       </a>
     </div>
   </li>

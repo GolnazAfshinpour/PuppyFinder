@@ -3,7 +3,7 @@ import { buildSearchQuery, parseSearchUrl } from './searchUrl.js'
 
 const US_STATES = ['TX', 'NY', 'CA', 'ME']
 
-const defaults = { breed: '', state: '', city: '', size: '', age: '', traits: [], goal: 'both', sort: '' }
+const defaults = { breed: '', state: '', city: '', size: '', age: '', traits: [], goal: 'both', sort: '', dog: '' }
 
 describe('parseSearchUrl', () => {
   it('returns clean defaults for an empty query', () => {
@@ -25,6 +25,7 @@ describe('parseSearchUrl', () => {
       traits: ['kids', 'lowshed'],
       goal: 'buy',
       sort: 'youngest',
+      dog: '',
     })
   })
 
@@ -41,6 +42,12 @@ describe('parseSearchUrl', () => {
       US_STATES,
     )
     expect(parsed).toEqual(defaults)
+  })
+
+  it('carries an open dog detail so a single dog is shareable', () => {
+    expect(parseSearchUrl('?dog=montgomery-county-animal-services-a542024', US_STATES).dog)
+      .toBe('montgomery-county-animal-services-a542024')
+    expect(buildSearchQuery({ ...defaults, dog: 'abc-123' })).toBe('dog=abc-123')
   })
 
   it('ignores the retired tab parameter from older shared links', () => {
@@ -67,6 +74,7 @@ describe('buildSearchQuery', () => {
       traits: ['apartment'],
       goal: 'adopt',
       sort: 'oldest',
+      dog: 'king-county-pet-adoption-a750208',
     }
     expect(parseSearchUrl(`?${buildSearchQuery(state)}`, US_STATES)).toEqual(state)
   })

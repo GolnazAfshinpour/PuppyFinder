@@ -62,6 +62,34 @@ await settle()
 const breederHeading = await page.locator('h2:has-text("Puppies from breeders")').count()
 console.log('goal=buy shows the breeder guide:', breederHeading === 1)
 
+// Dogs open in an in-app detail view instead of ejecting to petharbor.com, and
+// that view is addressable so a single dog can be shared.
+await page.goto('http://localhost:5173')
+await page.waitForTimeout(3000)
+await page.click('[data-testid="dog-results"] > li a:has-text("Meet")')
+await page.waitForTimeout(800)
+const detailOpen = await page.locator('[role="dialog"]').count()
+const detailAddressable = page.url().includes('?dog=')
+const sharedId = new URL(page.url()).searchParams.get('dog')
+console.log('detail opens in-app:', detailOpen === 1, '| addressable:', detailAddressable)
+
+await page.keyboard.press('Escape')
+await page.waitForTimeout(500)
+const detailClosed = (await page.locator('[role="dialog"]').count()) === 0 && !page.url().includes('?dog=')
+console.log('Escape closes it and clears the param:', detailClosed)
+
+// A shared link carries no filters, so this also proves the fetch-by-id path.
+await page.goto(`http://localhost:5173/?dog=${sharedId}`)
+await page.waitForTimeout(3000)
+const sharedResolves = (await page.locator('#dog-detail-name').count()) === 1
+console.log('shared ?dog= link resolves:', sharedResolves)
+
+// A dog that has since been adopted is a happy ending, not an error page.
+await page.goto('http://localhost:5173/?dog=montgomery-county-animal-services-a000000')
+await page.waitForTimeout(2500)
+const goneHandled = (await page.locator('text=no longer listed').count()) === 1
+console.log('adopted dog handled gracefully:', goneHandled)
+
 console.log('API calls observed:', JSON.stringify(apiCalls, null, 1))
 await page.screenshot({ path: (process.env.SCRATCH ?? '.') + '/adopt-tab.png', fullPage: false })
 await browser.close()
@@ -73,6 +101,10 @@ const checks = {
   'sorting keeps the same dogs': countSorted === countMd,
   'directory demoted to fallback': fallback === 1,
   'buy mode shows the breeder guide': breederHeading === 1,
+  'detail view opens in-app': detailOpen === 1 && detailAddressable,
+  'detail view closes on Escape': detailClosed,
+  'shared dog link resolves': sharedResolves,
+  'adopted dog handled gracefully': goneHandled,
 }
 for (const [name, ok] of Object.entries(checks)) console.log(ok ? `PASS  ${name}` : `FAIL  ${name}`)
 process.exit(Object.values(checks).every(Boolean) ? 0 : 1)
