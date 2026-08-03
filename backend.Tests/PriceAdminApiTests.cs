@@ -274,6 +274,32 @@ public sealed class PriceAdminApiTests : IDisposable
     }
 
     [Fact]
+    public async Task IngestedPricesAreVisibleImmediatelyOnTheBreedsEndpoint()
+    {
+        // The bug this guards: only the full-run paths invalidated the catalog cache, so
+        // re-deriving one breed left /api/breeds serving the old price with the NEW
+        // confidence. German Shepherd read as "verified" at the unsourced legacy
+        // $1,000-$3,000 instead of the researched $2,000-$4,000 — a sourced label on an
+        // unsourced number, which is the precise failure this feature exists to prevent.
+        await _client.GetAsync("/api/breeds", Ct); // warm the cache first
+
+        await _client.SendAsync(Ingest("""
+            { "breed": "beagle", "observations": [{
+                "publisher": "Insuranceopedia",
+                "sourceUrl": "https://www.insuranceopedia.com/pet-insurance/beagle-cost",
+                "quote": "The cost to purchase a Beagle puppy from a breeder typically ranges between $400 and $1,200",
+                "scope": "pet_standard", "figureKind": "range",
+                "priceLow": 400, "priceHigh": 1200 }] }
+            """), Ct);
+
+        var breeds = await _client.GetFromJsonAsync<JsonElement>("/api/breeds", Ct);
+        var beagle = breeds.EnumerateArray().First(b => b.GetProperty("slug").GetString() == "beagle");
+
+        // The seeded legacy Beagle range is $500-$1,200; the researched low is $400.
+        Assert.Equal(400, beagle.GetProperty("priceLow").GetInt32());
+    }
+
+    [Fact]
     public async Task IngestedRowsRecordThatAHumanGatheredThem()
     {
         await _client.SendAsync(Ingest("""

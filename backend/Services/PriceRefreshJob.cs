@@ -212,6 +212,17 @@ public sealed class PriceRefreshJob(
         if (aggregation.Price is not null)
         {
             await store.UpsertAsync(aggregation.Price, ct);
+
+            // Invalidate here rather than in each caller. Only RunAsync and
+            // ReaggregateAllAsync used to do it, so the two paths that re-derive a single
+            // breed — hand-entered observations, and accepting a review decision — left
+            // BreedCatalogService serving the old price with the new confidence.
+            //
+            // That combination is the exact failure this project exists to prevent: it
+            // showed German Shepherd as "verified" at the unsourced legacy $1,000-$3,000
+            // rather than the researched $2,000-$4,000, and PriceCheck screened quotes
+            // against the wrong band while claiming to be sourced.
+            catalog.InvalidatePrices();
         }
 
         return aggregation;

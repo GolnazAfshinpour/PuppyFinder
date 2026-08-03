@@ -31,6 +31,8 @@ public static class PriceObservationValidator
     private const int AbsoluteFloor = 100;      // below this, not a purebred puppy price
     private const int AbsoluteCeiling = 25_000; // above this, not a mainstream figure
     private const int MaxRangeWidthFactor = 10; // a 10x band isn't a range, it's a shrug
+    private const int MaxSourceAgeMonths = 36;  // older than this describes a past market
+    private const double MaxSourceAgeDays = MaxSourceAgeMonths * 30.44;
 
     /// <summary>
     /// Hard rejects. These never reach the review queue — they're malformed rather
@@ -89,6 +91,22 @@ public static class PriceObservationValidator
         if (o.PriceHigh > o.PriceLow * MaxRangeWidthFactor)
         {
             return $"range spans more than {MaxRangeWidthFactor}x, too wide to be informative";
+        }
+
+        // Stale figures, only when the source dates itself. Puppy prices moved sharply
+        // over the pandemic and after, so a figure old enough to predate that is evidence
+        // about a market that no longer exists — and the scam check would measure today's
+        // quotes against it. An undated source isn't punished here; it just can't reach
+        // Tier A standing on its own.
+        //
+        // Found on PetMD's French Bulldog page: "$1,500–$5,000", updated March 2023. A
+        // plausible-looking Tier A figure that is simply out of date.
+        if (o.PublishedAt is { } published
+            && (o.RetrievedAt - published).TotalDays > MaxSourceAgeDays)
+        {
+            var months = (int)Math.Round((o.RetrievedAt - published).TotalDays / 30.44);
+            return $"source is dated {published:yyyy-MM-dd}, {months} months old — older than "
+                + $"the {MaxSourceAgeMonths}-month limit";
         }
 
         return null;
@@ -221,11 +239,27 @@ public static class PriceObservationValidator
         // A big move in the number the fraud check uses deserves a human look, however
         // well-sourced the new figure is.
         var drift = DriftPercent(current, low, high);
-        var needsReview = confidence != PriceConfidence.Verified
-            || (drift is { } d && d > thresholds.DriftReviewPercent);
-        if (drift is { } moved && moved > thresholds.DriftReviewPercent)
+        var drifted = drift is { } d && d > thresholds.DriftReviewPercent;
+        var needsReview = confidence != PriceConfidence.Verified || drifted;
+        if (drifted)
         {
-            rationale += $"; midpoint moved {moved}% from the live value, flagged for review";
+            rationale += $"; midpoint moved {drift}% from the live value, flagged for review";
+
+            // Flagging alone wasn't enough: PriceCheck.CanScreen arms on Verified, so a
+            // large move used to go live before anyone looked at it — the guard named the
+            // problem and then let it through. Hold it at Contested instead.
+            //
+            // Only when the value being replaced was itself Verified. Moving away from the
+            // unsourced legacy seeds is the entire point of this exercise, not a warning
+            // sign: German Shepherd goes from a hardcoded $1,000-$3,000 to a sourced
+            // $2,000-$4,000, a 50% move that is the system working. Drift is evidence of a
+            // problem only when it contradicts something we already trusted.
+            if (confidence == PriceConfidence.Verified
+                && current?.Confidence == PriceConfidence.Verified)
+            {
+                confidence = PriceConfidence.Contested;
+                rationale += "; held at contested until reviewed, since it overwrites a verified range";
+            }
         }
 
         return new PriceAggregation(

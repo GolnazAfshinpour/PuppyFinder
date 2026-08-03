@@ -151,6 +151,101 @@ public class PriceObservationValidatorTests
         Assert.Equal(PublisherTier.A, Assert.Single(kept).PublisherTier);
     }
 
+    // ---------------------------------------------------------------- drift guard
+
+    private static readonly PriceObservation[] ThreeAgreeingSources =
+    [
+        Obs(2000, 4000),
+        Obs(2000, 4500, "Insurify", "https://insurify.com/x"),
+        TierB(500, 3000, "caninebible.com"),
+    ];
+
+    [Fact]
+    public void ALargeMoveAwayFromAnUnsourcedSeedStillGoesLive()
+    {
+        // The real German Shepherd case: a hardcoded $1,000-$3,000 replaced by a sourced
+        // $2,000-$4,000. That's a 50% midpoint move, and it is the system working — moving
+        // off the unsourced seeds is the whole point.
+        var legacy = new BreedPrice("german-shepherd", 1000, 3000, PriceConfidence.Unverified, 0, DateTimeOffset.UtcNow);
+
+        var result = PriceObservationValidator.Aggregate(
+            "german-shepherd", ThreeAgreeingSources, Strict, legacy);
+
+        Assert.Equal(PriceConfidence.Verified, result.Price!.Confidence);
+        Assert.Contains("flagged for review", result.Rationale);
+    }
+
+    [Fact]
+    public void ALargeMoveThatOverwritesAVerifiedRangeIsHeldBack()
+    {
+        // Flagging alone wasn't enough: CanScreen arms on Verified, so the old code named
+        // the problem and then let the change arm the scam check anyway.
+        var trusted = new BreedPrice("german-shepherd", 1000, 3000, PriceConfidence.Verified, 4, DateTimeOffset.UtcNow);
+
+        var result = PriceObservationValidator.Aggregate(
+            "german-shepherd", ThreeAgreeingSources, Strict, trusted);
+
+        Assert.Equal(PriceConfidence.Contested, result.Price!.Confidence);
+        Assert.True(result.NeedsReview);
+        Assert.Contains("overwrites a verified range", result.Rationale);
+    }
+
+    [Fact]
+    public void ASmallMoveOverAVerifiedRangeIsNotHeldBack()
+    {
+        // Routine re-confirmation must not need a human every month, or the guard becomes
+        // noise everyone learns to ignore.
+        var trusted = new BreedPrice("german-shepherd", 1900, 3900, PriceConfidence.Verified, 4, DateTimeOffset.UtcNow);
+
+        var result = PriceObservationValidator.Aggregate(
+            "german-shepherd", ThreeAgreeingSources, Strict, trusted);
+
+        Assert.Equal(PriceConfidence.Verified, result.Price!.Confidence);
+        Assert.False(result.NeedsReview);
+    }
+
+    // ---------------------------------------------------------------- freshness
+
+    [Fact]
+    public void RejectsASourceOlderThanThirtySixMonths()
+    {
+        // The real case: PetMD's French Bulldog page says "$1,500-$5,000", updated March
+        // 2023. Puppy prices moved sharply after the pandemic, so that describes a market
+        // that no longer exists — and the scam check would measure today's quotes on it.
+        var retrieved = new DateTimeOffset(2026, 8, 3, 0, 0, 0, TimeSpan.Zero);
+        var stale = Obs(1500, 5000) with
+        {
+            RetrievedAt = retrieved,
+            PublishedAt = new DateTimeOffset(2023, 3, 13, 0, 0, 0, TimeSpan.Zero),
+        };
+
+        var reason = PriceObservationValidator.Reject(stale);
+
+        Assert.NotNull(reason);
+        Assert.Contains("36-month limit", reason);
+    }
+
+    [Fact]
+    public void AcceptsASourceInsideTheFreshnessWindow()
+    {
+        var retrieved = new DateTimeOffset(2026, 8, 3, 0, 0, 0, TimeSpan.Zero);
+        var fresh = Obs(2500, 4000) with
+        {
+            RetrievedAt = retrieved,
+            PublishedAt = new DateTimeOffset(2026, 5, 31, 0, 0, 0, TimeSpan.Zero),
+        };
+
+        Assert.Null(PriceObservationValidator.Reject(fresh));
+    }
+
+    [Fact]
+    public void AnUndatedSourceIsNotRejectedForAge()
+    {
+        // Most breed pages state no date at all. Absent evidence of staleness is not
+        // evidence of staleness — they're judged on tier and corroboration instead.
+        Assert.Null(PriceObservationValidator.Reject(Obs(2500, 4000) with { PublishedAt = null }));
+    }
+
     // ------------------------------------------------- one vote per publisher
 
     [Fact]
@@ -352,8 +447,13 @@ public class PriceObservationValidatorTests
     // ---------------------------------------------------------------- drift guard
 
     [Fact]
-    public void ALargeMoveInTheLiveValueIsFlaggedEvenWhenWellSourced()
+    public void ALargeMoveInTheLiveValueIsHeldBackEvenWhenWellSourced()
     {
+        // This test used to assert the opposite — that three good sources carried the
+        // change through to Verified with only a review flag set. That made the drift guard
+        // decorative: CanScreen arms on Verified, so the scam check started measuring
+        // against a range that had tripled while the flag sat unread. Being well sourced is
+        // what makes a big move plausible, not what makes it safe.
         var current = new BreedPrice("french-bulldog", 1000, 1400, PriceConfidence.Verified, 3, DateTimeOffset.UtcNow);
 
         var result = PriceObservationValidator.Aggregate("french-bulldog",
@@ -361,7 +461,7 @@ public class PriceObservationValidatorTests
              TierB(2450, 4200, "caninebible.com")],
             Strict, current);
 
-        Assert.Equal(PriceConfidence.Verified, result.Price!.Confidence);
+        Assert.Equal(PriceConfidence.Contested, result.Price!.Confidence);
         Assert.True(result.NeedsReview);
         Assert.Contains("moved", result.Rationale);
     }
