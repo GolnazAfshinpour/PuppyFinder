@@ -26,7 +26,7 @@ dog results fill the right, with the site directory below them as the fallback t
 ## Where the listings come from
 
 - **Government open data (always on):** Montgomery County MD Animal Services and King County WA pet adoption feeds — public Socrata JSON endpoints, refreshed continuously.
-- **RescueGroups.org (optional):** request a free key at https://rescuegroups.org/services/adoptable-pet-data-api/ and paste it into `backend/appsettings.Development.json` for nationwide rescue coverage. ⚠ Don't commit real keys.
+- **RescueGroups.org (optional):** request a free key at https://rescuegroups.org/services/adoptable-pet-data-api/, then `cd backend && dotnet user-secrets set "RescueGroups:ApiKey" "..."` for nationwide rescue coverage.
 - ~~Petfinder~~ — their public API was discontinued Dec 2, 2025; Petfinder remains available via the deep-link footer chips.
 
 Full research and roadmap: [docs/SOURCES.md](docs/SOURCES.md)
@@ -46,6 +46,28 @@ cd frontend && npm install && npm run dev   # UI on http://localhost:5173 (or ne
 ```
 
 The Vite dev server proxies `/api/*` to the backend.
+
+## Secrets
+
+All credentials live in [`dotnet user-secrets`](https://learn.microsoft.com/aspnet/core/security/app-secrets)
+(`~/.microsoft/usersecrets/<UserSecretsId>/secrets.json`), outside the repo. The launchd
+service sets `ASPNETCORE_ENVIRONMENT=Development` so they load.
+
+```sh
+cd backend
+dotnet user-secrets set "Anthropic:ApiKey" "sk-ant-..."   # price research job
+dotnet user-secrets set "Prices:AdminSecret" "..."        # admin endpoints (fail closed without it)
+dotnet user-secrets set "RescueGroups:ApiKey" "..."       # nationwide rescue listings
+dotnet user-secrets set "Smtp:Password" "..."             # alert emails
+```
+
+Do **not** put keys in `appsettings*.json` or in `deploy/launchd/*.plist` — the plist is
+tracked, and `appsettings.Development.json` used to be, which made its own
+"don't commit real keys" comment a trap. It's untracked and gitignored now.
+
+Avoid `dotnet user-secrets list`: it prints every value in full, which is easy to leak
+into a log or a shared terminal. Use `dotnet user-secrets list --json | jq 'keys'` to check
+*which* secrets exist without revealing them.
 
 ## API
 
@@ -75,7 +97,13 @@ Disabled unless `Prices:AdminSecret` is set; all require an `X-Admin-Secret` hea
 
 ### Turning the research job on
 
-1. `export ANTHROPIC_API_KEY=...` (or set `Anthropic:ApiKey`), and set `Prices:AdminSecret`.
+1. Store both secrets with `dotnet user-secrets` — never in a config file:
+   ```sh
+   cd backend
+   dotnet user-secrets set "Anthropic:ApiKey"    "sk-ant-..."
+   dotnet user-secrets set "Prices:AdminSecret"  "$(openssl rand -hex 24)"
+   launchctl kickstart -k gui/$(id -u)/com.puppyfinder.api
+   ```
 2. `POST /api/admin/price-research?breed=french-bulldog` — read `price_observation` and
    check every row has an allowlisted URL, a verbatim quote and a correct scope.
 3. Tune the prompt in `PriceResearchPrompt.SystemRules` against the calibration breeds.

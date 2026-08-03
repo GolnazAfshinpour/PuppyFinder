@@ -11,3 +11,10 @@ backend/data/alerts.json
 backend/data/outbox/
 backend/data/prices.db*
 frontend/adopt-tab.png
+
+# Local dev config. Untracked on purpose: this file used to be tracked while its own
+# comment said "do not commit real keys", so following that advice would have committed
+# one. Secrets belong in `dotnet user-secrets` (the project already has a UserSecretsId);
+# this file is only for non-secret local overrides.
+backend/appsettings.Development.json
+backend/appsettings.*.Local.json
