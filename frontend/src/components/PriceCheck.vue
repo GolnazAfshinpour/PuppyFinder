@@ -1,5 +1,6 @@
 <script setup>
 import { computed, ref, watch } from 'vue'
+import { articleFor } from '../article.js'
 
 const props = defineProps({
   breedSlug: { type: String, default: '' },
@@ -65,7 +66,9 @@ const alertClass = computed(() => {
         <p class="text-sm opacity-70">
           A price far below market is the most reported hook in puppy fraud. This compares a
           quote against
-          <template v-if="breedName">our range for a {{ breedName }}.</template>
+          <template v-if="breedName">
+            our range for {{ articleFor(breedName) }} {{ breedName }}.
+          </template>
           <template v-else>the breed's real range — pick a breed for the sharpest answer.</template>
         </p>
       </div>
@@ -73,11 +76,18 @@ const alertClass = computed(() => {
       <form class="flex flex-wrap items-center gap-2" @submit.prevent="check">
         <label class="input input-bordered flex items-center gap-1">
           <span class="opacity-60">$</span>
+          <!--
+            step="any", not step="50". A step value imposes HTML5 constraint validation, so
+            the browser silently refused to submit the form for any price that wasn't a
+            multiple of 50 — no request, no error, nothing. $6,000 worked and $1,299 did
+            nothing at all, which is most real quotes. The attribute was only ever meant to
+            size the spinner increment.
+          -->
           <input
             v-model="quote"
             type="number"
             min="0"
-            step="50"
+            step="any"
             inputmode="numeric"
             class="w-28 grow"
             placeholder="1200"

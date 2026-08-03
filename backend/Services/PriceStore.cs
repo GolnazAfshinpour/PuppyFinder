@@ -108,6 +108,40 @@ public sealed class PriceStore(PriceDb db, ILogger<PriceStore> logger)
     }
 
     /// <summary>
+    /// Withdraws a breed's published range, for when the evidence no longer supports one.
+    ///
+    /// <para>
+    /// Needed because re-aggregation only ever upserted. When a range stopped qualifying and
+    /// there was no seed to fall back to, nothing was written and the old row simply stayed
+    /// live: Irish Wolfhound kept serving a $2,000-$2,100 band after the sample behind it was
+    /// refused as one seller's litter. A rule that can only ever *raise* confidence isn't a
+    /// rule. The listing and observation rows are untouched — only the derived range goes.
+    /// </para>
+    /// </summary>
+    public async Task<bool> RemoveAsync(string breedSlug, CancellationToken ct)
+    {
+        await _lock.WaitAsync(ct);
+        try
+        {
+            await using var connection = await db.OpenAsync(ct);
+            await using var command = connection.CreateCommand();
+            command.CommandText = "DELETE FROM breed_price WHERE breed_slug = $slug;";
+            command.Parameters.AddWithValue("$slug", breedSlug);
+            var removed = await command.ExecuteNonQueryAsync(ct) > 0;
+            if (removed)
+            {
+                _cache = null;
+            }
+
+            return removed;
+        }
+        finally
+        {
+            _lock.Release();
+        }
+    }
+
+    /// <summary>
     /// Records a listing sample. Idempotent per run via the unique index — re-fetching a
     /// breed within one run refreshes rather than inflating the sample, because a price
     /// counted twice moves the percentiles while looking like corroboration.

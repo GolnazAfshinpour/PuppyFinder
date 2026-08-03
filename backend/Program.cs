@@ -193,8 +193,21 @@ app.MapGet("/api/price-sources", async (string breed, PriceStore prices, IConfig
     // whole feature exists to correct. Citing the wrong source is not much better than
     // citing none.
     var fromListings = live?.Basis == PriceBasis.Listings;
+    var thresholds = PriceThresholds.FromConfiguration(config);
     var sample = fromListings
-        ? await prices.GetListingPricesAsync(breed, PriceThresholds.FromConfiguration(config).ListingWindowDays, ct)
+        ? await prices.GetListingPricesAsync(breed, thresholds.ListingWindowDays, ct)
+        : [];
+
+    // Re-derive rather than recount, so the figures shown are the ones the band came from.
+    var listingView = fromListings && sample.Count > 0
+        ? ListingPriceAggregator.Aggregate(breed, sample, thresholds, live)
+        : null;
+    var counted = fromListings
+        ? sample
+            .GroupBy(l => l.ListingRef, StringComparer.OrdinalIgnoreCase)
+            .Select(g => g.OrderByDescending(l => l.RetrievedAt).First().Price)
+            .Where(p => p is >= 100 and <= 25_000)
+            .ToList()
         : [];
 
     return Results.Ok(new
@@ -207,14 +220,20 @@ app.MapGet("/api/price-sources", async (string breed, PriceStore prices, IConfig
         Basis = live?.Basis ?? PriceBasis.Editorial,
         // Live asking prices: there is no quote to show and no publisher to credit, so the
         // provenance is the sample itself — how many, from where, when, and its shape.
-        Listings = fromListings && sample.Count > 0
+        //
+        // Counts come from the aggregation, not from the raw rows. Reporting sample.Count here
+        // put "the middle half of 69 puppies" directly above "From 80 live listings" on the
+        // same card: 69 was the counted sample after de-duplicating re-listings and dropping
+        // implausible prices, 80 was everything stored. Two numbers for one sample, and a
+        // reader can only conclude one of them is wrong.
+        Listings = fromListings && listingView?.Price is not null
             ? new
             {
                 Host = sample[0].SourceHost,
-                Count = sample.Count,
-                Median = ListingPriceAggregator.Percentile([.. sample.Select(l => l.Price).Order()], 50),
-                Cheapest = sample.Min(l => l.Price),
-                Dearest = sample.Max(l => l.Price),
+                Count = listingView.SampleSize,
+                listingView.Median,
+                Cheapest = counted.Count > 0 ? counted.Min() : 0,
+                Dearest = counted.Count > 0 ? counted.Max() : 0,
                 RetrievedAt = sample.Max(l => l.RetrievedAt),
             }
             : null,

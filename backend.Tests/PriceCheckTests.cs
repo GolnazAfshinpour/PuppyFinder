@@ -199,4 +199,44 @@ public class PriceCheckTests
         // No range at all is a different state from "range we can't vouch for".
         Assert.Equal("Unavailable", verdict.Level);
     }
+
+    // ------------------------------------------------- the copy must match the evidence
+
+    private static BreedPrice FromListings(int sample = 20) =>
+        new("french-bulldog", 3000, 6000, PriceConfidence.Verified, sample,
+            DateTimeOffset.UtcNow, Basis: PriceBasis.Listings);
+
+    [Fact]
+    public void AListingDerivedRangeIsNotDescribedAsIndependentSources()
+    {
+        // Afghan Hound's live range is the middle half of 20 listings, and this caveat called
+        // it "20 independent sources" — crediting published research that had nothing to do
+        // with the number. Same misattribution the provenance endpoint had.
+        var verdict = PriceCheck.Evaluate(Frenchie, 4500, FromListings());
+
+        Assert.DoesNotContain("independent sources", verdict.Detail);
+        Assert.Contains("20 puppies listed for sale", verdict.Detail);
+    }
+
+    [Fact]
+    public void AnEditorialRangeStillCitesItsSources()
+    {
+        var verdict = PriceCheck.Evaluate(Frenchie, 4500, Verified(3));
+
+        Assert.Contains("3 independent sources", verdict.Detail);
+        Assert.DoesNotContain("listed for sale", verdict.Detail);
+    }
+
+    [Theory]
+    [InlineData(0)]      // Free
+    [InlineData(1000)]   // FarBelow
+    [InlineData(2900)]   // Below
+    [InlineData(4500)]   // Typical
+    [InlineData(9000)]   // Above
+    public void EveryVerdictLevelCarriesTheBasisThrough(int price)
+    {
+        // Five separate positional constructor calls build these; missing one would silently
+        // label a listing-derived range as editorial.
+        Assert.Equal(PriceBasis.Listings, PriceCheck.Evaluate(Frenchie, price, FromListings()).Basis);
+    }
 }

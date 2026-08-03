@@ -1,6 +1,7 @@
 <script setup>
 import { computed } from 'vue'
 import PriceProvenance from './PriceProvenance.vue'
+import { articleFor } from '../article.js'
 
 const props = defineProps({
   breed: { type: Object, default: null }, // the selected breed from /api/breeds
@@ -61,7 +62,7 @@ const ONGOING_COSTS = [
       <template v-if="hasRange">
         <div>
           <p class="text-xs font-bold tracking-wide uppercase opacity-60">
-            What a {{ breed.displayName }} actually costs
+            What {{ articleFor(breed.displayName) }} {{ breed.displayName }} actually costs
           </p>
           <p class="font-display text-primary mt-1 text-4xl font-semibold">{{ breed.typicalPrice }}</p>
           <p class="mt-1 text-sm opacity-70">

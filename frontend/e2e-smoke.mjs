@@ -99,6 +99,22 @@ const screened = await page.evaluate(async (slug) => {
 console.log('sourced verdict:', screened.level, '| isWarning:', screened.isWarning,
   '| range:', screened.priceLow, '-', screened.priceHigh)
 
+// A price that isn't a round number. step="50" on the input made the browser silently refuse
+// to submit the form for anything that wasn't a multiple of 50 — no request, no error, no
+// verdict. $6,000 worked and $1,299 did nothing, which is most real quotes, so every check
+// here passed while the feature was broken for most users. Driving the actual form is the only
+// thing that catches it.
+const odd = await page.evaluate(async (slug) => {
+  const breeds = await (await fetch('/api/breeds')).json()
+  const { priceLow } = breeds.find((b) => b.slug === slug)
+  return Math.round(priceLow / 4) * 10 + 9 // deliberately not a multiple of 50
+}, examples.sourced)
+await page.fill('input[aria-label="Price you were quoted, in dollars"]', String(odd))
+await page.click('button:has-text("Check this price")')
+await page.waitForTimeout(2500)
+const oddVerdictShown = (await page.locator('[data-testid="price-verdict"]').count()) === 1
+console.log(`non-round quote $${odd} produced a verdict:`, oddVerdictShown)
+
 // ---------- adopting: the secondary path ----------
 await page.click('button:has-text("Adopt a rescue dog")')
 await settle()
@@ -174,6 +190,7 @@ const checks = {
   'checker appears for a sourced breed': sourcedChecker === 1,
   'sourced range is shown': sourcedRange === 1,
   'provenance cites the sources': sourcedProvenance >= 1,
+  'a non-round price still gets a verdict': oddVerdictShown,
   'api screens a sourced breed against its real range':
     screened.level === 'FarBelow' && screened.isWarning === true
     && screened.priceLow === screened.expectedLow && screened.priceHigh === screened.expectedHigh,

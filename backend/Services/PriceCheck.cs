@@ -17,7 +17,13 @@ public record PriceVerdict(
     /// must not present a verdict as more authoritative than the data behind it.
     /// </summary>
     string Confidence = PriceConfidence.Unverified,
-    int SourceCount = 0);
+    int SourceCount = 0,
+    /// <summary>
+    /// Which kind of evidence produced the range (see <see cref="PriceBasis"/>). The copy has
+    /// to branch on it: "20 independent sources" and "20 puppies listed for sale" are very
+    /// different claims, and the first was being made about the second.
+    /// </summary>
+    string Basis = PriceBasis.Editorial);
 
 /// <summary>
 /// Screens a quoted puppy price against the breed's typical range.
@@ -71,7 +77,8 @@ public static class PriceCheck
               + "safety checklist, which doesn't depend on price at all.",
         IsWarning: false,
         Confidence: backing?.Confidence ?? PriceConfidence.Unverified,
-        SourceCount: backing?.SourceCount ?? 0);
+        SourceCount: backing?.SourceCount ?? 0,
+        Basis: backing?.Basis ?? PriceBasis.Editorial);
 
     /// <summary>
     /// Appends a plain statement of how well the range is backed. Without this the
@@ -89,6 +96,12 @@ public static class PriceCheck
 
         var caveat = verdict.Confidence switch
         {
+            // Say what the evidence actually is. Afghan Hound's range is the middle half of 20
+            // live listings, and this line called it "20 independent sources" — crediting
+            // published research that had nothing to do with the number.
+            PriceConfidence.Verified when verdict.Basis == PriceBasis.Listings =>
+                $" That's the middle half of {verdict.SourceCount} puppies listed for sale right"
+                + " now — tap to see the sample.",
             PriceConfidence.Verified =>
                 $" This range comes from {verdict.SourceCount} independent sources — tap to see them.",
             PriceConfidence.Contested =>
@@ -109,6 +122,7 @@ public static class PriceCheck
     {
         var confidence = backing?.Confidence ?? PriceConfidence.Unverified;
         var sources = backing?.SourceCount ?? 0;
+        var basis = backing?.Basis ?? PriceBasis.Editorial;
 
         // Curated breeds carry real ranges; the dog.ceo catalog entries don't
         // (PriceHigh 0). Saying so beats inventing a number to judge against.
@@ -124,7 +138,8 @@ public static class PriceCheck
                       + "and treat any one that undercuts the others sharply as the outlier, not the bargain.",
                 IsWarning: false,
                 Confidence: confidence,
-                SourceCount: sources);
+                SourceCount: sources,
+                Basis: basis);
         }
 
         var low = breed.PriceLow;
@@ -140,7 +155,7 @@ public static class PriceCheck
                 + "by accident. \"Free to a good home, just pay shipping\" is one of the oldest scam scripts "
                 + "there is — the shipping fee is the product, and the puppy doesn't exist.",
                 IsWarning: true,
-                low, high, null, confidence, sources);
+                low, high, null, confidence, sources, basis);
         }
 
         if (price < low * FarBelowFactor)
@@ -152,7 +167,7 @@ public static class PriceCheck
                 + "won't do a live video call, wants a wire transfer, gift cards, Zelle or crypto, or adds fees "
                 + "after you commit, walk away — those four together are the whole playbook.",
                 IsWarning: true,
-                low, high, PercentBelow(price, low), confidence, sources);
+                low, high, PercentBelow(price, low), confidence, sources, basis);
         }
 
         if (price < low)
@@ -164,7 +179,7 @@ public static class PriceCheck
                 + "transport, or a breeder without champion lines. Ask directly why it's priced below market. "
                 + "A real breeder has a straight answer; a scammer has a story.",
                 IsWarning: false,
-                low, high, PercentBelow(price, low), confidence, sources);
+                low, high, PercentBelow(price, low), confidence, sources, basis);
         }
 
         if (price > high)
@@ -177,7 +192,7 @@ public static class PriceCheck
                 + "results for both parents, registration papers, and the contract. \"Rare\" colours often mean "
                 + "disqualifying ones that carry health problems.",
                 IsWarning: false,
-                low, high, PercentAbove(price, high), confidence, sources);
+                low, high, PercentAbove(price, high), confidence, sources, basis);
         }
 
         return new PriceVerdict(
@@ -187,7 +202,7 @@ public static class PriceCheck
             + "price realistically for exactly this reason. Everything else still has to hold up: see the puppy "
             + "and its mother live, get health testing on paper, and never send money by wire, gift card or crypto.",
             IsWarning: false,
-            low, high, null, confidence, sources);
+            low, high, null, confidence, sources, basis);
     }
 
     private static int PercentBelow(int price, int low) => (int)Math.Round((low - price) * 100.0 / low);

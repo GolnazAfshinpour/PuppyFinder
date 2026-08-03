@@ -245,14 +245,38 @@ public sealed class PriceRefreshJob(
                 Rationale = fromListings.Rationale,
             };
         }
-        else if (aggregation.Price is null && seed is { } fallback)
+        else if (listings.Count > 0)
+        {
+            // A listing sample existed and was refused: report *that* reason, not the editorial
+            // path's "no usable pet-quality figures found". The withdrawal log would otherwise
+            // name the wrong cause — saying nothing was published because no article covered
+            // the breed, when in truth 30 of 54 listings were one seller's litter.
+            aggregation = aggregation with { Rationale = fromListings.Rationale };
+        }
+
+        if (aggregation.Price is null && seed is { } fallback)
         {
             aggregation = aggregation with
             {
                 Price = new BreedPrice(breedSlug, fallback.Low, fallback.High,
                     PriceConfidence.Unverified, 0, timestampNow, Basis: PriceBasis.Editorial),
-                Rationale = fromListings.Rationale + "; showing the unsourced seed range",
+                Rationale = aggregation.Rationale + "; showing the unsourced seed range",
             };
+        }
+
+        // Nothing can back a range: withdraw the old one rather than leaving it live. Without
+        // this, re-aggregation could only ever raise confidence — Irish Wolfhound went on
+        // serving a $2,000-$2,100 band after its sample was refused as one seller's litter.
+        if (aggregation.Price is null)
+        {
+            if (await store.RemoveAsync(breedSlug, ct))
+            {
+                catalog.InvalidatePrices();
+                logger.LogInformation(
+                    "Withdrew the published range for {Breed}: {Reason}", breedSlug, aggregation.Rationale);
+            }
+
+            return aggregation;
         }
 
         if (aggregation.Price is not null)

@@ -147,6 +147,65 @@ public class ListingPriceAggregatorTests
         Assert.Equal(24, pooled.SampleSize);
     }
 
+    // ------------------------------------------------- one seller's litter
+
+    [Fact]
+    public void ASampleDominatedByOneRepeatedPriceIsRefused()
+    {
+        // The real Irish Wolfhound case: 18 of 27 listings at exactly $2,000, published as a
+        // $2,000-$2,100 band. That is 1.05x wide, almost certainly one breeder's litter, and it
+        // would have flagged a legitimate $2,500 Wolfhound as above typical — the
+        // "too-narrow band accuses honest breeders" failure, arriving from inside the sample.
+        var litter = Sample([
+            .. Enumerable.Repeat(2000, 18),
+            2100, 2100, 2200, 2500, 2500, 2800, 3000, 3200, 3500]);
+
+        var result = ListingPriceAggregator.Aggregate("irish-wolfhound", litter, Strict);
+
+        Assert.Equal(PriceConfidence.Contested, result.Price!.Confidence);
+        Assert.Contains("one seller's litter", result.Rationale);
+    }
+
+    [Fact]
+    public void RepeatedRoundNumbersAreFineWhenTheSampleIsBroad()
+    {
+        // Round numbers repeat legitimately — 27 of 109 Bernese listings are $1,500, from what
+        // are plainly different breeders. The guard must not punish that, or it would refuse
+        // most healthy samples: nearly every breed has one popular price point.
+        var broad = Sample([
+            .. Enumerable.Repeat(1500, 8),
+            .. Enumerable.Range(0, 24).Select(i => 1200 + i * 50)]);
+
+        var result = ListingPriceAggregator.Aggregate("bernese-mountain-dog", broad, Strict);
+
+        Assert.Equal(PriceConfidence.Verified, result.Price!.Confidence);
+    }
+
+    [Fact]
+    public void TheConcentrationLimitIsConfigurable()
+    {
+        var litter = Sample([.. Enumerable.Repeat(2000, 18), .. Enumerable.Range(0, 9).Select(i => 2100 + i * 100)]);
+
+        var lenient = ListingPriceAggregator.Aggregate(
+            "irish-wolfhound", litter, Strict with { MaxSinglePriceShare = 0.9 });
+
+        Assert.Equal(PriceConfidence.Verified, lenient.Price!.Confidence);
+    }
+
+    [Fact]
+    public void ConcentrationIsCheckedBeforeBandWidth()
+    {
+        // Order matters and isn't arbitrary: a dominated sample produces a deceptively *tight*
+        // band, so the band-width rule can never catch it. Reporting "band too wide" here
+        // would also be simply untrue.
+        var litter = Sample([.. Enumerable.Repeat(2000, 18), .. Enumerable.Range(0, 9).Select(i => 2050 + i * 10)]);
+
+        var result = ListingPriceAggregator.Aggregate("irish-wolfhound", litter, Strict);
+
+        Assert.Contains("one seller's litter", result.Rationale);
+        Assert.DoesNotContain("middle half spans", result.Rationale);
+    }
+
     // ---------------------------------------------------------------- the floor guard
 
     [Fact]

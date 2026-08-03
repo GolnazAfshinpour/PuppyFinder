@@ -361,6 +361,47 @@ public sealed class PriceAdminApiTests : IDisposable
     }
 
     [Fact]
+    public async Task ARangeIsWithdrawnWhenItsEvidenceStopsQualifying()
+    {
+        // Re-aggregation could only ever *raise* confidence: when a range stopped qualifying
+        // and no seed existed to fall back to, nothing was written and the old row stayed
+        // live. Irish Wolfhound went on serving a $2,000-$2,100 band after its sample was
+        // refused as one seller's litter. A rule that can't withdraw isn't a rule.
+        var store = _factory.Services.GetRequiredService<PriceStore>();
+        var job = _factory.Services.GetRequiredService<PriceRefreshJob>();
+        var thresholds = new PriceThresholds();
+
+        // akita is a dog.ceo breed: no seed range, no observations. Nothing to fall back to.
+        ListingPrice Listing(int index, int price) => new(
+            BreedSlug: "akita",
+            Price: price,
+            SourceHost: "puppies.com",
+            ListingRef: $"ref-{index}",
+            ListingName: "Akita - F",
+            RetrievedAt: DateTimeOffset.UtcNow,
+            RunId: "listings-test");
+
+        // A healthy spread first, so a range is genuinely published.
+        await store.AddListingPricesAsync(
+            [.. Enumerable.Range(0, 24).Select(i => Listing(i, 1000 + i * 50))], Ct);
+        var published = await job.ReaggregateBreedAsync("akita", thresholds, Ct);
+        Assert.Equal(PriceConfidence.Verified, published!.Price!.Confidence);
+        Assert.NotNull(await store.FindAsync("akita", Ct));
+
+        // Now flood it with one repeated price, as a litter of thirty would.
+        await store.AddListingPricesAsync(
+            [.. Enumerable.Range(100, 30).Select(i => Listing(i, 2000))], Ct);
+        var after = await job.ReaggregateBreedAsync("akita", thresholds, Ct);
+
+        Assert.Null(after!.Price);
+        Assert.Null(await store.FindAsync("akita", Ct));
+        Assert.Contains("litter", after.Rationale);
+
+        // The evidence itself is kept — only the derived range is withdrawn.
+        Assert.NotEmpty(await store.GetListingPricesAsync("akita", 90, Ct));
+    }
+
+    [Fact]
     public async Task IngestedRowsRecordThatAHumanGatheredThem()
     {
         await _client.SendAsync(Ingest("""

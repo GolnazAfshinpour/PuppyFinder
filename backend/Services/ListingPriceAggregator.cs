@@ -93,7 +93,23 @@ public static class ListingPriceAggregator
         var band = (double)high / low;
         string? blocked = null;
 
-        if (band > thresholds.MaxVerifiedBandRatio)
+        // One repeated price must not be most of the sample - see
+        // PriceThresholds.MaxSinglePriceShare. Checked before the band, because a dominated
+        // sample produces a deceptively *tight* band rather than a wide one, so the
+        // band-width rule cannot catch it.
+        var (commonest, repeats) = prices
+            .GroupBy(p => p)
+            .Select(g => (Price: g.Key, Count: g.Count()))
+            .OrderByDescending(g => g.Count)
+            .First();
+        var share = (double)repeats / prices.Count;
+
+        if (share > thresholds.MaxSinglePriceShare)
+        {
+            blocked = $"{repeats} of {prices.Count} listings are all ${commonest:n0} "
+                + $"({share:P0} of the sample) - that is one seller's litter, not a market";
+        }
+        else if (band > thresholds.MaxVerifiedBandRatio)
         {
             blocked = $"the middle half spans {band:0.00}x (${low:n0}–${high:n0}), "
                 + $"limit {thresholds.MaxVerifiedBandRatio:0.00}x";

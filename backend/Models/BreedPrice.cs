@@ -120,7 +120,21 @@ public record PriceThresholds(
     // How far back to pool listing samples. Runs return near-disjoint sets, so pooling is
     // what makes the range stable rather than a fresh random sample every month; the window
     // is what stops it going stale. 90 days is short against how slowly breed prices move.
-    int ListingWindowDays = 90)
+    int ListingWindowDays = 90,
+    // The largest share of a listing sample that may sit at a single identical price.
+    //
+    // A breeder listing a litter of eighteen at $2,000 is one offer, not eighteen data
+    // points, and we cannot tell that apart from eighteen breeders independently choosing
+    // $2,000 - the structured data carries no seller id. So rather than discarding repeats,
+    // refuse the sample when one price dominates it, because that is when a single seller is
+    // effectively setting the breed's range.
+    //
+    // Measured: Irish Wolfhound had 18 of 27 listings at exactly $2,000 and published a
+    // $2,000-$2,100 band - 1.05x wide, from what is almost certainly one litter. A legitimate
+    // $2,500 Wolfhound would have been flagged as above typical. Afghan Hound: 11 of 20 at
+    // $3,000. Most breeds sit under 20%, so this refuses the degenerate cases without
+    // touching the healthy ones.
+    double MaxSinglePriceShare = 0.35)
 {
     public static PriceThresholds FromConfiguration(IConfiguration configuration) => new(
         MinSources: configuration.GetValue("Prices:MinSources", 3),
@@ -130,7 +144,8 @@ public record PriceThresholds(
         MaxVerifiedBandRatio: configuration.GetValue("Prices:MaxVerifiedBandRatio", 4.0),
         MinListingSample: configuration.GetValue("Prices:MinListingSample", 20),
         ListingFloorFactor: configuration.GetValue("Prices:ListingFloorFactor", 0.75),
-        ListingWindowDays: configuration.GetValue("Prices:ListingWindowDays", 90));
+        ListingWindowDays: configuration.GetValue("Prices:ListingWindowDays", 90),
+        MaxSinglePriceShare: configuration.GetValue("Prices:MaxSinglePriceShare", 0.35));
 }
 
 public static class ObservationStatus
