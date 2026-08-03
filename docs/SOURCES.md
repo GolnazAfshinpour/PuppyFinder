@@ -253,6 +253,46 @@ corrected by running the research by hand before writing the code:
   Shepherd and Golden Retriever, Dogster on Beagle and Poodle). Those are skipped rather
   than quoted from an adjacent sentence that doesn't support the figure.
 
+### Why we don't derive ranges from real listings (August 2026)
+
+The obvious better idea: skip the editorial middlemen and take asking prices straight off
+legitimate puppy marketplaces. More data, current, and it's what buyers actually face. It
+was tested properly, and the answer is **no — on terms, not on technology.**
+
+| Site | Vets breeders | robots on listings | Prices fetchable | Terms |
+|---|---|---|---|---|
+| AKC Marketplace | yes | allowed (path form; only `?query` facets disallowed) | **no** — client-rendered, 0 prices in HTML | **forbids** any automated means to access or copy content |
+| PuppySpot | yes | allowed, even `Allow: /api/search` | **no** — 403 on every request, edge protection | not reached |
+| Good Dog | yes | **`Disallow: /puppy/`, `/explore/`** | n/a | n/a |
+| Puppies.com | no — classifieds | allowed | **yes** — 40 prices per 4 pages, in the HTML | **forbids** scraping "including through bots, spiders, automated scripts, or AI-assisted tools"; also bans commercial use |
+
+The one source that is technically open is the only one whose terms name AI-assisted tools
+explicitly. `robots.txt` permitting a path is not the same as the ToS permitting collection;
+where they conflict the ToS governs. Both have an express-written-permission carve-out, so
+**asking is the route**, not building around it.
+
+**`akc.org` was removed from Tier A for this reason.** Their ban covers "any other automated
+means to access, collect, copy or record" their content — which includes a model reading a
+page through a search tool, not just bulk scraping. Having declined Puppies.com on those
+grounds, keeping AKC would be one standard for a classifieds site and a softer one for AKC.
+No observation had ever been sourced from it. `PriceObservationValidatorTests` pins all three
+domains as unusable so they don't get re-added.
+
+Worth recording what the probe *showed*, since it argues for pursuing permission:
+
+- **French Bulldog, 40 live listings:** p25–p75 = **$1,500–$3,000**, median $2,375 — a 2.0x
+  band, *narrower* than the editorial $1,500–$4,000, on 40 points instead of 4. The scam tail
+  was plainly visible: the cheapest listings were $400 and $450, matching Canine Bible's
+  warning that "$400–$800 is a common tactic used to lure buyers before disappearing with a
+  deposit."
+- **Beagle, 40 live listings:** p25–p75 = **$400–$900**, median $600 — materially *below* the
+  editorial $400–$1,200. Classifieds Beagles skew cheap, so calibrating to them would teach
+  the check that a $400 Beagle is typical. This is the circularity risk in concrete form:
+  screening classifieds quotes against a classifieds-derived baseline.
+
+That is why the design, if permission is ever granted, is **listings for the central mass with
+the editorial range as a floor guard** — not listings alone.
+
 ### Allowlisted domains that can't actually be cited
 
 Discovered by trying. `thesprucepets.com` blocks our crawler outright; `lemonade.com` and

@@ -27,14 +27,22 @@ public static class PriceSources
         "forbes.com",
         "nerdwallet.com",
         "petmd.com",
-        "thesprucepets.com",
-        "rover.com",
-        "akc.org",
         "pawlicy.com",
-        "lemonade.com",
         "trupanion.com",
         "insuranceopedia.com",
         "moneygeek.com",
+        // Removed rather than merely unused, with reasons, so nobody re-adds them:
+        //
+        // akc.org — their terms forbid "any robot, spider, scraper, data mining tool, data
+        //   gathering or extraction tool, or any other automated means, to access, collect,
+        //   copy or record our Service or AKC Content". That covers a model reading the page
+        //   through a search tool, not just bulk scraping. We declined to fetch Puppies.com
+        //   listings on the same grounds, so keeping AKC here would apply one standard to a
+        //   classifieds site and a softer one to AKC. No observation was ever sourced from
+        //   it, so removing it costs nothing.
+        // thesprucepets.com — blocks our crawler outright; no run could ever cite it.
+        // lemonade.com, rover.com — return 403 to every request.
+        // forbes.com, nerdwallet.com — no per-breed purchase-price pages found in practice.
     ];
 
     /// <summary>

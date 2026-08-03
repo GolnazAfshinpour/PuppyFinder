@@ -151,6 +151,26 @@ public class PriceObservationValidatorTests
         Assert.Equal(PublisherTier.A, Assert.Single(kept).PublisherTier);
     }
 
+    // ------------------------------------------------- terms-of-service exclusions
+
+    [Theory]
+    // AKC forbids "any other automated means, to access, collect, copy or record our
+    // Service or AKC Content" — which covers a model reading the page through a search
+    // tool, not only bulk scraping. We declined to fetch Puppies.com listings on exactly
+    // these grounds, and applying a softer standard to AKC would be inconsistent.
+    [InlineData("https://www.akc.org/expert-advice/dog-breeds/french-bulldog-price/")]
+    [InlineData("https://marketplace.akc.org/puppies/french-bulldog")]
+    // Puppies.com: "Scrape, crawl, or systematically collect data or content from the
+    // Services — including through bots, spiders, automated scripts, or AI-assisted tools
+    // — without our express written permission."
+    [InlineData("https://puppies.com/find-a-puppy/french-bulldog")]
+    public void SourcesWhoseTermsForbidAutomatedAccessAreNotUsable(string url)
+    {
+        // Whether it reads as "blocked" or "not on the list" doesn't matter — what matters
+        // is that no figure from these domains can ever be stored as accepted.
+        Assert.NotNull(PriceObservationValidator.Reject(Obs(2500, 4000, url: url)));
+    }
+
     // ------------------------------------------------- band width
 
     [Fact]
