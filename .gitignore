@@ -22,3 +22,6 @@ backend/appsettings.*.Local.json
 # e2e screenshot artifacts (e2e-smoke.mjs writes here when SCRATCH is unset)
 adopt-tab.png
 *-tab.png
+
+# scratch debug scripts (write these to the scratchpad, not the repo)
+*.tmp.mjs
