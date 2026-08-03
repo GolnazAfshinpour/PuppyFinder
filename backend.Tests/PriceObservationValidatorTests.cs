@@ -172,7 +172,7 @@ public class PriceObservationValidatorTests
     }
 
     [Fact]
-    public void FallingBackToEditorialResetsTheBasis()
+    public void WithNoPublishedFiguresThereIsNoEditorialRangeAtAll()
     {
         // A row read basis=listings, confidence=unverified, source_count=0, carrying price
         // numbers left over from a superseded listing run — claiming an evidence type that no
@@ -188,8 +188,26 @@ public class PriceObservationValidatorTests
         var result = PriceObservationValidator.Aggregate(
             "australian-shepherd", [legacy], Strict, staleListings);
 
+        // Nothing at all, rather than the stored numbers relabelled. Handing them back as
+        // "the editorial range" made them the next run's floor guard, so a marketplace ended
+        // up validating itself one run removed: Akita's better-sampled $650-$1,650 from 69
+        // listings was refused for sitting below a $1,000 "published low" that was our own
+        // earlier output from the same source.
+        Assert.Null(result.Price);
+        Assert.Contains("no usable", result.Rationale);
+    }
+
+    [Fact]
+    public void AnEditorialRangeIsOnlyEverReturnedWhenPublishedFiguresSupportIt()
+    {
+        // The positive case, so the rule above can't be satisfied by returning null always.
+        var result = PriceObservationValidator.Aggregate("french-bulldog",
+            [Obs(2500, 4000), Obs(2600, 4200, "Insurify", "https://insurify.com/x"),
+             TierB(2400, 4100, "dogster.com")],
+            Strict);
+
+        Assert.NotNull(result.Price);
         Assert.Equal(PriceBasis.Editorial, result.Price!.Basis);
-        Assert.Equal(PriceConfidence.Unverified, result.Price.Confidence);
     }
 
     // ------------------------------------------------- band width

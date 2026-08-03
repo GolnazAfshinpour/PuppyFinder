@@ -208,20 +208,18 @@ public static class PriceObservationValidator
 
         if (ranges.Count == 0)
         {
+            // No usable published figure means no editorial range — return nothing rather
+            // than the existing row's numbers relabelled.
+            //
+            // Relabelling caused a self-referential ratchet. Akita has no editorial source and
+            // no seed, so its stored row held a listings-derived $1,000-$2,000; this method
+            // handed those numbers back as "the editorial range", and they became the floor
+            // guard for the next listing run. A better-sampled $650-$1,650 from 69 listings
+            // was then refused for sitting below "the published low" — which was our own
+            // earlier output from the very same source. The guard exists to stop a
+            // marketplace validating itself, and this let it do exactly that, one run removed.
             return new PriceAggregation(
-                current is null
-                    ? null
-                    // Basis must be reset, not inherited. Keeping "listings" here produced a
-                    // row reading basis=listings, confidence=unverified, source_count=0, with
-                    // price numbers left over from a superseded listing run — a range
-                    // claiming an evidence type that no longer backs it.
-                    : current with
-                    {
-                        Confidence = PriceConfidence.Unverified,
-                        SourceCount = 0,
-                        UpdatedAt = timestamp,
-                        Basis = PriceBasis.Editorial,
-                    },
+                null,
                 [],
                 averages.Count > 0
                     ? "no source published a range — averages alone can't define one"

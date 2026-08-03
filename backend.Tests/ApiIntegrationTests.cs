@@ -18,6 +18,9 @@ public sealed class OfflineApiFactory : WebApplicationFactory<Program>
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         // Keep alert subscriptions out of the repo's working tree during tests.
+        // The host loads user-secrets, so listing collection is pinned off explicitly:
+        // no test may fetch a third-party site.
+        builder.UseSetting("Prices:ListingsEnabled", "false");
         builder.UseSetting("Alerts:StorePath",
             Path.Combine(Path.GetTempPath(), $"puppyfinder-tests-{Guid.NewGuid():N}", "alerts.json"));
         builder.ConfigureServices(services =>

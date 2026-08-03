@@ -20,7 +20,7 @@ Two consequences shape everything:
 
 1. **`PriceCheck.CanScreen` gates on `confidence == verified`.** Screening is a property of
    the data, not a feature flag — a breed starts being checked the moment its range is
-   properly sourced, and there is no switch to flip by accident. 129 of 175 breeds currently
+   properly sourced, and there is no switch to flip by accident. 122 of 175 breeds currently
    return `Unavailable`, and that is the system working.
 2. **Gathering and judging are separate steps.** The collectors only ever write evidence
    rows; confidence is a *pure function* over them (`PriceObservationValidator.Aggregate`,
@@ -228,6 +228,30 @@ Two traps here, both found by running it:
   live titles rather than guessed. **A wrong slug 404s loudly, but a *plausible* wrong slug
   returns another breed's prices quietly** — which is why these are verified by fetching.
 
+### The guard must use evidence independent of the listings
+
+Subtle, and worth stating separately because it was got wrong: the floor guard may only
+compare against a **researched editorial range** or the **unsourced seed**. Never the current
+`breed_price` row — that row may itself be listings-derived.
+
+Getting this wrong produced a self-referential ratchet. Akita has no editorial source and no
+seed, so its stored row held a listings-derived $1,000–$2,000 from a 40-listing sample. That
+value was handed back as "the editorial range" and became the guard for the next run, so a
+better-sampled **$650–$1,650 from 69 listings was refused** for sitting below "the published
+low" — which was our own earlier output from the very same source. The guard exists to stop a
+marketplace validating itself; this let it do exactly that, one run removed, and protected a
+worse estimate against a better one.
+
+So `PriceObservationValidator.Aggregate` returns **nothing** when no published figure supports
+a range, rather than the stored row relabelled. Precedence then lives in one place
+(`ReaggregateBreedAsync`): a qualifying listing range wins; else a derivable editorial range;
+else the seed, marked `unverified` so nothing screens against it; else no row at all.
+
+**A consequence worth being honest about:** for a breed with neither editorial data nor a seed
+there is nothing to check the marketplace against, so its own figure is published. Akita's
+$650–$1,650 is what 69 live listings say, and we have no independent basis to contradict it.
+That is the accepted cost of listings-primary coverage, not an oversight.
+
 ### The floor guard — why this isn't circular
 
 The danger in using a classifieds marketplace is precise: **its cheap tail is exactly what
@@ -369,9 +393,17 @@ The other 100 split into two groups no mapping fixes:
 and that correlation is permanent. The breeds that *do* qualify are the most-searched ones, so
 coverage of actual traffic is much better than the raw fraction suggests.
 
-Where it landed: **46 of 175 breeds screening** — 45 from listings, one (German Shepherd) from
-published sources. Three breeds refused by the floor guard, five teacup aliases never
-collected because they aren't breeds anywhere but here.
+Where it landed after two collection passes: **53 of 175 breeds screening** — 52 from
+listings, one (German Shepherd) from published sources.
+
+Pooling is what got there. The second pass added no new breeds to the target list, only more
+samples, and seven breeds crossed the 20-listing floor on that alone. 4,958 individual asking
+prices are stored across 70 breeds, so the breeds still short of the floor keep accumulating
+toward it without re-fetching anything already held.
+
+Refused by the floor guard: Australian Shepherd, Siberian Husky, Cavalier King Charles and
+German Shepherd — in each case the marketplace's middle half sits far below what published
+sources or the seed report.
 
 ### Duplicate catalog entries were a correctness bug, not a wart
 
@@ -398,6 +430,10 @@ free" operation was quietly throwing away the better data.
 
 ## Known gaps
 
+- **Listing runs are recorded now, but the two jobs disagree on field meanings.** `price_run`
+  is shared, so for a listing run `accepted` means "breeds published", `pending` means "breeds
+  refused" and `rejected` means "crossbreed listings dropped" — different nouns from the
+  editorial job's row counts. Legible with the comment, but a `kind` column would be honest.
 - **`ObservationStatus.Pending` is never written.** The review queue at
   `/api/admin/price-review` reads it, so it returns empty by construction, and
   `PriceAggregation.NeedsReview` — computed correctly, including the drift case — is consumed

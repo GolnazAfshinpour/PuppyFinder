@@ -551,6 +551,15 @@ app.MapPost("/api/admin/listing-prices", async (HttpRequest request, string? bre
     // stretching. (The duplicate catalog entries are a separate problem, noted in the docs.)
     Dictionary<string, ListingFetchResult> byVendorSlug = new(StringComparer.OrdinalIgnoreCase);
 
+    // Record the run, like the editorial job does. Listing collection stamped a run_id on
+    // every row but never wrote a price_run record, so the path that now produces most of the
+    // live ranges was the one with no audit trail — you could not ask "which run touched what,
+    // when, and did it finish" of it.
+    await prices.StartRunAsync(new PriceRun(runId, DateTimeOffset.UtcNow), ct);
+
+    int publishedCount = 0, refusedCount = 0, crossbreedsDropped = 0;
+    List<string> fetchErrors = [];
+
     foreach (var target in targets)
     {
         var vendorSlug = ListingSources.VendorSlug(target.Slug);
@@ -571,9 +580,12 @@ app.MapPost("/api/admin/listing-prices", async (HttpRequest request, string? bre
 
         if (!fetched.Succeeded)
         {
+            fetchErrors.Add($"{target.Slug}: {fetched.Error}");
             outcomes.Add(new { Breed = target.Slug, Error = fetched.Error });
             continue;
         }
+
+        crossbreedsDropped += fetched.DroppedMixes;
 
         await prices.AddListingPricesAsync(fetched.Prices, ct);
 
@@ -587,6 +599,15 @@ app.MapPost("/api/admin/listing-prices", async (HttpRequest request, string? bre
         var sample = await prices.GetListingPricesAsync(target.Slug, thresholds.ListingWindowDays, ct);
         var guard = await prices.FindAsync(target.Slug, ct);
         var listingView = ListingPriceAggregator.Aggregate(target.Slug, sample, thresholds, guard);
+
+        if (aggregation?.Price is { Basis: PriceBasis.Listings, Confidence: PriceConfidence.Verified })
+        {
+            publishedCount++;
+        }
+        else
+        {
+            refusedCount++;
+        }
 
         outcomes.Add(new
         {
@@ -609,7 +630,30 @@ app.MapPost("/api/admin/listing-prices", async (HttpRequest request, string? bre
     // as "verified" at the legacy price, arriving through a new door.
     catalog.InvalidatePrices();
 
-    return Results.Ok(new { RunId = runId, Thresholds = thresholds, Breeds = outcomes });
+    // Field names come from the editorial job: Accepted = breeds whose listing range went
+    // live, Pending = breeds whose sample was refused (too small, or a guard), Rejected =
+    // crossbreed listings discarded.
+    await prices.FinishRunAsync(
+        new PriceRun(runId, DateTimeOffset.UtcNow)
+        {
+            FinishedAt = DateTimeOffset.UtcNow,
+            BreedsChecked = targets.Count,
+            Accepted = publishedCount,
+            Pending = refusedCount,
+            Rejected = crossbreedsDropped,
+            Error = fetchErrors.Count > 0 ? string.Join("; ", fetchErrors.Take(5)) : null,
+        }, ct);
+
+    return Results.Ok(new
+    {
+        RunId = runId,
+        Thresholds = thresholds,
+        BreedsChecked = targets.Count,
+        Published = publishedCount,
+        Refused = refusedCount,
+        CrossbreedsDropped = crossbreedsDropped,
+        Breeds = outcomes,
+    });
 })
 .WithName("CollectListingPrices");
 

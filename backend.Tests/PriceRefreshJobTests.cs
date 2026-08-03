@@ -31,7 +31,10 @@ public sealed class PriceRefreshJobTests : IDisposable
             // Belt and braces: if the startup-run regression ever comes back, this test
             // makes one failing API call rather than 179.
             .UseSetting("Prices:MaxBreedsPerRun", "1")
-            .UseSetting("Prices:AutoRefresh", autoRefresh ? "true" : "false"));
+            .UseSetting("Prices:AutoRefresh", autoRefresh ? "true" : "false")
+            // Never let a test reach a third-party site. The host loads user-secrets, so this
+            // is off by explicit setting rather than by hoping it wasn't enabled locally.
+            .UseSetting("Prices:ListingsEnabled", "false"));
 
         // CreateClient boots the host, which is what starts the BackgroundService.
         factory.CreateClient().Dispose();

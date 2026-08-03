@@ -30,7 +30,12 @@ public sealed class PriceAdminApiTests : IDisposable
             .UseSetting("Prices:AdminSecret", Secret)
             .UseSetting("Alerts:StorePath", Path.Combine(_dir, "alerts.json"))
             // Deliberately no Anthropic:ApiKey — the shipped state.
-            .UseSetting("Anthropic:ApiKey", ""));
+            .UseSetting("Anthropic:ApiKey", "")
+            // Pinned off, and this is not belt-and-braces. The test host loads user-secrets
+            // like any Development run, so with Prices:ListingsEnabled set locally the suite
+            // began fetching a third-party site for real — one test took 1m40s and made live
+            // requests. A unit test must never depend on, or touch, someone else's server.
+            .UseSetting("Prices:ListingsEnabled", "false"));
         _client = _factory.CreateClient();
     }
 
@@ -297,6 +302,28 @@ public sealed class PriceAdminApiTests : IDisposable
 
         // The seeded legacy Beagle range is $500-$1,200; the researched low is $400.
         Assert.Equal(400, beagle.GetProperty("priceLow").GetInt32());
+    }
+
+    [Fact]
+    public async Task ListingCollectionRefusesWhenDisabledAndSaysWhy()
+    {
+        // The shipped default: collection is off because the source's terms restrict
+        // automated access, so it must never start on its own.
+        var response = await _client.SendAsync(
+            Authorised(HttpMethod.Post, "/api/admin/listing-prices"), Ct);
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        var body = await response.Content.ReadAsStringAsync(Ct);
+        Assert.Contains("Prices:ListingsEnabled", body);
+        Assert.Contains("terms", body);
+    }
+
+    [Fact]
+    public async Task ListingCollectionRequiresTheSecret()
+    {
+        var response = await _client.PostAsync("/api/admin/listing-prices", content: null, Ct);
+
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
     }
 
     [Fact]
