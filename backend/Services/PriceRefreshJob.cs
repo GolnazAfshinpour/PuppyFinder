@@ -45,17 +45,38 @@ public sealed class PriceRefreshJob(
             return;
         }
 
+        // Scheduled runs are opt-in, and default to off even with a key present.
+        //
+        // This job is not like AlertChecker, whose loop it was first copied from: that one
+        // diffs local data for free, so running it at startup costs nothing. This one makes
+        // a paid API call per breed — 179 of them — and writes to the data a fraud check
+        // depends on. Setting a key should never, by itself, start spending money against
+        // an untuned prompt; the plan's calibration gate exists precisely to be walked
+        // through first, one breed at a time, via POST /api/admin/price-research.
+        if (!configuration.GetValue("Prices:AutoRefresh", false))
+        {
+            logger.LogInformation(
+                "Price refresh is idle — scheduled runs are off (set Prices:AutoRefresh=true to enable). "
+                + "Research single breeds via POST /api/admin/price-research while calibrating.");
+            return;
+        }
+
         // Breed prices move on the scale of years. Monthly keeps the data fresh without
         // churning the number the fraud check measures against.
         var interval = TimeSpan.FromDays(configuration.GetValue("Prices:RefreshDays", 30));
         using var timer = new PeriodicTimer(interval);
+        logger.LogInformation(
+            "Price refresh is scheduled every {Days} day(s); first run is one interval away, not at startup.",
+            interval.TotalDays);
         try
         {
-            do
+            // Wait for the first tick before the first run. Running at startup would mean
+            // every service restart triggers a full paid sweep — and restarts happen for
+            // reasons that have nothing to do with prices being stale.
+            while (await timer.WaitForNextTickAsync(stoppingToken))
             {
                 await RunAsync(stoppingToken);
             }
-            while (await timer.WaitForNextTickAsync(stoppingToken));
         }
         catch (OperationCanceledException)
         {

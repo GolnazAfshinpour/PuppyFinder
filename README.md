@@ -97,10 +97,12 @@ Disabled unless `Prices:AdminSecret` is set; all require an `X-Admin-Secret` hea
 
 ### Turning the research job on
 
-1. Store both secrets with `dotnet user-secrets` — never in a config file:
+1. Store both secrets with `dotnet user-secrets` — never in a config file. Paste the real
+   key: `sk-ant-...` below is a placeholder, and pasting it literally gets you 179 rows of
+   `invalid x-api-key`.
    ```sh
    cd backend
-   dotnet user-secrets set "Anthropic:ApiKey"    "sk-ant-..."
+   dotnet user-secrets set "Anthropic:ApiKey"    "sk-ant-api03-REAL-KEY-HERE"
    dotnet user-secrets set "Prices:AdminSecret"  "$(openssl rand -hex 24)"
    launchctl kickstart -k gui/$(id -u)/com.puppyfinder.api
    ```
@@ -109,8 +111,18 @@ Disabled unless `Prices:AdminSecret` is set; all require an `X-Admin-Secret` hea
 3. Tune the prompt in `PriceResearchPrompt.SystemRules` against the calibration breeds.
 4. `GET /api/admin/price-report` — pick the `verified` bar from the distribution, set
    `Prices:MinSources` / `RequireTierA` / `MaxSpreadRatio`, then re-aggregate.
-5. The monthly job (`Prices:RefreshDays`, default 30) then maintains it. **Without a key it
-   is dormant** — it logs and returns, changing nothing.
+5. **Only then** set `Prices:AutoRefresh=true` to start the scheduled job
+   (`Prices:RefreshDays`, default 30).
+
+Two things the schedule deliberately will not do, because each would spend money you
+didn't ask to spend:
+
+- **A key alone starts nothing.** Scheduled runs also need `Prices:AutoRefresh=true`, and
+  the default is off. Steps 2–4 are manual, one breed at a time. With no key the job is
+  *dormant*; with a key but no opt-in it is *idle*. Either way it logs and changes nothing.
+- **No run at startup, ever** — even opted in, the first pass is one full interval away.
+  Services restart for reasons that have nothing to do with prices going stale, and a full
+  sweep is ~179 paid API calls.
 
 ## Architecture
 
