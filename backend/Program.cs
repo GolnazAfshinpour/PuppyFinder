@@ -493,11 +493,15 @@ app.MapGet("/api/admin/price-report", async (HttpRequest request,
     // exactly why deferring this decision costs nothing.
     PriceThresholds[] candidates =
     [
-        new(MinSources: 2, RequireTierA: false, MaxSpreadRatio: 3.0),
-        new(MinSources: 2, RequireTierA: true, MaxSpreadRatio: 2.0),
-        new(MinSources: 3, RequireTierA: true, MaxSpreadRatio: 3.0),
+        new(MinSources: 2, RequireTierA: false, MaxSpreadRatio: 3.0, MaxVerifiedBandRatio: 8.0),
+        new(MinSources: 2, RequireTierA: true, MaxSpreadRatio: 2.0, MaxVerifiedBandRatio: 5.0),
+        new(MinSources: 3, RequireTierA: true, MaxSpreadRatio: 3.0, MaxVerifiedBandRatio: 5.0),
         new(MinSources: 3, RequireTierA: true, MaxSpreadRatio: 2.0), // the strict default
-        new(MinSources: 4, RequireTierA: true, MaxSpreadRatio: 1.5),
+        // Band width varied on its own, holding everything else at the default, because
+        // it turned out to be the binding constraint in practice rather than source count.
+        new(MinSources: 3, RequireTierA: true, MaxSpreadRatio: 2.0, MaxVerifiedBandRatio: 8.0),
+        new(MinSources: 3, RequireTierA: true, MaxSpreadRatio: 2.0, MaxVerifiedBandRatio: 3.0),
+        new(MinSources: 4, RequireTierA: true, MaxSpreadRatio: 1.5, MaxVerifiedBandRatio: 3.0),
     ];
 
     object Summarise(PriceThresholds t) => new

@@ -151,6 +151,58 @@ public class PriceObservationValidatorTests
         Assert.Equal(PublisherTier.A, Assert.Single(kept).PublisherTier);
     }
 
+    // ------------------------------------------------- band width
+
+    [Fact]
+    public void AgreeingSourcesCannotVerifyABandTooWideToScreenAgainst()
+    {
+        // The real Dachshund case. PetMD $500-$2,000, Hepper $500-$4,000, Dogster
+        // $1,200-$3,500: three sources, one Tier A, midpoints agreeing within 1.88x — every
+        // rule satisfied. The band they produce is $500-$3,500, a 7x spread. With
+        // PriceCheck's 0.5x rule only a quote under $250 would be flagged, so the check
+        // would read as working while catching nothing, labelled "verified from 3 sources".
+        var result = PriceObservationValidator.Aggregate("dachshund",
+            [Obs(500, 2000, "PetMD", "https://www.petmd.com/dog/breeds/dachshund"),
+             TierB(500, 4000, "hepper.com"),
+             TierB(1200, 3500, "dogster.com")],
+            Strict);
+
+        Assert.Equal(500, result.Price!.PriceLow);
+        Assert.Equal(3500, result.Price.PriceHigh);
+        Assert.Equal(PriceConfidence.Contested, result.Price.Confidence);
+        Assert.Contains("too wide to screen against", result.Rationale);
+    }
+
+    [Fact]
+    public void ANarrowBandFromAgreeingSourcesStillVerifies()
+    {
+        // German Shepherd: $2,000-$4,000, a 2x band. The guard must not swallow the good
+        // case along with the bad one.
+        var result = PriceObservationValidator.Aggregate("german-shepherd",
+            [Obs(2000, 4000), Obs(2000, 4500, "Insurify", "https://insurify.com/x"),
+             TierB(500, 3000, "caninebible.com")],
+            Strict);
+
+        Assert.Equal(PriceConfidence.Verified, result.Price!.Confidence);
+    }
+
+    [Fact]
+    public void TheBandWidthLimitIsConfigurable()
+    {
+        // Proves the bar is tunable without re-research, like every other threshold.
+        PriceObservation[] dachshund =
+        [
+            Obs(500, 2000, "PetMD", "https://www.petmd.com/dog/breeds/dachshund"),
+            TierB(500, 4000, "hepper.com"),
+            TierB(1200, 3500, "dogster.com"),
+        ];
+
+        var lenient = PriceObservationValidator.Aggregate(
+            "dachshund", dachshund, Strict with { MaxVerifiedBandRatio = 8.0 });
+
+        Assert.Equal(PriceConfidence.Verified, lenient.Price!.Confidence);
+    }
+
     // ---------------------------------------------------------------- drift guard
 
     private static readonly PriceObservation[] ThreeAgreeingSources =

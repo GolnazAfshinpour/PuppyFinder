@@ -86,13 +86,24 @@ public record PriceThresholds(
     int MinSources = 3,
     bool RequireTierA = true,
     double MaxSpreadRatio = 2.0,
-    int DriftReviewPercent = 40)
+    int DriftReviewPercent = 40,
+    // How wide the published band itself may be, as high ÷ low.
+    //
+    // MaxSpreadRatio measures whether sources *agree with each other* on midpoints; it
+    // says nothing about how wide the band they produce is. Dachshund showed the gap:
+    // three sources agreeing within 1.88x still yielded $500-$3,500, a 7x band that
+    // passed every rule and would have gone live labelled "verified from 3 sources".
+    // A 7x band cannot screen anything — with PriceCheck's 0.5x far-below rule, only a
+    // quote under $250 would be flagged, so the check reads as working while catching
+    // nothing. A range that wide is an honest "we don't know", not a benchmark.
+    double MaxVerifiedBandRatio = 4.0)
 {
     public static PriceThresholds FromConfiguration(IConfiguration configuration) => new(
         MinSources: configuration.GetValue("Prices:MinSources", 3),
         RequireTierA: configuration.GetValue("Prices:RequireTierA", true),
         MaxSpreadRatio: configuration.GetValue("Prices:MaxSpreadRatio", 2.0),
-        DriftReviewPercent: configuration.GetValue("Prices:DriftReviewPercent", 40));
+        DriftReviewPercent: configuration.GetValue("Prices:DriftReviewPercent", 40),
+        MaxVerifiedBandRatio: configuration.GetValue("Prices:MaxVerifiedBandRatio", 4.0));
 }
 
 public static class ObservationStatus

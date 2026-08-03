@@ -234,7 +234,7 @@ public static class PriceObservationValidator
         var hasTierA = counted.Any(o => o.PublisherTier == PublisherTier.A);
 
         var (confidence, rationale) = Classify(
-            counted.Count, hasTierA, spread, contradicting.Count, thresholds);
+            counted.Count, hasTierA, spread, contradicting.Count, thresholds, low, high);
 
         // A big move in the number the fraud check uses deserves a human look, however
         // well-sourced the new figure is.
@@ -270,8 +270,11 @@ public static class PriceObservationValidator
     }
 
     private static (string Confidence, string Rationale) Classify(
-        int sources, bool hasTierA, double? spread, int contradicting, PriceThresholds t)
+        int sources, bool hasTierA, double? spread, int contradicting, PriceThresholds t,
+        int low, int high)
     {
+        var band = low > 0 ? (double)high / low : double.PositiveInfinity;
+
         if (sources == 0)
         {
             return (PriceConfidence.Unverified, "no usable sources");
@@ -304,6 +307,16 @@ public static class PriceObservationValidator
         {
             return (PriceConfidence.Contested,
                 $"sources disagree {ratio:0.00}x on midpoint, limit {t.MaxSpreadRatio:0.00}x");
+        }
+
+        // Sources agreeing is not the same as the band being usable. See
+        // PriceThresholds.MaxVerifiedBandRatio — Dachshund's $500-$3,500 cleared every
+        // other rule.
+        if (band > t.MaxVerifiedBandRatio)
+        {
+            return (PriceConfidence.Contested,
+                $"the resulting ${low:n0}–${high:n0} band spans {band:0.00}x, too wide to screen "
+                + $"against (limit {t.MaxVerifiedBandRatio:0.00}x)");
         }
 
         return (PriceConfidence.Verified,
