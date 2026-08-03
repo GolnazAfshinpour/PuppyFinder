@@ -221,10 +221,52 @@ corrected by running the research by hand before writing the code:
   classifieds we caution users about — Lancaster, Greenfield, Puppies.com, Craigslist.
   Their listing prices are *what the scam check screens against*; letting them set the
   floor would drag it down and quietly disarm the feature.
-- **Independence.** Two domains reporting byte-identical figures collapse to one source —
-  copied content, not corroboration.
+- **Independence, two ways.** Two *domains* reporting byte-identical figures collapse to
+  one source — copied content, not corroboration (PetMD and A-Z Animals both give Golden
+  Retriever as exactly $1,000–$3,500). And one *page* stating several pet-quality figures
+  is still one editorial voice: Insurify's Frenchie page gives both "around $5,000 … on
+  average" and a $2,000–$8,000 table range, which used to supply two of the three sources
+  needed to unlock screening. One vote per publisher, representative chosen conservatively
+  — a range beats an average, and the widest range wins, because a too-wide band makes the
+  check quieter while a too-narrow one accuses honest breeders.
+- **Band width, separate from agreement.** `MaxSpreadRatio` asks whether sources agree with
+  each other on midpoints; it says nothing about the band they produce. Dachshund had three
+  sources agreeing within 1.88x and still yielded $500–$3,500 — 7x wide, where PriceCheck's
+  0.5x rule would only flag a quote under $250. The check would have read as working while
+  catching nothing. `MaxVerifiedBandRatio` (4.0) caps high ÷ low for `verified`. In practice
+  this is the *binding* constraint, more often than source count.
+- **Freshness.** A source that dates itself and is older than 36 months is rejected — puppy
+  prices moved sharply through and after the pandemic, so an older figure describes a market
+  that no longer exists. Caught PetMD's Frenchie page ($1,500–$5,000, updated March 2023) on
+  the rule's first real use. Undated sources aren't punished for age; they're judged on tier
+  and corroboration.
+- **Drift blocks, it doesn't just warn.** A >40% midpoint move used to be flagged for review
+  while still being stored as `verified` — and `CanScreen` arms on `verified`, so the change
+  went live before anyone read the flag. A large move is now held at `contested`, but *only*
+  when it overwrites an already-`verified` range. Moving off the unsourced seeds is the point
+  of the exercise: German Shepherd's 50% jump from hardcoded $1,000–$3,000 to sourced
+  $2,000–$4,000 must go live, and does.
 - **Extraction, never estimation.** No source URL and verbatim quote → no write. A breed
   with nothing citable stays `unverified`. An empty result is a correct answer.
+  In practice the strictest version of this rule bites often: several pages state figures
+  only in tables or headings, with no sentence containing the number (Hepper on German
+  Shepherd and Golden Retriever, Dogster on Beagle and Poodle). Those are skipped rather
+  than quoted from an adjacent sentence that doesn't support the figure.
+
+### Allowlisted domains that can't actually be cited
+
+Discovered by trying. `thesprucepets.com` blocks our crawler outright; `lemonade.com` and
+`rover.com` return 403. All three are on the Tier A list and no run can ever quote them —
+the API's web-search tool would hit the same wall. Left in place so the list stays a record
+of what was reviewed, but they are not usable capacity.
+
+Per-breed cost pages exist on predictable URL patterns for `insuranceopedia.com`
+(`/pet-insurance/<breed>-cost`), `articles.hepper.com` (`/<breed>-cost/`),
+`caninebible.com` (`/<breed>-prices-and-costs/`) and `petmd.com` (`/dog/breeds/<breed>`) —
+but coverage is patchy per breed, and MetLife's breed spotlights often carry no price at all
+(verified on Labrador). Tier A coverage, not Tier B, is the scarce resource: Labrador and
+Poodle have no citable Tier A figure at all, which caps them at `contested` however many
+Tier B sources agree.
 
 ### Gathering and judging are separate steps
 
@@ -235,7 +277,43 @@ breed from stored rows in seconds, with no re-research and no API spend — and 
 threshold decision could be deferred until there were real numbers to look at.
 
 Thresholds live in config: `Prices:MinSources` (3), `Prices:RequireTierA` (true),
-`Prices:MaxSpreadRatio` (2.0), `Prices:DriftReviewPercent` (40).
+`Prices:MaxSpreadRatio` (2.0), `Prices:MaxVerifiedBandRatio` (4.0),
+`Prices:DriftReviewPercent` (40).
+
+### Where the bar sits, and why (August 2026)
+
+Seven breeds researched by hand — the Anthropic account is a work org that can't mint an
+API key, so the job itself has never run. Gathered through
+`POST /api/admin/price-observations`, which takes the same payload the model emits and runs
+it through the same validator, so hand-entered rows face identical rules. Those rows are
+marked `model = "manual"`.
+
+| Breed | Range | Band | Confidence | Why not verified |
+|---|---|---|---|---|
+| German Shepherd | $2,000–$4,000 | 2.00x | **verified** | — screening is live |
+| French Bulldog | $1,500–$4,000 | 2.67x | contested | Insurify's $5,000 average sits outside |
+| Labrador Retriever | $800–$2,500 | 3.12x | contested | no citable Tier A source exists |
+| Beagle | $400–$1,200 | 3.00x | contested | sources disagree 2.20x on midpoint |
+| Dachshund | $500–$3,500 | 7.00x | contested | band too wide to screen against |
+| Golden Retriever | $750–$3,250 | 4.33x | contested | 2 sources (PetMD ≡ A-Z Animals) |
+| Poodle | $650–$2,500 | 3.85x | contested | 2 sources, no Tier A |
+
+`GET /api/admin/price-report` over the same stored observations:
+
+| minSrc | Tier A | spread | band | verified |
+|---|---|---|---|---|
+| 2 | no | 3.0 | 8.0 | 6 |
+| 2 | yes | 2.0 | 5.0 | 2 |
+| 3 | yes | 3.0 | 5.0 | 2 |
+| **3** | **yes** | **2.0** | **4.0** | **1** ← current |
+| 3 | yes | 2.0 | 8.0 | 2 |
+| 3 | yes | 2.0 | 3.0 | 1 |
+| 4 | yes | 1.5 | 3.0 | 0 |
+
+Reaching 6 of 7 requires 2 sources, no Tier A requirement, 3x spread *and* an 8x band —
+close to accepting whatever comes back. **The honest reading is that this source pool
+supports very few verified ranges, and the answer is wider coverage rather than a lower
+bar.** One in seven is the system working, not a setup failure.
 
 
 ## Roadmap

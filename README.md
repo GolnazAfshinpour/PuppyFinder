@@ -5,11 +5,12 @@ marketplaces really vet their breeders, which have a complaint record, and the c
 that catch a scam before money moves. Adoption is a real secondary path, backed by live
 shelter feeds.
 
-Price-based scam screening is **built but switched off** until the database holds sourced
-ranges — see below.
+Price-based scam screening switches on **per breed, as each range gets sourced**. Today that
+is 1 of 179 breeds (German Shepherd, $2,000–$4,000 from three publishers); the other 178
+return `Unavailable` rather than screen against a number we can't attribute.
 
 - **Price ranges that label their own reliability** — every range carries a `confidence` derived from its sources, so the UI never claims more than the data supports. Ranges live in SQLite with provenance (source URL, verbatim quote, retrieval date); the original hardcoded numbers are imported as `unverified` because no source was ever recorded for them. See [docs/SOURCES.md](docs/SOURCES.md)
-- **Price scam check — currently switched off** (`GET /api/price-check`). The screening logic is built and tested, but it returns `Unavailable` for any breed whose range isn't `verified`, and today none are. Owner decision: don't run fraud detection on numbers we can't attribute. It re-enables per breed, automatically, as the research job sources each range — there is no flag to flip
+- **Price scam check — on for sourced breeds only** (`GET /api/price-check`). Returns `Unavailable` for any breed whose range isn't `verified`. Owner decision: don't run fraud detection on numbers we can't attribute. It enables per breed automatically as each range gets sourced — there is no flag to flip. Currently live for German Shepherd; 7 breeds are researched, 6 of them honestly `contested`
 - **Honest marketplace guide** — 7 breeder sites rated on vetting, price, delivery and documented cautions; no breeder marketplace publishes a data feed, and the UI says so rather than faking listings
 - **Dogs first (adoption path)** — searching returns actual listings (photo, age, size, shelter phone number), filtered by breed / age / state / city / size and sortable by age
 - **Age filter** — Puppy (under 1 yr) / Young / Adult / Senior, parsed out of the free-text ages the feeds publish (`AgeParser`)
@@ -79,7 +80,7 @@ into a log or a shared terminal. Use `dotnet user-secrets list --json | jq 'keys
 | `GET /api/sources` | Per-source status: enabled, count, last error |
 | `GET /api/breeds` | Breed list with price ranges plus `confidence` (`unverified`/`single_source`/`contested`/`verified`), `sourceCount` and `priceUpdatedAt`. Null price = no range at all. |
 | `GET /api/price-sources?breed=` | The cited sources behind a breed's range — publisher, URL, verbatim quote, scope, retrieval date |
-| `GET /api/price-check?breed=&price=` | Verdict on a quoted price. Returns `Unavailable` unless the breed's range is `verified` — today, always. Otherwise `Free` / `FarBelow` / `Below` / `Typical` / `Above`. |
+| `GET /api/price-check?breed=&price=` | Verdict on a quoted price. Returns `Unavailable` unless the breed's range is `verified`. Otherwise `Free` / `FarBelow` / `Below` / `Typical` / `Above`. |
 | `GET /api/sites?breed=&state=&city=` | Deep links into each source site, plus which filters each link carries |
 | `POST /api/alerts` | Save an email alert for a search (`breed`, `state`, `city`, `size`, `age`) |
 
@@ -89,7 +90,8 @@ Disabled unless `Prices:AdminSecret` is set; all require an `X-Admin-Secret` hea
 
 | Endpoint | Description |
 |---|---|
-| `POST /api/admin/price-research?breed=` | Research one breed (or all, if omitted). Writes observations only — never sets confidence. |
+| `POST /api/admin/price-research?breed=` | Research one breed (or all, if omitted). Writes observations only — never sets confidence. Needs an Anthropic key. |
+| `POST /api/admin/price-observations` | Record observations gathered by hand, for when no key exists. Same payload shape as the model emits, same validator, same rules — only the provenance differs (`model = "manual"`). Body: `[{ "breed": "...", "observations": [...] }]` |
 | `POST /api/admin/price-reaggregate` | Re-derive every breed's confidence from stored observations. Free and idempotent: this is how a threshold change is applied. |
 | `GET /api/admin/price-report` | Confidence distribution plus a what-if column per candidate threshold. Read-only — pick the bar from evidence. |
 | `GET /api/admin/price-review` | Pending observations with the live value beside each. |
@@ -110,7 +112,9 @@ Disabled unless `Prices:AdminSecret` is set; all require an `X-Admin-Secret` hea
    check every row has an allowlisted URL, a verbatim quote and a correct scope.
 3. Tune the prompt in `PriceResearchPrompt.SystemRules` against the calibration breeds.
 4. `GET /api/admin/price-report` — pick the `verified` bar from the distribution, set
-   `Prices:MinSources` / `RequireTierA` / `MaxSpreadRatio`, then re-aggregate.
+   `Prices:MinSources` / `RequireTierA` / `MaxSpreadRatio` / `MaxVerifiedBandRatio`, then
+   re-aggregate. Band width is usually the binding constraint, not source count — see
+   [docs/SOURCES.md](docs/SOURCES.md) for the measured distribution.
 5. **Only then** set `Prices:AutoRefresh=true` to start the scheduled job
    (`Prices:RefreshDays`, default 30).
 

@@ -50,6 +50,24 @@ const gated = await page.evaluate(async () => {
 })
 console.log('api verdict level:', gated.level, '| isWarning:', gated.isWarning)
 
+// ...and the other half of the gate, which nothing covered until a breed actually
+// reached verified. German Shepherd is sourced ($2,000-$4,000 from three publishers),
+// so for it the checker, the range and a real verdict must all appear. Asserting only
+// the hidden case would keep passing if the feature never switched on for anyone.
+await page.selectOption(breedSelect, 'german-shepherd')
+await settle()
+const sourcedChecker = await page.locator('text=Been quoted a price').count()
+const sourcedRange = await page.locator('.text-primary.text-4xl').count()
+const sourcedProvenance = await page.locator('text=independent source').count()
+console.log('sourced breed — checker:', sourcedChecker, '| range:', sourcedRange)
+
+const screened = await page.evaluate(async () => {
+  const res = await fetch('/api/price-check?breed=german-shepherd&price=800')
+  return res.json()
+})
+console.log('sourced verdict:', screened.level, '| isWarning:', screened.isWarning,
+  '| range:', screened.priceLow, '-', screened.priceHigh)
+
 // ---------- adopting: the secondary path ----------
 await page.click('button:has-text("Adopt a rescue dog")')
 await settle()
@@ -122,6 +140,12 @@ const checks = {
   // Defence in depth: the gate is enforced server-side, so a direct API call
   // cannot produce a scam verdict either.
   'api refuses to screen unsourced ranges': gated.level === 'Unavailable' && gated.isWarning === false,
+  'checker appears for a sourced breed': sourcedChecker === 1,
+  'sourced range is shown': sourcedRange === 1,
+  'provenance cites the sources': sourcedProvenance >= 1,
+  'api screens a sourced breed against its real range':
+    screened.level === 'FarBelow' && screened.isWarning === true
+    && screened.priceLow === 2000 && screened.priceHigh === 4000,
   'adopt mode lists dogs': countAny > 0,
   'breed filter narrows adoption results': countAll < countAny,
   'puppy filter narrows the list': countPuppies > 0 && countPuppies < countAny,
