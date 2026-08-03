@@ -32,7 +32,8 @@ dog results fill the right, with the site directory below them as the fallback t
 - **RescueGroups.org (optional):** request a free key at https://rescuegroups.org/services/adoptable-pet-data-api/, then `cd backend && dotnet user-secrets set "RescueGroups:ApiKey" "..."` for nationwide rescue coverage.
 - ~~Petfinder~~ — their public API was discontinued Dec 2, 2025; Petfinder remains available via the deep-link footer chips.
 
-Full research and roadmap: [docs/SOURCES.md](docs/SOURCES.md)
+How the price search is designed: [docs/PRICE-SEARCH.md](docs/PRICE-SEARCH.md)
+Full source research and roadmap: [docs/SOURCES.md](docs/SOURCES.md)
 
 ## Stack
 

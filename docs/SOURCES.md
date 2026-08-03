@@ -144,6 +144,12 @@ states where our feeds reach and hands off to one national site elsewhere.
 
 ## Price provenance (July 2026)
 
+> **How the search itself is designed** — the prompt rules, scope normalization, the
+> allowlist and tier policy, the listing extraction, the floor guard, and every threshold —
+> lives in [PRICE-SEARCH.md](PRICE-SEARCH.md). This section is the *source research*: what
+> exists, what we may use, and what the real numbers came out as.
+
+
 **The gap this closes:** the breed price ranges in `SiteCatalog.cs` were added in the
 first feature commit (`9ce94b1`) with no citation, and this file — which records
 URL-pattern verification and API research in detail — said nothing about where they came
