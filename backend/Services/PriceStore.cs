@@ -157,28 +157,38 @@ public sealed class PriceStore(PriceDb db, ILogger<PriceStore> logger)
     }
 
     /// <summary>
-    /// A breed's listing sample. Optionally only the most recent run, which is what
-    /// aggregation wants — an old run's prices describe a marketplace that has moved on.
+    /// A breed's listing sample over a rolling window, pooled across runs.
+    ///
+    /// <para>
+    /// Pooling is not an optimisation, it is the fix for a property of the source: two runs
+    /// forty minutes apart returned <b>zero overlapping listings</b> for most breeds. The
+    /// index hands out a different slice of a much larger pool each time, so any single run
+    /// is a small random sample — Australian Shepherd swung from a verified $800–$1,500 to
+    /// a refused $500 floor between two runs, which is not a benchmark a fraud check can
+    /// rest on.
+    /// </para>
+    ///
+    /// <para>
+    /// The same property makes pooling unusually effective: with no overlap, every run adds
+    /// ~40 genuinely new observations rather than re-confirming the last ones. The window
+    /// bounds staleness; <see cref="ListingPriceAggregator"/> dedupes by listing so a
+    /// re-listed animal counts once, at its most recent price.
+    /// </para>
     /// </summary>
     public async Task<IReadOnlyList<ListingPrice>> GetListingPricesAsync(
-        string breedSlug, bool latestRunOnly, CancellationToken ct)
+        string breedSlug, int windowDays, CancellationToken ct)
     {
         await using var connection = await db.OpenAsync(ct);
         await using var command = connection.CreateCommand();
-        command.CommandText = latestRunOnly
-            ? """
-              SELECT id, breed_slug, price, source_host, listing_ref, listing_name, retrieved_at, run_id
-              FROM listing_price
-              WHERE breed_slug = $slug AND run_id = (
-                  SELECT run_id FROM listing_price WHERE breed_slug = $slug
-                  ORDER BY retrieved_at DESC LIMIT 1)
-              ORDER BY price;
-              """
-            : """
-              SELECT id, breed_slug, price, source_host, listing_ref, listing_name, retrieved_at, run_id
-              FROM listing_price WHERE breed_slug = $slug ORDER BY price;
-              """;
+        command.CommandText = """
+            SELECT id, breed_slug, price, source_host, listing_ref, listing_name, retrieved_at, run_id
+            FROM listing_price
+            WHERE breed_slug = $slug AND retrieved_at >= $since
+            ORDER BY price;
+            """;
         command.Parameters.AddWithValue("$slug", breedSlug);
+        command.Parameters.AddWithValue("$since",
+            Iso(DateTimeOffset.UtcNow.AddDays(-Math.Max(1, windowDays))));
 
         List<ListingPrice> results = [];
         await using var reader = await command.ExecuteReaderAsync(ct);

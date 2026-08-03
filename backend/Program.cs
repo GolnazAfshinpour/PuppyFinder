@@ -178,7 +178,7 @@ app.MapGet("/api/price-check", async (string? breed, int price,
 
 // The sources behind a breed's range — what the UI cites instead of asserting
 // "verified" on its own.
-app.MapGet("/api/price-sources", async (string breed, PriceStore prices, CancellationToken ct) =>
+app.MapGet("/api/price-sources", async (string breed, PriceStore prices, IConfiguration config, CancellationToken ct) =>
 {
     var live = await prices.FindAsync(breed, ct);
     var observations = await prices.GetObservationsAsync(breed, ObservationStatus.Accepted, ct);
@@ -194,7 +194,7 @@ app.MapGet("/api/price-sources", async (string breed, PriceStore prices, Cancell
     // citing none.
     var fromListings = live?.Basis == PriceBasis.Listings;
     var sample = fromListings
-        ? await prices.GetListingPricesAsync(breed, latestRunOnly: true, ct)
+        ? await prices.GetListingPricesAsync(breed, PriceThresholds.FromConfiguration(config).ListingWindowDays, ct)
         : [];
 
     return Results.Ok(new
@@ -577,40 +577,16 @@ app.MapPost("/api/admin/listing-prices", async (HttpRequest request, string? bre
 
         await prices.AddListingPricesAsync(fetched.Prices, ct);
 
-        // The floor guard compares against the *editorial* range, which is re-derived from
-        // the stored observations rather than read from breed_price — because breed_price
-        // is what we're about to overwrite. Aggregation being pure over the observation
-        // table is what makes that possible.
-        var observations = await prices.GetObservationsAsync(target.Slug, status: null, ct);
-        var editorial = PriceObservationValidator
-            .Aggregate(target.Slug, observations, thresholds).Price;
+        // Publishing goes through the same path as /api/admin/price-reaggregate rather than
+        // repeating the precedence rules here. Two writers deciding independently is what let
+        // a re-aggregation silently revert listing-derived ranges to editorial ones.
+        var aggregation = await job.ReaggregateBreedAsync(target.Slug, thresholds, ct);
 
-        // Fall back to the unsourced seed range as a floor guard when no researched range
-        // exists — which is most breeds. Without this the guard simply never fired for them
-        // and listings published unchecked: the first real run put Australian Shepherd at
-        // $450–$1,000 and Siberian Husky at $425–$1,200, both well under any published
-        // figure. The seed is never published, only used to refuse.
-        var guard = editorial;
-        if (guard is null && SiteCatalog.SeedPrice(target.Slug) is { } seed)
-        {
-            guard = new BreedPrice(target.Slug, seed.Low, seed.High,
-                PriceConfidence.Unverified, 0, DateTimeOffset.UtcNow);
-        }
-
-        var sample = await prices.GetListingPricesAsync(target.Slug, latestRunOnly: true, ct);
-        var aggregation = ListingPriceAggregator.Aggregate(
-            target.Slug, sample, thresholds, guard);
-
-        // Publish the listing range only when it actually clears the bar. Otherwise leave
-        // the editorial range in place: a contested listing sample is not an improvement on
-        // a verified published range, it's a reason to keep what we had.
-        var published = aggregation.Price is { Confidence: PriceConfidence.Verified } listing
-            ? listing with { Basis = PriceBasis.Listings }
-            : editorial;
-        if (published is not null)
-        {
-            await prices.UpsertAsync(published, ct);
-        }
+        // Reported separately from what got published, so a refusal is legible: you can see
+        // the listing sample that was gathered *and* the reason it didn't win.
+        var sample = await prices.GetListingPricesAsync(target.Slug, thresholds.ListingWindowDays, ct);
+        var guard = await prices.FindAsync(target.Slug, ct);
+        var listingView = ListingPriceAggregator.Aggregate(target.Slug, sample, thresholds, guard);
 
         outcomes.Add(new
         {
@@ -618,12 +594,13 @@ app.MapPost("/api/admin/listing-prices", async (HttpRequest request, string? bre
             fetched.SeenTotal,
             fetched.DroppedMixes,
             Kept = fetched.Prices.Count,
-            aggregation.SampleSize,
-            aggregation.Median,
-            ListingRange = aggregation.Price,
-            aggregation.Rationale,
-            Editorial = editorial is null ? null : new { editorial.PriceLow, editorial.PriceHigh, editorial.Confidence },
-            Published = published is null ? null : new { published.PriceLow, published.PriceHigh, published.Confidence, published.Basis },
+            listingView.SampleSize,
+            listingView.Median,
+            ListingRange = listingView.Price,
+            Rationale = listingView.Rationale,
+            Published = aggregation?.Price is { } p
+                ? new { p.PriceLow, p.PriceHigh, p.Confidence, p.Basis }
+                : null,
         });
     }
 

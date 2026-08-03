@@ -20,7 +20,7 @@ Two consequences shape everything:
 
 1. **`PriceCheck.CanScreen` gates on `confidence == verified`.** Screening is a property of
    the data, not a feature flag — a breed starts being checked the moment its range is
-   properly sourced, and there is no switch to flip by accident. 161 of 179 breeds currently
+   properly sourced, and there is no switch to flip by accident. 129 of 175 breeds currently
    return `Unavailable`, and that is the system working.
 2. **Gathering and judging are separate steps.** The collectors only ever write evidence
    rows; confidence is a *pure function* over them (`PriceObservationValidator.Aggregate`,
@@ -174,6 +174,23 @@ must be a deliberate act by the operator and can never start on its own.
 The client identifies itself as `PuppyFinder/1.0` with a repository URL rather than
 impersonating a browser, one request per 1.5 s. An operator who wants to block or rate-limit
 us should be able to, and a spoofed user-agent would be working around that choice.
+
+### Runs return near-disjoint samples, so samples are pooled
+
+**The single most important property of this source.** Two runs forty minutes apart returned
+**zero overlapping listings** for most breeds (French Bulldog 0 shared of ~49, Golden
+Retriever 0 of ~45, Labrador 0 of ~45; Beagle 5, Boxer 8). The index hands out a different
+slice of a much larger pool each time.
+
+Consequence: any single run is a small random sample, and the published range moves with it.
+Australian Shepherd swung from a verified **$800–$1,500** to a refused **$500** floor between
+two runs forty minutes apart. That is not a benchmark a fraud check can rest on.
+
+The same property makes pooling unusually effective — with no overlap, each run contributes
+~40 genuinely new observations rather than re-confirming the last ones. So aggregation reads a
+rolling window (`Prices:ListingWindowDays`, default 90) across runs, deduplicated by listing
+URL, keeping each animal at its most recent price. The window bounds staleness; pooling buys
+the sample size.
 
 ### Percentiles, not extremes
 
@@ -331,6 +348,53 @@ curl -XPOST -H "X-Admin-Secret: $S" ".../api/admin/price-reaggregate"
 
 Admin endpoints **fail closed**: with no `Prices:AdminSecret` configured the whole group
 returns 403 with an explanation rather than being open, and the comparison is fixed-time.
+
+## Coverage, and what caps it
+
+Collection targets the curated breeds plus `ListingSources.KnownToVendor`, a measured list of
+54 catalog breeds the vendor was probed to carry with real inventory. Not "try everything": of
+the 154 breeds that had no price, only 54 were worth collecting.
+
+The other 100 split into two groups no mapping fixes:
+
+- **No inventory.** Resolve fine, but with almost nothing to measure — Kerry Blue Terrier 4
+  listings, Affenpinscher 1, Finnish Lapphund 0, Sealyham Terrier 0. You cannot compute a
+  percentile band from those, and the 20-listing floor exists precisely so one scam price
+  can't set a range.
+- **Not sold, or not a breed.** Indian Bakharwal and Rajapalayam aren't in the US market;
+  `dhole` is a wild canid and `blenheim-spaniel` is a Cavalier coat colour, because dog.ceo's
+  list is not a breed list.
+
+**Inventory is the ceiling, not effort.** Popular breeds have listings and rare ones don't,
+and that correlation is permanent. The breeds that *do* qualify are the most-searched ones, so
+coverage of actual traffic is much better than the raw fraction suggests.
+
+Where it landed: **46 of 175 breeds screening** — 45 from listings, one (German Shepherd) from
+published sources. Three breeds refused by the floor guard, five teacup aliases never
+collected because they aren't breeds anywhere but here.
+
+### Duplicate catalog entries were a correctness bug, not a wart
+
+The curated list and the dog.ceo list overlapped, and the merge only skipped *exact* slug
+matches — so "Shepherd Australian" and "Australian Shepherd" were two breeds, as were
+"English Bulldog"/"Bulldog", "Standard Poodle"/"Poodle (Standard)", "Pembroke"/"Pembroke Welsh
+Corgi".
+
+That produced **two different prices for the same animal**, and worse, the duplicate
+**bypassed the floor guard entirely**: only the curated entry has a seed range to check
+against, so `australian-shepherd` was correctly refused at a $500 floor while
+`shepherd-australian` published exactly that, unguarded. `SiteCatalog.DuplicateOfCurated`
+drops the dog.ceo variant at the merge. Miniature and Toy Poodle are deliberately kept —
+genuinely distinct breeds we don't otherwise carry.
+
+### One writer to breed_price
+
+There are two collectors and one row, so precedence lives in exactly one place:
+`PriceRefreshJob.ReaggregateBreedAsync` derives both, prefers a listing range that clears its
+own bar, and otherwise keeps the editorial one. It used to derive from observations alone and
+upsert — which meant a single call to the free `/api/admin/price-reaggregate` **silently
+reverted every listing-derived range** to its editorial value. The "re-tune a threshold for
+free" operation was quietly throwing away the better data.
 
 ## Known gaps
 

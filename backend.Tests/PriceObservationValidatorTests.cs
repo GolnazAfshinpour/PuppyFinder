@@ -171,6 +171,27 @@ public class PriceObservationValidatorTests
         Assert.NotNull(PriceObservationValidator.Reject(Obs(2500, 4000, url: url)));
     }
 
+    [Fact]
+    public void FallingBackToEditorialResetsTheBasis()
+    {
+        // A row read basis=listings, confidence=unverified, source_count=0, carrying price
+        // numbers left over from a superseded listing run — claiming an evidence type that no
+        // longer backed it. Basis must be reset when the editorial path takes over, not
+        // inherited from the row being replaced.
+        var staleListings = new BreedPrice(
+            "australian-shepherd", 800, 1500, PriceConfidence.Verified, 78,
+            DateTimeOffset.UnixEpoch, SpreadRatio: 1.88, Basis: PriceBasis.Listings);
+
+        // Only an unscoped legacy observation, so no editorial range can be derived.
+        var legacy = Obs(800, 2000, scope: PriceScope.Unscoped);
+
+        var result = PriceObservationValidator.Aggregate(
+            "australian-shepherd", [legacy], Strict, staleListings);
+
+        Assert.Equal(PriceBasis.Editorial, result.Price!.Basis);
+        Assert.Equal(PriceConfidence.Unverified, result.Price.Confidence);
+    }
+
     // ------------------------------------------------- band width
 
     [Fact]

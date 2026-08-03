@@ -211,7 +211,17 @@ public static class PriceObservationValidator
             return new PriceAggregation(
                 current is null
                     ? null
-                    : current with { Confidence = PriceConfidence.Unverified, SourceCount = 0, UpdatedAt = timestamp },
+                    // Basis must be reset, not inherited. Keeping "listings" here produced a
+                    // row reading basis=listings, confidence=unverified, source_count=0, with
+                    // price numbers left over from a superseded listing run — a range
+                    // claiming an evidence type that no longer backs it.
+                    : current with
+                    {
+                        Confidence = PriceConfidence.Unverified,
+                        SourceCount = 0,
+                        UpdatedAt = timestamp,
+                        Basis = PriceBasis.Editorial,
+                    },
                 [],
                 averages.Count > 0
                     ? "no source published a range — averages alone can't define one"

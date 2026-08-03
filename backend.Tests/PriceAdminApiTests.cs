@@ -300,6 +300,40 @@ public sealed class PriceAdminApiTests : IDisposable
     }
 
     [Fact]
+    public async Task ReaggregationDoesNotRevertAListingDerivedRange()
+    {
+        // The bug: /api/admin/price-reaggregate derived from observations alone and upserted
+        // the result, so the free "re-tune a threshold" operation silently threw away every
+        // listing-derived range for any breed that also had observations — replacing better
+        // data with worse and saying nothing.
+        var store = _factory.Services.GetRequiredService<PriceStore>();
+        var job = _factory.Services.GetRequiredService<PriceRefreshJob>();
+
+        // A healthy pooled sample: 24 listings clustered around $2,500.
+        await store.AddListingPricesAsync(
+            [.. Enumerable.Range(0, 24).Select(i => new ListingPrice(
+                BreedSlug: "beagle",
+                Price: 2400 + i % 4 * 100,
+                SourceHost: "puppies.com",
+                ListingRef: $"ref-{i}",
+                ListingName: "Beagle - F",
+                RetrievedAt: DateTimeOffset.UtcNow,
+                RunId: "listings-test"))],
+            Ct);
+
+        var thresholds = new PriceThresholds();
+        var first = await job.ReaggregateBreedAsync("beagle", thresholds, Ct);
+        Assert.Equal(PriceBasis.Listings, first!.Price!.Basis);
+
+        // Re-aggregating must be idempotent, not destructive.
+        var again = await job.ReaggregateBreedAsync("beagle", thresholds, Ct);
+
+        Assert.Equal(PriceBasis.Listings, again!.Price!.Basis);
+        Assert.Equal(first.Price.PriceLow, again.Price.PriceLow);
+        Assert.Equal(first.Price.PriceHigh, again.Price.PriceHigh);
+    }
+
+    [Fact]
     public async Task IngestedRowsRecordThatAHumanGatheredThem()
     {
         await _client.SendAsync(Ingest("""

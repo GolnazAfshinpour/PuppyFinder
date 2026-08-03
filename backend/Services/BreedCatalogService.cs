@@ -58,7 +58,9 @@ public sealed class BreedCatalogService(
                 foreach (var (name, dogCeoPath) in ExpandNames(json.RootElement.GetProperty("message")))
                 {
                     var slug = name.ToLowerInvariant().Replace(". ", "-").Replace(' ', '-');
-                    if (!merged.ContainsKey(slug))
+                    // Exact-slug matching alone let the same breed through twice under two
+                    // names, which produced two different prices for one animal.
+                    if (!merged.ContainsKey(slug) && !SiteCatalog.DuplicateOfCurated.Contains(slug))
                     {
                         merged[slug] = new Breed(
                             slug, name, slug,

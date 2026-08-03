@@ -6,12 +6,12 @@ that catch a scam before money moves. Adoption is a real secondary path, backed 
 shelter feeds.
 
 Price-based scam screening switches on **per breed, as each range gets sourced**. Today that
-is 18 of 179 breeds — 17 derived from live marketplace asking prices, one from published
+is 46 of 175 breeds — 45 derived from live marketplace asking prices, one from published
 sources. The rest return `Unavailable` rather than screen against a number we can't
 attribute.
 
 - **Price ranges that label their own reliability** — every range carries a `confidence` derived from its sources, so the UI never claims more than the data supports. Ranges live in SQLite with provenance (source URL, verbatim quote, retrieval date); the original hardcoded numbers are imported as `unverified` because no source was ever recorded for them. See [docs/SOURCES.md](docs/SOURCES.md)
-- **Price scam check — on for sourced breeds only** (`GET /api/price-check`). Returns `Unavailable` for any breed whose range isn't `verified`. Owner decision: don't run fraud detection on numbers we can't attribute. It enables per breed automatically as each range gets sourced — there is no flag to flip. Live for 18 breeds
+- **Price scam check — on for sourced breeds only** (`GET /api/price-check`). Returns `Unavailable` for any breed whose range isn't `verified`. Owner decision: don't run fraud detection on numbers we can't attribute. It enables per breed automatically as each range gets sourced — there is no flag to flip. Live for 46 breeds
 - **Ranges from real asking prices** — the middle half of the live listings for a breed, not a journalist's estimate. Crossbreeds are excluded (up to 15 in 50 results), and a range is refused when its middle half falls far below what publishers report — a classifieds site's cheap tail is what the check exists to flag, so it must not become the benchmark. Every range records which kind of evidence produced it (`basis`), and the UI says "the middle half of 49 puppies listed for sale" rather than crediting an article that didn't produce the number. See [docs/SOURCES.md](docs/SOURCES.md) for the terms caveat
 - **Honest marketplace guide** — 7 breeder sites rated on vetting, price, delivery and documented cautions; no breeder marketplace publishes a data feed, and the UI says so rather than faking listings
 - **Dogs first (adoption path)** — searching returns actual listings (photo, age, size, shelter phone number), filtered by breed / age / state / city / size and sortable by age

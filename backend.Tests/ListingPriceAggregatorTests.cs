@@ -95,13 +95,56 @@ public class ListingPriceAggregatorTests
     {
         // The unique index only protects within a run; across runs the same animal
         // reappears, and counting it twice moves the percentiles while looking like a
-        // bigger sample.
+        // bigger sample. This matters more now that samples are pooled across runs.
         var once = HealthySample(24);
         var twice = once.Concat(once.Select(l => l with { RunId = "listings-later" })).ToList();
 
         var result = ListingPriceAggregator.Aggregate("french-bulldog", twice, Strict);
 
         Assert.Equal(24, result.SampleSize);
+    }
+
+    [Fact]
+    public void ARelistedAnimalCountsAtItsMostRecentPrice()
+    {
+        // Same listing, price dropped on a later run. The newer figure is the live asking
+        // price; averaging the two would invent a number nobody is charging.
+        var original = Sample(3000)[0];
+        var reduced = original with
+        {
+            Price = 2000,
+            RetrievedAt = original.RetrievedAt.AddDays(30),
+            RunId = "listings-later",
+        };
+        var rest = Sample([.. Enumerable.Repeat(2500, 23)])
+            .Select((l, i) => l with { ListingRef = $"other-{i}" });
+
+        var result = ListingPriceAggregator.Aggregate(
+            "french-bulldog", [original, reduced, .. rest], Strict);
+
+        Assert.Equal(24, result.SampleSize);
+        // 3000 must be gone: with 23 listings at 2500 the band is degenerate unless the
+        // relisted one contributes exactly once.
+        Assert.DoesNotContain(3000, new[] { result.Price?.PriceLow ?? 0, result.Price?.PriceHigh ?? 0 });
+    }
+
+    [Fact]
+    public void PoolingAcrossRunsIsWhatMakesTheSampleBigEnough()
+    {
+        // The property that forced pooling: two runs forty minutes apart returned ZERO
+        // overlapping listings for most breeds, so a single run is a small random slice of a
+        // much larger pool. Australian Shepherd swung from a verified $800-$1,500 to a
+        // refused $500 floor between two runs. Disjoint runs mean pooling adds genuinely new
+        // observations rather than re-confirming the same ones.
+        var runOne = HealthySample(12).Select((l, i) => l with { ListingRef = $"run1-{i}", RunId = "r1" });
+        var runTwo = HealthySample(12).Select((l, i) => l with { ListingRef = $"run2-{i}", RunId = "r2" });
+
+        var alone = ListingPriceAggregator.Aggregate("french-bulldog", runOne, Strict);
+        var pooled = ListingPriceAggregator.Aggregate("french-bulldog", [.. runOne, .. runTwo], Strict);
+
+        Assert.Null(alone.Price);              // 12 listings, below the floor of 20
+        Assert.NotNull(pooled.Price);          // 24 pooled, over it
+        Assert.Equal(24, pooled.SampleSize);
     }
 
     // ---------------------------------------------------------------- the floor guard
@@ -261,6 +304,25 @@ public class ListingPriceAggregatorTests
         Assert.True(ListingSources.IsPurebredTitle("Cardigan Welsh Corgi - M", expected));
         Assert.False(ListingSources.IsPurebredTitle("Cardigan Welsh Corgi and Pembroke Welsh Corgi", expected));
     }
+
+    [Fact]
+    public void DuplicateCatalogEntriesAreNotSeparatePricedBreeds()
+    {
+        // Two catalog entries for one animal produced two different prices for it, and the
+        // duplicate bypassed the floor guard entirely: only the curated entry has a seed
+        // range to check against, so australian-shepherd was correctly refused at a $500
+        // floor while shepherd-australian published exactly that, unguarded.
+        Assert.Contains("shepherd-australian", PuppyFinder.Api.Data.SiteCatalog.DuplicateOfCurated);
+        Assert.Contains("english-bulldog", PuppyFinder.Api.Data.SiteCatalog.DuplicateOfCurated);
+        Assert.Contains("standard-poodle", PuppyFinder.Api.Data.SiteCatalog.DuplicateOfCurated);
+        Assert.Contains("pembroke", PuppyFinder.Api.Data.SiteCatalog.DuplicateOfCurated);
+
+        // The other poodle sizes are genuinely distinct breeds we don't otherwise carry.
+        Assert.DoesNotContain("miniature-poodle", PuppyFinder.Api.Data.SiteCatalog.DuplicateOfCurated);
+        Assert.DoesNotContain("toy-poodle", PuppyFinder.Api.Data.SiteCatalog.DuplicateOfCurated);
+        Assert.DoesNotContain("cardigan-corgi", PuppyFinder.Api.Data.SiteCatalog.DuplicateOfCurated);
+    }
+
 
     [Fact]
     public void VendorCoverageIsAMeasuredListNotAnAspiration()

@@ -70,6 +70,33 @@ public static class SiteCatalog
     public static bool IsCurated(string slug) => CuratedSlugs.Value.Contains(slug);
 
     /// <summary>
+    /// dog.ceo slugs that name a breed the curated list already has under a different slug.
+    ///
+    /// <para>
+    /// The merge only skipped exact slug matches, so these came through as separate breeds:
+    /// "Shepherd Australian" alongside "Australian Shepherd", "English Bulldog" alongside
+    /// "Bulldog". That is a UI wart on its own, but it became a correctness bug once prices
+    /// arrived — the two entries got <b>different prices for the same animal</b>, and the
+    /// duplicate bypassed the listing floor guard entirely because only the curated entry has
+    /// a seed range to check against. australian-shepherd was correctly refused at a $500
+    /// floor while shepherd-australian published exactly that, unguarded.
+    /// </para>
+    ///
+    /// <para>
+    /// The curated entry wins: it has real traits, a size, and a blurb. Poodle sizes are
+    /// deliberately absent — miniature-poodle and toy-poodle are genuinely distinct breeds we
+    /// don't otherwise carry, unlike standard-poodle which duplicates "Poodle (Standard)".
+    /// </para>
+    /// </summary>
+    public static readonly HashSet<string> DuplicateOfCurated = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "shepherd-australian",  // == australian-shepherd
+        "english-bulldog",      // == bulldog
+        "standard-poodle",      // == poodle ("Poodle (Standard)")
+        "pembroke",             // == pembroke-welsh-corgi
+    };
+
+    /// <summary>
     /// The original unsourced range for a breed, if it had one.
     ///
     /// <para>

@@ -116,7 +116,11 @@ public record PriceThresholds(
     // How far a listing sample's 25th percentile may fall below the published low before
     // we treat it as the marketplace's cheap tail rather than the breed's price. At 0.75,
     // Beagle's $400 against a published $400 passes but a $250 would not.
-    double ListingFloorFactor = 0.75)
+    double ListingFloorFactor = 0.75,
+    // How far back to pool listing samples. Runs return near-disjoint sets, so pooling is
+    // what makes the range stable rather than a fresh random sample every month; the window
+    // is what stops it going stale. 90 days is short against how slowly breed prices move.
+    int ListingWindowDays = 90)
 {
     public static PriceThresholds FromConfiguration(IConfiguration configuration) => new(
         MinSources: configuration.GetValue("Prices:MinSources", 3),
@@ -125,7 +129,8 @@ public record PriceThresholds(
         DriftReviewPercent: configuration.GetValue("Prices:DriftReviewPercent", 40),
         MaxVerifiedBandRatio: configuration.GetValue("Prices:MaxVerifiedBandRatio", 4.0),
         MinListingSample: configuration.GetValue("Prices:MinListingSample", 20),
-        ListingFloorFactor: configuration.GetValue("Prices:ListingFloorFactor", 0.75));
+        ListingFloorFactor: configuration.GetValue("Prices:ListingFloorFactor", 0.75),
+        ListingWindowDays: configuration.GetValue("Prices:ListingWindowDays", 90));
 }
 
 public static class ObservationStatus

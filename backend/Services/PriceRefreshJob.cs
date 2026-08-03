@@ -195,20 +195,67 @@ public sealed class PriceRefreshJob(
     }
 
     /// <summary>
-    /// Re-derives one breed's live range from its stored observations. No network, so
-    /// this is how threshold changes are applied — free and idempotent.
+    /// Re-derives one breed's live range from everything stored for it. No network, so this
+    /// is how threshold changes are applied — free and idempotent.
+    ///
+    /// <para>
+    /// Considers <b>both</b> kinds of evidence, because there are two writers to
+    /// <c>breed_price</c> and only one row. This method used to look at observations alone
+    /// and upsert the result, which meant a single call to <c>/api/admin/price-reaggregate</c>
+    /// silently reverted every listing-derived range back to its editorial value — the free
+    /// "re-tune the threshold" operation quietly threw away better data. Precedence is
+    /// decided in one place instead: a listing range that clears its own bar wins, otherwise
+    /// the editorial range stands.
+    /// </para>
     /// </summary>
     public async Task<PriceAggregation?> ReaggregateBreedAsync(
         string breedSlug, PriceThresholds thresholds, CancellationToken ct)
     {
         var observations = await store.GetObservationsAsync(breedSlug, status: null, ct);
-        if (observations.Count == 0)
+        var listings = await store.GetListingPricesAsync(breedSlug, thresholds.ListingWindowDays, ct);
+        if (observations.Count == 0 && listings.Count == 0)
         {
             return null;
         }
 
         var current = await store.FindAsync(breedSlug, ct);
         var aggregation = PriceObservationValidator.Aggregate(breedSlug, observations, thresholds, current);
+
+        // Listings are the primary source when they qualify. The floor guard compares against
+        // the editorial range just derived, falling back to the unsourced seed as a smell
+        // test — see ListingPriceAggregator.
+        var guard = aggregation.Price;
+        if (guard is null && SiteCatalog.SeedPrice(breedSlug) is { } seed)
+        {
+            guard = new BreedPrice(breedSlug, seed.Low, seed.High,
+                PriceConfidence.Unverified, 0, DateTimeOffset.UtcNow);
+        }
+
+        var fromListings = ListingPriceAggregator.Aggregate(breedSlug, listings, thresholds, guard);
+        if (fromListings.Price is { Confidence: PriceConfidence.Verified } published)
+        {
+            aggregation = aggregation with
+            {
+                Price = published with { Basis = PriceBasis.Listings },
+                Rationale = fromListings.Rationale,
+            };
+        }
+
+        // When nothing can back a range, fall all the way back to the seed rather than
+        // leaving whatever numbers happened to be in the row. A refused listing range used to
+        // linger as the visible band, relabelled editorial/unverified — hidden from the UI,
+        // but still a stored figure that no evidence supported.
+        if (aggregation.Price is { Confidence: PriceConfidence.Unverified }
+            && SiteCatalog.SeedPrice(breedSlug) is { } fallback
+            && (aggregation.Price.PriceLow != fallback.Low || aggregation.Price.PriceHigh != fallback.High))
+        {
+            aggregation = aggregation with
+            {
+                Price = aggregation.Price with { PriceLow = fallback.Low, PriceHigh = fallback.High },
+                Rationale = aggregation.Rationale + "; reverted to the unsourced seed range",
+            };
+        }
+
         if (aggregation.Price is not null)
         {
             await store.UpsertAsync(aggregation.Price, ct);
