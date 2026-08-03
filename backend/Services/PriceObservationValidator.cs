@@ -128,6 +128,31 @@ public static class PriceObservationValidator
             .ToList();
 
     /// <summary>
+    /// One vote per publisher. A page that states several pet-quality figures — a range in
+    /// the body and an average in a comparison table, say — is still one editorial voice,
+    /// and must not supply two of the three "independent sources" that unlock a live scam
+    /// check.
+    ///
+    /// Found while gathering French Bulldog figures by hand: Insurify publishes both
+    /// "around $5,000 ... on average" and a "$2,000–$8,000" table range, both pet-quality.
+    /// Counting rows rather than publishers let one page do most of the work of clearing
+    /// the bar, which is the opposite of what the bar is for. The prompt is *right* to emit
+    /// one row per figure — the aggregation is where they have to be reconciled.
+    ///
+    /// The representative is chosen conservatively: a range beats an average (only a range
+    /// can define a band), and among ranges the widest wins. A too-wide band makes the
+    /// scam check quieter; a too-narrow one makes it accuse honest breeders.
+    /// </summary>
+    public static List<PriceObservation> CollapseByPublisher(IEnumerable<PriceObservation> observations) =>
+        observations
+            .GroupBy(o => PriceSources.HostOf(o.SourceUrl) ?? o.Publisher, StringComparer.OrdinalIgnoreCase)
+            .Select(g => g
+                .OrderBy(o => o.Kind == FigureKind.Range ? 0 : 1)
+                .ThenByDescending(o => o.PriceHigh - o.PriceLow)
+                .First())
+            .ToList();
+
+    /// <summary>
     /// Derives the live range and its confidence from stored observations.
     ///
     /// Deliberately a pure function over the observation table rather than something the
@@ -147,14 +172,18 @@ public static class PriceObservationValidator
         // show prospects, regional bands and rescue fees are all real data about
         // *different questions* — mixing them is what made raw figures look like
         // wild disagreement when they mostly weren't.
-        var usable = CollapseDuplicates(observations
+        // Two collapses, guarding two different ways the source count can be inflated:
+        // CollapseByPublisher stops one page counting twice, CollapseDuplicates stops the
+        // same figure syndicated across domains counting twice. Publisher first, so the
+        // cross-domain check compares one representative figure per voice.
+        var usable = CollapseDuplicates(CollapseByPublisher(observations
             .Where(o => o.Status != ObservationStatus.Rejected)
             .Where(o => o.Scope == PriceScope.PetStandard)
             // Re-derive the tier from the reviewed source list rather than trusting the
             // stored value. Tier gates the path to Verified, so a row written by an older
             // build, a bug, or a model that mislabelled itself must not be able to grant
             // itself Tier A standing.
-            .Select(o => o with { PublisherTier = PriceSources.TierFor(o.SourceUrl) ?? PublisherTier.B }));
+            .Select(o => o with { PublisherTier = PriceSources.TierFor(o.SourceUrl) ?? PublisherTier.B })));
 
         var ranges = usable.Where(o => o.Kind == FigureKind.Range).ToList();
         var averages = usable.Where(o => o.Kind == FigureKind.Average).ToList();

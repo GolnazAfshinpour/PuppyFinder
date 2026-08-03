@@ -151,6 +151,68 @@ public class PriceObservationValidatorTests
         Assert.Equal(PublisherTier.A, Assert.Single(kept).PublisherTier);
     }
 
+    // ------------------------------------------------- one vote per publisher
+
+    [Fact]
+    public void OnePageStatingTwoFiguresIsStillOneSource()
+    {
+        // Found gathering Frenchie figures by hand: Insurify's page publishes both
+        // "around $5,000 ... on average" and a "$2,000-$8,000" table range. Counting rows
+        // would let one editorial voice supply two of the three sources that unlock a live
+        // scam check.
+        var result = PriceObservationValidator.Aggregate("french-bulldog",
+            [Obs(2000, 8000, "Insurify", "https://insurify.com/x"),
+             Obs(5000, 5000, "Insurify", "https://insurify.com/x", kind: FigureKind.Average),
+             Obs(2500, 4000)],
+            Strict);
+
+        Assert.Equal(2, result.Price!.SourceCount);
+        Assert.NotEqual(PriceConfidence.Verified, result.Price.Confidence);
+    }
+
+    [Fact]
+    public void ThreePagesFromOneDomainCannotReachVerifiedAlone()
+    {
+        // The degenerate version: a single publisher's breed hub could otherwise clear a
+        // three-source bar by itself.
+        var result = PriceObservationValidator.Aggregate("french-bulldog",
+            [Obs(2400, 4000, url: "https://www.metlifepetinsurance.com/blog/a/"),
+             Obs(2500, 4100, url: "https://www.metlifepetinsurance.com/blog/b/"),
+             Obs(2600, 4200, url: "https://www.metlifepetinsurance.com/blog/c/")],
+            Strict);
+
+        Assert.Equal(1, result.Price!.SourceCount);
+        Assert.Equal(PriceConfidence.SingleSource, result.Price.Confidence);
+    }
+
+    [Fact]
+    public void ThePublisherRepresentativePrefersARangeAndTheWiderBand()
+    {
+        // Conservative on purpose: a too-wide band makes the scam check quieter, a
+        // too-narrow one makes it accuse honest breeders.
+        var collapsed = PriceObservationValidator.CollapseByPublisher(
+            [Obs(3000, 3000, kind: FigureKind.Average),
+             Obs(2800, 3600),
+             Obs(2500, 4000)]);
+
+        var representative = Assert.Single(collapsed);
+        Assert.Equal(FigureKind.Range, representative.Kind);
+        Assert.Equal(2500, representative.PriceLow);
+        Assert.Equal(4000, representative.PriceHigh);
+    }
+
+    [Fact]
+    public void DifferentSubdomainsOfOnePublisherStillCountSeparatelyOnlyIfTheHostDiffers()
+    {
+        // HostOf strips "www." but nothing else, so a genuinely different host is a
+        // different voice. Documents the boundary rather than asserting a preference.
+        var collapsed = PriceObservationValidator.CollapseByPublisher(
+            [Obs(2500, 4000, url: "https://www.metlifepetinsurance.com/a/"),
+             Obs(2600, 4100, url: "https://metlifepetinsurance.com/b/")]);
+
+        Assert.Single(collapsed);
+    }
+
     // ---------------------------------------------------------------- the range itself
 
     [Fact]

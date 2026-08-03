@@ -193,6 +193,107 @@ public sealed class PriceAdminApiTests : IDisposable
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }
 
+    // ------------------------------------------------- hand-gathered observations
+
+    private HttpRequestMessage Ingest(string json)
+    {
+        var request = Authorised(HttpMethod.Post, "/api/admin/price-observations");
+        request.Content = new StringContent(json, System.Text.Encoding.UTF8, "application/json");
+        return request;
+    }
+
+    [Fact]
+    public async Task IngestRequiresTheSecret()
+    {
+        var response = await _client.PostAsync("/api/admin/price-observations", content: null, Ct);
+
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task IngestRefusesAnUnknownBreedSlugRatherThanOrphaningRows()
+    {
+        // Rows under a slug no breed reads would never surface — silently useless data is
+        // worse than a rejected request.
+        var response = await _client.SendAsync(Ingest("""
+            [{ "breed": "not-a-real-breed", "observations": [] }]
+            """), Ct);
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Contains("Unknown breed slug", await response.Content.ReadAsStringAsync(Ct));
+    }
+
+    [Fact]
+    public async Task IngestRejectsMalformedJsonWithAnExplanation()
+    {
+        var response = await _client.SendAsync(Ingest("{ not json"), Ct);
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Contains("not valid JSON", await response.Content.ReadAsStringAsync(Ct));
+    }
+
+    [Fact]
+    public async Task HandGatheredRowsFaceTheSameRulesAsGeneratedOnes()
+    {
+        // One good Tier A row and one from a domain we block precisely because it sells
+        // puppies. Entering data by hand must not be a way around the source policy.
+        var response = await _client.SendAsync(Ingest("""
+            [{
+              "breed": "beagle",
+              "observations": [
+                {
+                  "publisher": "MetLife Pet Insurance",
+                  "sourceUrl": "https://www.metlifepetinsurance.com/blog/breed-spotlights/beagle/",
+                  "quote": "Beagle puppies from a reputable breeder typically cost between $800 and $1,500.",
+                  "scope": "pet_standard", "figureKind": "range",
+                  "priceLow": 800, "priceHigh": 1500
+                },
+                {
+                  "publisher": "Lancaster Puppies",
+                  "sourceUrl": "https://www.lancasterpuppies.com/breeds/beagle",
+                  "quote": "Beagle puppies for sale, starting at $400 with delivery available.",
+                  "scope": "pet_standard", "figureKind": "range",
+                  "priceLow": 400, "priceHigh": 900
+                }
+              ]
+            }]
+            """), Ct);
+        response.EnsureSuccessStatusCode();
+
+        var breed = (await response.Content.ReadFromJsonAsync<JsonElement>(Ct))
+            .GetProperty("breeds").EnumerateArray().Single();
+
+        Assert.Equal(2, breed.GetProperty("submitted").GetInt32());
+        Assert.Equal(1, breed.GetProperty("accepted").GetInt32());
+        var rejected = breed.GetProperty("rejected").EnumerateArray().Single();
+        Assert.Contains("lancasterpuppies.com", rejected.GetProperty("sourceUrl").GetString());
+
+        // One accepted source can't reach verified, so screening stays off — the gate is
+        // not something hand-entry can bypass either.
+        Assert.NotEqual(PriceConfidence.Verified, await CurrentConfidenceAsync("beagle"));
+    }
+
+    [Fact]
+    public async Task IngestedRowsRecordThatAHumanGatheredThem()
+    {
+        await _client.SendAsync(Ingest("""
+            { "breed": "beagle", "observations": [{
+                "publisher": "PetMD",
+                "sourceUrl": "https://www.petmd.com/dog/breeds/beagle",
+                "quote": "Expect to pay $1,000 to $1,400 for a Beagle puppy from a responsible breeder.",
+                "scope": "pet_standard", "figureKind": "range",
+                "priceLow": 1000, "priceHigh": 1400 }] }
+            """), Ct);
+
+        var store = _factory.Services.GetRequiredService<PriceStore>();
+        var stored = await store.GetObservationsAsync("beagle", status: null, Ct);
+        var ingested = stored.Single(o => o.SourceUrl.Contains("petmd.com"));
+
+        // Provenance is recorded, not hidden: the audit trail says who produced the row.
+        Assert.Equal("manual", ingested.Model);
+        Assert.StartsWith("manual-", ingested.RunId);
+    }
+
     private async Task<string?> CurrentConfidenceAsync(string slug)
     {
         var breeds = await _client.GetFromJsonAsync<JsonElement>("/api/breeds", Ct);

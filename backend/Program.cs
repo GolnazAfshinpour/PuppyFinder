@@ -1,3 +1,4 @@
+using System.Text.Json;
 using System.Text.Json.Serialization;
 using PuppyFinder.Api.Data;
 using PuppyFinder.Api.Models;
@@ -368,6 +369,90 @@ app.MapPost("/api/admin/price-research", async (HttpRequest request, string? bre
         : Results.Ok(summary);
 })
 .WithName("ResearchPrices");
+
+// Record observations gathered by hand, for when no API key exists — an org account that
+// can't mint one, or a breed the job keeps failing on.
+//
+// Deliberately not a shortcut around the rules. It takes the *same* payload shape the
+// model emits and runs it through the *same* PriceResearchPrompt.Parse and
+// PriceObservationValidator.Partition, so a hand-entered row faces an identical
+// allowlist, quote-length and scope check, and aggregates identically. Only the
+// provenance differs, and that is recorded rather than hidden: these rows carry
+// model = "manual" and a manual- run id, so the audit trail always says a human gathered
+// them.
+//
+// Body: [{ "breed": "french-bulldog", "observations": [ ...same fields as the schema... ]}]
+app.MapPost("/api/admin/price-observations", async (HttpRequest request,
+    PriceStore prices, PriceRefreshJob job, BreedCatalogService catalog,
+    IConfiguration config, CancellationToken ct) =>
+{
+    if (!Authorised(request)) return Forbidden();
+
+    using var reader = new StreamReader(request.Body);
+    var body = await reader.ReadToEndAsync(ct);
+    JsonDocument document;
+    try
+    {
+        document = JsonDocument.Parse(body);
+    }
+    catch (JsonException ex)
+    {
+        return Results.BadRequest(new { Message = $"Body is not valid JSON: {ex.Message}" });
+    }
+
+    using (document)
+    {
+        // Accept one batch or many, so a single breed doesn't need array ceremony.
+        var batches = document.RootElement.ValueKind == JsonValueKind.Array
+            ? document.RootElement.EnumerateArray().ToList()
+            : [document.RootElement];
+
+        var knownSlugs = (await catalog.GetBreedsAsync(ct)).Select(b => b.Slug).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var runId = $"manual-{DateTimeOffset.UtcNow:yyyyMMdd-HHmmss}";
+        var thresholds = PriceThresholds.FromConfiguration(config);
+        var now = DateTimeOffset.UtcNow;
+        List<object> outcomes = [];
+
+        foreach (var batch in batches)
+        {
+            if (batch.ValueKind != JsonValueKind.Object
+                || !batch.TryGetProperty("breed", out var slugElement)
+                || slugElement.GetString() is not { Length: > 0 } slug)
+            {
+                return Results.BadRequest(new { Message = "Each batch needs a non-empty \"breed\" slug." });
+            }
+
+            // A typo'd slug would create rows no breed can ever read — orphaned data that
+            // silently never surfaces is worse than a rejected request.
+            if (!knownSlugs.Contains(slug))
+            {
+                return Results.BadRequest(new { Message = $"Unknown breed slug '{slug}'." });
+            }
+
+            var parsed = PriceResearchPrompt.Parse(batch.GetRawText(), slug, runId, model: "manual", now);
+            var (kept, refused) = PriceObservationValidator.Partition(parsed);
+
+            var rejectedRows = refused
+                .Select(r => r.Observation with { Status = ObservationStatus.Rejected, RejectReason = r.Reason })
+                .ToList();
+            await prices.AddObservationsAsync([.. kept, .. rejectedRows], ct);
+
+            var aggregation = await job.ReaggregateBreedAsync(slug, thresholds, ct);
+            outcomes.Add(new
+            {
+                Breed = slug,
+                Submitted = parsed.Count,
+                Accepted = kept.Count,
+                Rejected = refused.Select(r => new { r.Observation.Publisher, r.Observation.SourceUrl, r.Reason }),
+                Result = aggregation?.Price,
+                aggregation?.Rationale,
+            });
+        }
+
+        return Results.Ok(new { RunId = runId, Thresholds = thresholds, Breeds = outcomes });
+    }
+})
+.WithName("AddPriceObservations");
 
 // Re-derive every breed's confidence from stored observations under the current
 // thresholds. Free and idempotent — this is how a threshold change is applied.
