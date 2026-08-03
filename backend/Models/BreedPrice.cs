@@ -35,6 +35,13 @@ public static class PriceScope
     public const string ShowOrPedigree = "show_or_pedigree";
     public const string RareColour = "rare_colour";
 
+    /// <summary>
+    /// Explicitly scoped to a region ("Northeast $1,200–2,500"). Real data on the wrong
+    /// axis: mixing it with national figures widens a range for a reason that has
+    /// nothing to do with the breed.
+    /// </summary>
+    public const string Regional = "regional";
+
     /// <summary>Adoption fee. Recorded for context, never mixed into a purchase range.</summary>
     public const string Rescue = "rescue";
 
@@ -42,9 +49,50 @@ public static class PriceScope
     public const string Unscoped = "unscoped";
 
     public static readonly string[] All =
-        [PetStandard, ShowOrPedigree, RareColour, Rescue, Unscoped];
+        [PetStandard, ShowOrPedigree, RareColour, Regional, Rescue, Unscoped];
 
     public static bool IsKnown(string? scope) => scope is not null && All.Contains(scope);
+}
+
+/// <summary>
+/// Whether a source published a band or a single number. Tier A publishers often give
+/// only an average ("about $5,000"), and requiring a low+high would silently discard
+/// their data — so averages are kept, but they corroborate rather than widen.
+/// </summary>
+public static class FigureKind
+{
+    /// <summary>A low and a high. The only kind that feeds the published range.</summary>
+    public const string Range = "range";
+
+    /// <summary>
+    /// A single figure. Never widens the range; counts as a source when it falls inside
+    /// the aggregated range, and forces Contested when it falls outside — which is real
+    /// disagreement worth surfacing rather than hiding.
+    /// </summary>
+    public const string Average = "average";
+
+    public static readonly string[] All = [Range, Average];
+
+    public static bool IsKnown(string? kind) => kind is not null && All.Contains(kind);
+}
+
+/// <summary>
+/// The bar a range must clear to be trusted. Configuration rather than constants,
+/// because the right thresholds depend on what the sources actually support — and
+/// because aggregation is a pure function over stored observations, re-tuning these
+/// costs nothing (no re-research, no API spend). Defaults are the strict values.
+/// </summary>
+public record PriceThresholds(
+    int MinSources = 3,
+    bool RequireTierA = true,
+    double MaxSpreadRatio = 2.0,
+    int DriftReviewPercent = 40)
+{
+    public static PriceThresholds FromConfiguration(IConfiguration configuration) => new(
+        MinSources: configuration.GetValue("Prices:MinSources", 3),
+        RequireTierA: configuration.GetValue("Prices:RequireTierA", true),
+        MaxSpreadRatio: configuration.GetValue("Prices:MaxSpreadRatio", 2.0),
+        DriftReviewPercent: configuration.GetValue("Prices:DriftReviewPercent", 40));
 }
 
 public static class ObservationStatus
@@ -88,6 +136,8 @@ public record PriceObservation(
     int PriceLow,
     int PriceHigh,
     string Scope,
+    /// <summary>range | average — see <see cref="FigureKind"/>.</summary>
+    string Kind,
     string SourceUrl,
     string Publisher,
     string PublisherTier,
@@ -102,7 +152,15 @@ public record PriceObservation(
     DateTimeOffset? PublishedAt = null,
     /// <summary>An explicit "below $X is a scam" statement — corroborating evidence, not a threshold.</summary>
     string? RedFlagQuote = null,
-    string? RejectReason = null);
+    string? RejectReason = null)
+{
+    /// <summary>
+    /// Midpoint of the figure — for an <see cref="FigureKind.Average"/> this is the
+    /// figure itself. Source disagreement is measured on midpoints rather than lows,
+    /// because a wide band from one source isn't the same thing as sources disagreeing.
+    /// </summary>
+    public double Midpoint => (PriceLow + PriceHigh) / 2.0;
+}
 
 /// <summary>One execution of the research job — the audit record for a batch run.</summary>
 public record PriceRun(

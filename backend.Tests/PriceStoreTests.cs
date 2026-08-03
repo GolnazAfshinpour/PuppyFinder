@@ -169,6 +169,7 @@ public sealed class PriceStoreTests : IDisposable
         PriceLow: low,
         PriceHigh: high,
         Scope: PriceScope.PetStandard,
+        Kind: FigureKind.Range,
         SourceUrl: "https://example.test/breed-price",
         Publisher: "Example Pet Insurance",
         PublisherTier: PublisherTier.A,

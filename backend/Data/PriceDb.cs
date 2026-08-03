@@ -158,5 +158,11 @@ public sealed class PriceDb
             error          TEXT
         );
         """,
+
+        // v2 — Tier A publishers often give an average rather than a band, and
+        // discarding those lost good data. Existing rows are bands by definition.
+        """
+        ALTER TABLE price_observation ADD COLUMN kind TEXT NOT NULL DEFAULT 'range';
+        """,
     ];
 }

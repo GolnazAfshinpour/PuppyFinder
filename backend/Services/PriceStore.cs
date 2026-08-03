@@ -113,7 +113,7 @@ public sealed class PriceStore(PriceDb db, ILogger<PriceStore> logger)
         await using var connection = await db.OpenAsync(ct);
         await using var command = connection.CreateCommand();
         command.CommandText = """
-            SELECT id, breed_slug, price_low, price_high, scope, source_url, publisher, publisher_tier,
+            SELECT id, breed_slug, price_low, price_high, scope, kind, source_url, publisher, publisher_tier,
                    quote, published_at, red_flag_quote, retrieved_at, run_id, model, status, reject_reason
             FROM price_observation
             WHERE breed_slug = $slug AND ($status IS NULL OR status = $status)
@@ -138,7 +138,7 @@ public sealed class PriceStore(PriceDb db, ILogger<PriceStore> logger)
         await using var connection = await db.OpenAsync(ct);
         await using var command = connection.CreateCommand();
         command.CommandText = """
-            SELECT id, breed_slug, price_low, price_high, scope, source_url, publisher, publisher_tier,
+            SELECT id, breed_slug, price_low, price_high, scope, kind, source_url, publisher, publisher_tier,
                    quote, published_at, red_flag_quote, retrieved_at, run_id, model, status, reject_reason
             FROM price_observation
             WHERE status = $pending
@@ -285,6 +285,7 @@ public sealed class PriceStore(PriceDb db, ILogger<PriceStore> logger)
                     PriceLow: breed.PriceLow,
                     PriceHigh: breed.PriceHigh,
                     Scope: PriceScope.Unscoped,
+                    Kind: FigureKind.Range,
                     SourceUrl: "",
                     Publisher: "legacy hardcoded (unsourced)",
                     PublisherTier: PublisherTier.B,
@@ -336,15 +337,16 @@ public sealed class PriceStore(PriceDb db, ILogger<PriceStore> logger)
         command.Transaction = transaction as SqliteTransaction;
         command.CommandText = """
             INSERT INTO price_observation
-                (breed_slug, price_low, price_high, scope, source_url, publisher, publisher_tier,
+                (breed_slug, price_low, price_high, scope, kind, source_url, publisher, publisher_tier,
                  quote, published_at, red_flag_quote, retrieved_at, run_id, model, status, reject_reason)
-            VALUES ($slug, $low, $high, $scope, $url, $publisher, $tier,
+            VALUES ($slug, $low, $high, $scope, $kind, $url, $publisher, $tier,
                     $quote, $publishedAt, $redFlag, $retrievedAt, $runId, $model, $status, $reason);
             """;
         command.Parameters.AddWithValue("$slug", o.BreedSlug);
         command.Parameters.AddWithValue("$low", o.PriceLow);
         command.Parameters.AddWithValue("$high", o.PriceHigh);
         command.Parameters.AddWithValue("$scope", o.Scope);
+        command.Parameters.AddWithValue("$kind", o.Kind);
         command.Parameters.AddWithValue("$url", o.SourceUrl);
         command.Parameters.AddWithValue("$publisher", o.Publisher);
         command.Parameters.AddWithValue("$tier", o.PublisherTier);
@@ -365,17 +367,18 @@ public sealed class PriceStore(PriceDb db, ILogger<PriceStore> logger)
         PriceLow: r.GetInt32(2),
         PriceHigh: r.GetInt32(3),
         Scope: r.GetString(4),
-        SourceUrl: r.GetString(5),
-        Publisher: r.GetString(6),
-        PublisherTier: r.GetString(7),
-        Quote: r.GetString(8),
-        PublishedAt: r.IsDBNull(9) ? null : DateTimeOffset.Parse(r.GetString(9)),
-        RedFlagQuote: r.IsDBNull(10) ? null : r.GetString(10),
-        RetrievedAt: DateTimeOffset.Parse(r.GetString(11)),
-        RunId: r.GetString(12),
-        Model: r.GetString(13),
-        Status: r.GetString(14),
-        RejectReason: r.IsDBNull(15) ? null : r.GetString(15));
+        Kind: r.GetString(5),
+        SourceUrl: r.GetString(6),
+        Publisher: r.GetString(7),
+        PublisherTier: r.GetString(8),
+        Quote: r.GetString(9),
+        PublishedAt: r.IsDBNull(10) ? null : DateTimeOffset.Parse(r.GetString(10)),
+        RedFlagQuote: r.IsDBNull(11) ? null : r.GetString(11),
+        RetrievedAt: DateTimeOffset.Parse(r.GetString(12)),
+        RunId: r.GetString(13),
+        Model: r.GetString(14),
+        Status: r.GetString(15),
+        RejectReason: r.IsDBNull(16) ? null : r.GetString(16));
 
     // Round-trippable and sortable as text, which is how SQLite stores it.
     private static string Iso(DateTimeOffset value) => value.ToString("o");
