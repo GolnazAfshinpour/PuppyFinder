@@ -253,7 +253,78 @@ corrected by running the research by hand before writing the code:
   Shepherd and Golden Retriever, Dogster on Beagle and Poodle). Those are skipped rather
   than quoted from an adjacent sentence that doesn't support the figure.
 
-### Why we don't derive ranges from real listings (August 2026)
+### Listing prices are now the primary source (August 2026)
+
+**Owner decision, taken after reading the terms below.** Ranges for 17 breeds are derived
+from live asking prices on Puppies.com rather than from published articles. This is done at
+the product owner's direction and on their risk; the terms conflict is real and set out in
+the next section, which is retained unedited.
+
+Two limits are deliberate and should not be relaxed:
+
+- **Structured data only.** We read the schema.org `ld+json` block the site publishes for
+  machine consumption — not rendered markup. Also far more stable: a `"price":N` regex would
+  drift silently the day their markup changed.
+- **Never defeat an access control.** A host answering 403 stays unread. PuppySpot is
+  unread for this reason even though its robots.txt would permit it.
+
+The client identifies itself as `PuppyFinder/1.0` with a repository URL rather than
+impersonating a browser, one request per 1.5 s. If the operator wants to block or rate-limit
+us they should be able to, and a spoofed user-agent would be working around that choice.
+
+**How the range is derived.** The middle half (p25–p75) of the sample, not min–max: on live
+listings the extremes are exactly the scam-priced and rare-colour outliers. Nearest-rank
+percentiles, so every published figure is a price somebody is actually asking.
+
+**Three things the real data forced, none of which were in the design:**
+
+1. **Crossbreeds are in breed results, in quantity** — 15 of 50 Bernese and Shih Tzu
+   results, 14 of 50 for German Shepherd, Poodle and Australian Shepherd. A mix is usually
+   cheaper, so counting them drags a purebred range down: the same failure as counting scam
+   listings, reached by a different route. Filtered on exact title match, which also handles
+   mixes without a separate rule, since "Boston Terrier and French Bulldog" simply isn't
+   "French Bulldog".
+2. **Naming mismatches fail silently as "this breed has no listings."** Three breeds returned
+   0 usable prices from 50 results on the first run: our "Bulldog" is their "English
+   Bulldog", our "German Shepherd" their "German Shepherd Dog", our "Poodle (Standard)"
+   their "Poodle - Standard". `ListingSources.VendorNames` records each, read off live
+   titles. Related trap: `" - "` separates the *size variety* as well as the sex marker, so
+   stripping everything after the last one turned "Poodle - Standard - F" into "Poodle -
+   Standard" in one place and "Poodle" in another.
+3. **The floor guard never fired for most breeds, because it had nothing to compare against.**
+   It used the researched editorial range, and only 7 breeds have one — so the other 18
+   published unguarded, putting Australian Shepherd at $450–$1,000 and Siberian Husky at
+   $425–$1,200, both well under any published figure. The guard now falls back to the
+   *unsourced seed* range as a smell test. The seed is never published — it is only allowed
+   to refuse — which is a defensible use of a number too unreliable to show.
+
+**The guard earns its place on live data.** Three breeds are refused:
+
+| Breed | Listing middle half | Compared against | Outcome |
+|---|---|---|---|
+| German Shepherd | $800–$1,250 (median $1,000) | published $2,000–$4,000 | refused; keeps the editorial range |
+| Cavalier King Charles | $1,200–$2,000 | seed low $1,800 | refused; keeps the seed, stays unverified |
+| Siberian Husky | $350–$1,000 (median $600) | seed low $800 | refused |
+
+German Shepherd is the clearest case: PetMD and Insurify put a reputable-breeder puppy at
+$2,000–$4,500, and the marketplace median is $1,000. Both can be true — they describe
+different populations — and the guard correctly refuses to let the classifieds define the
+benchmark that screens classifieds quotes.
+
+**Provenance had to change with it.** `/api/price-sources` initially returned a
+listings-derived range alongside a list of *editorial* citations: the count said 49 and the
+sources said Canine Bible, whose article gives a different band. Citing the wrong source is
+barely better than citing none, so the endpoint now reports the evidence that actually
+produced the range — sample size, host, median, full span, retrieval date — and published
+figures appear under "Published estimates for comparison", never as the source. `breed_price`
+carries a `basis` column (`editorial` | `listings`) because "49 sources" means 49 articles in
+one case and 49 puppies for sale in the other.
+
+**Result: 18 of 179 breeds screening, up from 1.** 17 from listings, German Shepherd from
+published sources. Bands are mostly 1.3x–2.5x, tight enough for the scam check to mean
+something.
+
+### Why we could not take them (recorded before the decision above)
 
 The obvious better idea: skip the editorial middlemen and take asking prices straight off
 legitimate puppy marketplaces. More data, current, and it's what buyers actually face. It

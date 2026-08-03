@@ -33,7 +33,7 @@ public sealed class PriceStore(PriceDb db, ILogger<PriceStore> logger)
             await using var connection = await db.OpenAsync(ct);
             await using var command = connection.CreateCommand();
             command.CommandText = """
-                SELECT breed_slug, price_low, price_high, confidence, source_count, spread_ratio, updated_at
+                SELECT breed_slug, price_low, price_high, confidence, source_count, spread_ratio, updated_at, basis
                 FROM breed_price;
                 """;
 
@@ -49,7 +49,8 @@ public sealed class PriceStore(PriceDb db, ILogger<PriceStore> logger)
                     Confidence: reader.GetString(3),
                     SourceCount: reader.GetInt32(4),
                     UpdatedAt: DateTimeOffset.Parse(reader.GetString(6)),
-                    SpreadRatio: reader.IsDBNull(5) ? null : reader.GetDouble(5));
+                    SpreadRatio: reader.IsDBNull(5) ? null : reader.GetDouble(5),
+                    Basis: reader.GetString(7));
             }
 
             _cache = prices;
@@ -104,6 +105,114 @@ public sealed class PriceStore(PriceDb db, ILogger<PriceStore> logger)
         {
             _lock.Release();
         }
+    }
+
+    /// <summary>
+    /// Records a listing sample. Idempotent per run via the unique index — re-fetching a
+    /// breed within one run refreshes rather than inflating the sample, because a price
+    /// counted twice moves the percentiles while looking like corroboration.
+    /// </summary>
+    public async Task AddListingPricesAsync(IReadOnlyList<ListingPrice> prices, CancellationToken ct)
+    {
+        if (prices.Count == 0)
+        {
+            return;
+        }
+
+        await _lock.WaitAsync(ct);
+        try
+        {
+            await using var connection = await db.OpenAsync(ct);
+            await using var transaction = await connection.BeginTransactionAsync(ct);
+            foreach (var price in prices)
+            {
+                await using var command = connection.CreateCommand();
+                command.Transaction = (Microsoft.Data.Sqlite.SqliteTransaction)transaction;
+                command.CommandText = """
+                    INSERT INTO listing_price
+                        (breed_slug, price, source_host, listing_ref, listing_name, retrieved_at, run_id)
+                    VALUES ($slug, $price, $host, $ref, $name, $retrieved, $run)
+                    ON CONFLICT (breed_slug, source_host, listing_ref, run_id) DO UPDATE SET
+                        price = excluded.price,
+                        listing_name = excluded.listing_name,
+                        retrieved_at = excluded.retrieved_at;
+                    """;
+                command.Parameters.AddWithValue("$slug", price.BreedSlug);
+                command.Parameters.AddWithValue("$price", price.Price);
+                command.Parameters.AddWithValue("$host", price.SourceHost);
+                command.Parameters.AddWithValue("$ref", price.ListingRef);
+                command.Parameters.AddWithValue("$name", price.ListingName);
+                command.Parameters.AddWithValue("$retrieved", price.RetrievedAt.ToString("o"));
+                command.Parameters.AddWithValue("$run", price.RunId);
+                await command.ExecuteNonQueryAsync(ct);
+            }
+
+            await transaction.CommitAsync(ct);
+            _cache = null;
+        }
+        finally
+        {
+            _lock.Release();
+        }
+    }
+
+    /// <summary>
+    /// A breed's listing sample. Optionally only the most recent run, which is what
+    /// aggregation wants — an old run's prices describe a marketplace that has moved on.
+    /// </summary>
+    public async Task<IReadOnlyList<ListingPrice>> GetListingPricesAsync(
+        string breedSlug, bool latestRunOnly, CancellationToken ct)
+    {
+        await using var connection = await db.OpenAsync(ct);
+        await using var command = connection.CreateCommand();
+        command.CommandText = latestRunOnly
+            ? """
+              SELECT id, breed_slug, price, source_host, listing_ref, listing_name, retrieved_at, run_id
+              FROM listing_price
+              WHERE breed_slug = $slug AND run_id = (
+                  SELECT run_id FROM listing_price WHERE breed_slug = $slug
+                  ORDER BY retrieved_at DESC LIMIT 1)
+              ORDER BY price;
+              """
+            : """
+              SELECT id, breed_slug, price, source_host, listing_ref, listing_name, retrieved_at, run_id
+              FROM listing_price WHERE breed_slug = $slug ORDER BY price;
+              """;
+        command.Parameters.AddWithValue("$slug", breedSlug);
+
+        List<ListingPrice> results = [];
+        await using var reader = await command.ExecuteReaderAsync(ct);
+        while (await reader.ReadAsync(ct))
+        {
+            results.Add(new ListingPrice(
+                BreedSlug: reader.GetString(1),
+                Price: reader.GetInt32(2),
+                SourceHost: reader.GetString(3),
+                ListingRef: reader.GetString(4),
+                ListingName: reader.GetString(5),
+                RetrievedAt: DateTimeOffset.Parse(reader.GetString(6)),
+                RunId: reader.GetString(7),
+                Id: reader.GetInt64(0)));
+        }
+
+        return results;
+    }
+
+    /// <summary>Which breeds have any listing sample at all.</summary>
+    public async Task<IReadOnlyList<string>> GetBreedsWithListingsAsync(CancellationToken ct)
+    {
+        await using var connection = await db.OpenAsync(ct);
+        await using var command = connection.CreateCommand();
+        command.CommandText = "SELECT DISTINCT breed_slug FROM listing_price ORDER BY breed_slug;";
+
+        List<string> slugs = [];
+        await using var reader = await command.ExecuteReaderAsync(ct);
+        while (await reader.ReadAsync(ct))
+        {
+            slugs.Add(reader.GetString(0));
+        }
+
+        return slugs;
     }
 
     /// <summary>The accepted observations backing a breed's range — what the UI cites.</summary>
@@ -323,12 +432,13 @@ public sealed class PriceStore(PriceDb db, ILogger<PriceStore> logger)
         await using var command = connection.CreateCommand();
         command.Transaction = transaction as SqliteTransaction;
         command.CommandText = """
-            INSERT INTO breed_price (breed_slug, price_low, price_high, confidence, source_count, spread_ratio, updated_at)
-            VALUES ($slug, $low, $high, $confidence, $sources, $spread, $updatedAt)
+            INSERT INTO breed_price (breed_slug, price_low, price_high, confidence, source_count, spread_ratio, updated_at, basis)
+            VALUES ($slug, $low, $high, $confidence, $sources, $spread, $updatedAt, $basis)
             ON CONFLICT (breed_slug) DO UPDATE SET
                 price_low = excluded.price_low, price_high = excluded.price_high,
                 confidence = excluded.confidence, source_count = excluded.source_count,
-                spread_ratio = excluded.spread_ratio, updated_at = excluded.updated_at;
+                spread_ratio = excluded.spread_ratio, updated_at = excluded.updated_at,
+                basis = excluded.basis;
             """;
         command.Parameters.AddWithValue("$slug", price.BreedSlug);
         command.Parameters.AddWithValue("$low", price.PriceLow);
@@ -337,6 +447,7 @@ public sealed class PriceStore(PriceDb db, ILogger<PriceStore> logger)
         command.Parameters.AddWithValue("$sources", price.SourceCount);
         command.Parameters.AddWithValue("$spread", price.SpreadRatio ?? (object)DBNull.Value);
         command.Parameters.AddWithValue("$updatedAt", Iso(price.UpdatedAt));
+        command.Parameters.AddWithValue("$basis", price.Basis);
         await command.ExecuteNonQueryAsync(ct);
     }
 

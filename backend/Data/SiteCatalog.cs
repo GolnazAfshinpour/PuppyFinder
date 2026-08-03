@@ -69,6 +69,25 @@ public static class SiteCatalog
     /// </summary>
     public static bool IsCurated(string slug) => CuratedSlugs.Value.Contains(slug);
 
+    /// <summary>
+    /// The original unsourced range for a breed, if it had one.
+    ///
+    /// <para>
+    /// Deliberately narrow in purpose: this is a <b>smell test only</b>, never something to
+    /// publish. These numbers have no citation — that is the whole reason the price database
+    /// exists — but they are not random either, and "the live listings' middle half sits far
+    /// below even our unsourced prior" is a useful warning that we are looking at a
+    /// marketplace's cheap tail rather than a breed's price. Used by
+    /// <see cref="Services.ListingPriceAggregator"/> as a fallback floor guard for the many
+    /// breeds with no researched range to compare against.
+    /// </para>
+    /// </summary>
+    public static (int Low, int High)? SeedPrice(string slug) =>
+        Breeds.FirstOrDefault(b => b.Slug.Equals(slug, StringComparison.OrdinalIgnoreCase))
+            is { PriceLow: > 0, PriceHigh: > 0 } breed
+            ? (breed.PriceLow, breed.PriceHigh)
+            : null;
+
     // Lazy, not a plain static initializer: static fields initialize in declaration
     // order, and Breeds is declared below this — eager initialization would read it
     // as null and throw during type init.

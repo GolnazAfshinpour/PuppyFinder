@@ -164,5 +164,43 @@ public sealed class PriceDb
         """
         ALTER TABLE price_observation ADD COLUMN kind TEXT NOT NULL DEFAULT 'range';
         """,
+
+        // v3 — real asking prices from marketplace listings.
+        //
+        // A separate table rather than more price_observation rows, because these are a
+        // different kind of evidence: one number per animal for sale, not a published
+        // figure with a supporting quote. There is no scope, no tier and no quote to
+        // record — which is most of what price_observation exists to hold.
+        //
+        // Stored one row per listing, like observations, so percentiles stay a pure
+        // function over stored data and the bar can be re-tuned without re-fetching.
+        """
+        CREATE TABLE listing_price (
+            id           INTEGER PRIMARY KEY AUTOINCREMENT,
+            breed_slug   TEXT    NOT NULL,
+            price        INTEGER NOT NULL,
+            source_host  TEXT    NOT NULL,
+            listing_ref  TEXT    NOT NULL,
+            listing_name TEXT    NOT NULL,
+            retrieved_at TEXT    NOT NULL,
+            run_id       TEXT    NOT NULL
+        );
+
+        -- One row per listing per run: re-running a breed refreshes rather than
+        -- inflating the sample, which would make a stale price count twice.
+        CREATE UNIQUE INDEX ux_listing_price_ref
+            ON listing_price (breed_slug, source_host, listing_ref, run_id);
+
+        CREATE INDEX ix_listing_price_breed ON listing_price (breed_slug);
+        """,
+
+        // v4 — which kind of evidence a published range came from.
+        //
+        // Once listing samples and published articles can both produce the live range, a
+        // row that doesn't say which is a number without provenance — the exact fault this
+        // whole feature exists to correct. Existing rows are editorial by definition.
+        """
+        ALTER TABLE breed_price ADD COLUMN basis TEXT NOT NULL DEFAULT 'editorial';
+        """,
     ];
 }

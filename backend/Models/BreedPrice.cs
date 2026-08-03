@@ -76,6 +76,18 @@ public static class FigureKind
     public static bool IsKnown(string? kind) => kind is not null && All.Contains(kind);
 }
 
+/// <summary>Which kind of evidence a published range was derived from.</summary>
+public static class PriceBasis
+{
+    /// <summary>Median of ranges published by editorially accountable sources.</summary>
+    public const string Editorial = "editorial";
+
+    /// <summary>Interquartile range of real asking prices on a marketplace.</summary>
+    public const string Listings = "listings";
+
+    public static readonly string[] All = [Editorial, Listings];
+}
+
 /// <summary>
 /// The bar a range must clear to be trusted. Configuration rather than constants,
 /// because the right thresholds depend on what the sources actually support — and
@@ -96,14 +108,24 @@ public record PriceThresholds(
     // A 7x band cannot screen anything — with PriceCheck's 0.5x far-below rule, only a
     // quote under $250 would be flagged, so the check reads as working while catching
     // nothing. A range that wide is an honest "we don't know", not a benchmark.
-    double MaxVerifiedBandRatio = 4.0)
+    double MaxVerifiedBandRatio = 4.0,
+    // Listing samples: how many live asking prices before the middle half means anything.
+    // 20 is two pages' worth after crossbreeds are dropped — enough that one scam listing
+    // can't move the 25th percentile.
+    int MinListingSample = 20,
+    // How far a listing sample's 25th percentile may fall below the published low before
+    // we treat it as the marketplace's cheap tail rather than the breed's price. At 0.75,
+    // Beagle's $400 against a published $400 passes but a $250 would not.
+    double ListingFloorFactor = 0.75)
 {
     public static PriceThresholds FromConfiguration(IConfiguration configuration) => new(
         MinSources: configuration.GetValue("Prices:MinSources", 3),
         RequireTierA: configuration.GetValue("Prices:RequireTierA", true),
         MaxSpreadRatio: configuration.GetValue("Prices:MaxSpreadRatio", 2.0),
         DriftReviewPercent: configuration.GetValue("Prices:DriftReviewPercent", 40),
-        MaxVerifiedBandRatio: configuration.GetValue("Prices:MaxVerifiedBandRatio", 4.0));
+        MaxVerifiedBandRatio: configuration.GetValue("Prices:MaxVerifiedBandRatio", 4.0),
+        MinListingSample: configuration.GetValue("Prices:MinListingSample", 20),
+        ListingFloorFactor: configuration.GetValue("Prices:ListingFloorFactor", 0.75));
 }
 
 public static class ObservationStatus
@@ -132,7 +154,14 @@ public record BreedPrice(
     int SourceCount,
     DateTimeOffset UpdatedAt,
     /// <summary>max(low) / min(low) across sources — above 2.0 forces Contested.</summary>
-    double? SpreadRatio = null)
+    double? SpreadRatio = null,
+    /// <summary>
+    /// Which kind of evidence produced this range — see <see cref="PriceBasis"/>. Once
+    /// listing samples and published articles can both produce a live range, one that
+    /// doesn't say which it came from is unattributable, which is the fault this whole
+    /// feature exists to correct.
+    /// </summary>
+    string Basis = PriceBasis.Editorial)
 {
     public string TypicalPrice => $"${PriceLow:n0}–${PriceHigh:n0}";
 }

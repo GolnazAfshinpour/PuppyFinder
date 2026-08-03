@@ -27,6 +27,27 @@ const breedSelect = 'select:below(:text("BREED"))'
 await page.goto('http://localhost:5173')
 await page.waitForSelector('h1', { timeout: 15000 })
 await settle()
+
+// Pick the sourced/unsourced example breeds from live data rather than naming them.
+// Hardcoding french-bulldog as "the unsourced one" broke four checks the moment its range
+// got sourced — the assertions were right and only the fixture was stale, which is the
+// most annoying kind of failure. Both states are permanent properties of the system, so
+// the test should find a breed in each rather than assume which breed that is.
+const examples = await page.evaluate(async () => {
+  const breeds = await (await fetch('/api/breeds')).json()
+  const priced = breeds.filter((b) => b.priceLow)
+  return {
+    sourced: priced.find((b) => b.confidence === 'verified')?.slug ?? null,
+    unsourced: priced.find((b) => b.confidence === 'unverified')?.slug ?? null,
+  }
+})
+if (!examples.sourced || !examples.unsourced) {
+  throw new Error(
+    `need one sourced and one unsourced priced breed to test both gate states, got ${JSON.stringify(examples)}`,
+  )
+}
+console.log('example breeds — sourced:', examples.sourced, '| unsourced:', examples.unsourced)
+
 const hero = await page.locator('h1').innerText()
 const buyDefault = (await page.locator('h2:has-text("Puppies from breeders")').count()) === 1
 console.log('landing hero:', JSON.stringify(hero.replace(/\n/g, ' ')))
@@ -35,7 +56,7 @@ console.log('buying is the default path:', buyDefault)
 // Price screening is gated on sourced data (owner decision, July 2026). With
 // nothing verified in the DB, the checker and the headline range must both be
 // absent — and the hero must not promise a check it doesn't offer.
-await page.selectOption(breedSelect, 'french-bulldog')
+await page.selectOption(breedSelect, examples.unsourced)
 await settle()
 const heroSub = await page.locator('header p').first().innerText()
 const checkerPresent = await page.locator('text=Been quoted a price').count()
@@ -44,27 +65,37 @@ const priceFreeAdvice = await page.locator('text=What to check before you send m
 console.log('checker offered:', checkerPresent, '| range shown:', rangeShown, '| price-free advice:', priceFreeAdvice)
 
 // The API must refuse too, not just the UI — a direct call can't produce a verdict.
-const gated = await page.evaluate(async () => {
-  const res = await fetch('/api/price-check?breed=french-bulldog&price=800')
+const gated = await page.evaluate(async (slug) => {
+  const res = await fetch(`/api/price-check?breed=${slug}&price=800`)
   return res.json()
-})
+}, examples.unsourced)
 console.log('api verdict level:', gated.level, '| isWarning:', gated.isWarning)
 
-// ...and the other half of the gate, which nothing covered until a breed actually
-// reached verified. German Shepherd is sourced ($2,000-$4,000 from three publishers),
-// so for it the checker, the range and a real verdict must all appear. Asserting only
-// the hidden case would keep passing if the feature never switched on for anyone.
-await page.selectOption(breedSelect, 'german-shepherd')
+// ...and the other half of the gate, which nothing covered until a breed actually reached
+// verified: for a sourced breed the checker, the range and a real verdict must all appear.
+// Asserting only the hidden case would keep passing if the feature never switched on for
+// anyone.
+await page.selectOption(breedSelect, examples.sourced)
 await settle()
 const sourcedChecker = await page.locator('text=Been quoted a price').count()
 const sourcedRange = await page.locator('.text-primary.text-4xl').count()
-const sourcedProvenance = await page.locator('text=independent source').count()
-console.log('sourced breed — checker:', sourcedChecker, '| range:', sourcedRange)
+// The provenance sentence differs by basis, and deliberately so — "49 sources" means 49
+// articles for an editorial range and 49 puppies for sale for a listing one. Accept either
+// wording, but require one of them: a range that can't say where it came from is the fault
+// this whole feature exists to fix.
+const sourcedProvenance = (await page.locator('text=independent source').count())
+  + (await page.locator('text=listed for sale').count())
+console.log('sourced breed — checker:', sourcedChecker, '| range:', sourcedRange,
+  '| provenance lines:', sourcedProvenance)
 
-const screened = await page.evaluate(async () => {
-  const res = await fetch('/api/price-check?breed=german-shepherd&price=800')
-  return res.json()
-})
+// Quote a tenth of the band's floor, so the verdict is FarBelow whatever the breed's
+// actual range is — the assertion is about the gate being open, not about one breed's price.
+const screened = await page.evaluate(async (slug) => {
+  const breeds = await (await fetch('/api/breeds')).json()
+  const { priceLow, priceHigh } = breeds.find((b) => b.slug === slug)
+  const res = await fetch(`/api/price-check?breed=${slug}&price=${Math.round(priceLow / 10)}`)
+  return { ...(await res.json()), expectedLow: priceLow, expectedHigh: priceHigh }
+}, examples.sourced)
 console.log('sourced verdict:', screened.level, '| isWarning:', screened.isWarning,
   '| range:', screened.priceLow, '-', screened.priceHigh)
 
@@ -145,7 +176,7 @@ const checks = {
   'provenance cites the sources': sourcedProvenance >= 1,
   'api screens a sourced breed against its real range':
     screened.level === 'FarBelow' && screened.isWarning === true
-    && screened.priceLow === 2000 && screened.priceHigh === 4000,
+    && screened.priceLow === screened.expectedLow && screened.priceHigh === screened.expectedHigh,
   'adopt mode lists dogs': countAny > 0,
   'breed filter narrows adoption results': countAll < countAny,
   'puppy filter narrows the list': countPuppies > 0 && countPuppies < countAny,

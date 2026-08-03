@@ -6,11 +6,13 @@ that catch a scam before money moves. Adoption is a real secondary path, backed 
 shelter feeds.
 
 Price-based scam screening switches on **per breed, as each range gets sourced**. Today that
-is 1 of 179 breeds (German Shepherd, $2,000–$4,000 from three publishers); the other 178
-return `Unavailable` rather than screen against a number we can't attribute.
+is 18 of 179 breeds — 17 derived from live marketplace asking prices, one from published
+sources. The rest return `Unavailable` rather than screen against a number we can't
+attribute.
 
 - **Price ranges that label their own reliability** — every range carries a `confidence` derived from its sources, so the UI never claims more than the data supports. Ranges live in SQLite with provenance (source URL, verbatim quote, retrieval date); the original hardcoded numbers are imported as `unverified` because no source was ever recorded for them. See [docs/SOURCES.md](docs/SOURCES.md)
-- **Price scam check — on for sourced breeds only** (`GET /api/price-check`). Returns `Unavailable` for any breed whose range isn't `verified`. Owner decision: don't run fraud detection on numbers we can't attribute. It enables per breed automatically as each range gets sourced — there is no flag to flip. Currently live for German Shepherd; 7 breeds are researched, 6 of them honestly `contested`
+- **Price scam check — on for sourced breeds only** (`GET /api/price-check`). Returns `Unavailable` for any breed whose range isn't `verified`. Owner decision: don't run fraud detection on numbers we can't attribute. It enables per breed automatically as each range gets sourced — there is no flag to flip. Live for 18 breeds
+- **Ranges from real asking prices** — the middle half of the live listings for a breed, not a journalist's estimate. Crossbreeds are excluded (up to 15 in 50 results), and a range is refused when its middle half falls far below what publishers report — a classifieds site's cheap tail is what the check exists to flag, so it must not become the benchmark. Every range records which kind of evidence produced it (`basis`), and the UI says "the middle half of 49 puppies listed for sale" rather than crediting an article that didn't produce the number. See [docs/SOURCES.md](docs/SOURCES.md) for the terms caveat
 - **Honest marketplace guide** — 7 breeder sites rated on vetting, price, delivery and documented cautions; no breeder marketplace publishes a data feed, and the UI says so rather than faking listings
 - **Dogs first (adoption path)** — searching returns actual listings (photo, age, size, shelter phone number), filtered by breed / age / state / city / size and sortable by age
 - **Age filter** — Puppy (under 1 yr) / Young / Adult / Senior, parsed out of the free-text ages the feeds publish (`AgeParser`)
@@ -92,6 +94,7 @@ Disabled unless `Prices:AdminSecret` is set; all require an `X-Admin-Secret` hea
 |---|---|
 | `POST /api/admin/price-research?breed=` | Research one breed (or all, if omitted). Writes observations only — never sets confidence. Needs an Anthropic key. |
 | `POST /api/admin/price-observations` | Record observations gathered by hand, for when no key exists. Same payload shape as the model emits, same validator, same rules — only the provenance differs (`model = "manual"`). Body: `[{ "breed": "...", "observations": [...] }]` |
+| `POST /api/admin/listing-prices?breed=` | Collect live asking prices for one breed (or every curated breed) and publish the middle half when it clears the floor guard. Requires `Prices:ListingsEnabled=true`; off by default because the source's terms restrict automated collection |
 | `POST /api/admin/price-reaggregate` | Re-derive every breed's confidence from stored observations. Free and idempotent: this is how a threshold change is applied. |
 | `GET /api/admin/price-report` | Confidence distribution plus a what-if column per candidate threshold. Read-only — pick the bar from evidence. |
 | `GET /api/admin/price-review` | Pending observations with the live value beside each. |

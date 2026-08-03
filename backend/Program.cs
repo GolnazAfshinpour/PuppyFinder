@@ -26,6 +26,17 @@ builder.Services.AddHttpClient("dogceo", client =>
     client.Timeout = TimeSpan.FromSeconds(15);
     client.DefaultRequestHeaders.UserAgent.ParseAdd("PuppyFinder/1.0");
 });
+// Marketplace listing prices. Identifies itself honestly rather than impersonating a
+// browser: if the operator wants to block or rate-limit us they should be able to, and a
+// spoofed user-agent would be working around that decision. See ListingSources for the
+// terms caveat.
+builder.Services.AddHttpClient("listings", client =>
+{
+    client.Timeout = TimeSpan.FromSeconds(20);
+    client.DefaultRequestHeaders.UserAgent.ParseAdd(
+        "PuppyFinder/1.0 (+https://github.com/GolnazAfshinpour/PuppyFinder)");
+    client.DefaultRequestHeaders.Accept.ParseAdd("text/html");
+});
 // Breed prices live in SQLite with their provenance, not in source: every figure
 // carries a source URL, a verbatim quote, and a retrieval date. See docs/SOURCES.md.
 builder.Services.AddSingleton<PriceDb>();
@@ -34,6 +45,7 @@ builder.Services.AddSingleton<BreedCatalogService>();
 // The research job gathers cited figures; it never decides confidence. Aggregation is a
 // pure function over stored observations, so thresholds can be re-tuned for free.
 builder.Services.AddSingleton<PriceResearchService>();
+builder.Services.AddSingleton<ListingPriceProvider>();
 builder.Services.AddSingleton<PriceRefreshJob>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<PriceRefreshJob>());
 
@@ -170,6 +182,21 @@ app.MapGet("/api/price-sources", async (string breed, PriceStore prices, Cancell
 {
     var live = await prices.FindAsync(breed, ct);
     var observations = await prices.GetObservationsAsync(breed, ObservationStatus.Accepted, ct);
+
+    // Report the evidence that actually produced the live range, not whatever evidence
+    // happens to exist for this breed.
+    //
+    // Before this, a range derived from 49 live listings was returned with a source list of
+    // editorial articles: the count said 49 and the citations said Canine Bible, whose
+    // article gives a different band entirely. That is misattribution — a number presented
+    // as backed by something that didn't produce it — which is precisely the fault this
+    // whole feature exists to correct. Citing the wrong source is not much better than
+    // citing none.
+    var fromListings = live?.Basis == PriceBasis.Listings;
+    var sample = fromListings
+        ? await prices.GetListingPricesAsync(breed, latestRunOnly: true, ct)
+        : [];
+
     return Results.Ok(new
     {
         Breed = breed,
@@ -177,6 +204,22 @@ app.MapGet("/api/price-sources", async (string breed, PriceStore prices, Cancell
         SourceCount = live?.SourceCount ?? 0,
         live?.SpreadRatio,
         UpdatedAt = live?.UpdatedAt,
+        Basis = live?.Basis ?? PriceBasis.Editorial,
+        // Live asking prices: there is no quote to show and no publisher to credit, so the
+        // provenance is the sample itself — how many, from where, when, and its shape.
+        Listings = fromListings && sample.Count > 0
+            ? new
+            {
+                Host = sample[0].SourceHost,
+                Count = sample.Count,
+                Median = ListingPriceAggregator.Percentile([.. sample.Select(l => l.Price).Order()], 50),
+                Cheapest = sample.Min(l => l.Price),
+                Dearest = sample.Max(l => l.Price),
+                RetrievedAt = sample.Max(l => l.RetrievedAt),
+            }
+            : null,
+        // Published figures still travel with their quote. Shown alongside a listing-derived
+        // range as context rather than as its source — and the UI must not conflate them.
         Sources = observations.Select(o => new
         {
             o.Publisher,
@@ -213,6 +256,10 @@ app.MapGet("/api/breeds", async (BreedCatalogService catalog, PriceStore prices,
         SourceCount = live.GetValueOrDefault(b.Slug)?.SourceCount ?? 0,
         SpreadRatio = live.GetValueOrDefault(b.Slug)?.SpreadRatio,
         PriceUpdatedAt = live.GetValueOrDefault(b.Slug)?.UpdatedAt,
+        // Which kind of evidence produced the range: live asking prices or published
+        // articles. "49 sources" means something very different in each case, so the UI
+        // can't phrase the provenance line without knowing.
+        Basis = live.GetValueOrDefault(b.Slug)?.Basis ?? PriceBasis.Editorial,
         Blurb = b.Blurb.Length > 0 ? b.Blurb : null,
         Energy = SiteCatalog.IsCurated(b.Slug) ? b.Energy : (int?)null,
         Grooming = SiteCatalog.IsCurated(b.Slug) ? b.Grooming : (int?)null,
@@ -453,6 +500,113 @@ app.MapPost("/api/admin/price-observations", async (HttpRequest request,
     }
 })
 .WithName("AddPriceObservations");
+
+// Pull real asking prices for a breed (or every curated breed) and derive the range from
+// the middle half of them, floor-guarded against the published range.
+//
+// Off unless Prices:ListingsEnabled — the source's terms restrict automated collection, so
+// this must be a deliberate act by the operator, never something that starts on its own.
+app.MapPost("/api/admin/listing-prices", async (HttpRequest request, string? breed,
+    ListingPriceProvider listings, PriceStore prices, BreedCatalogService catalog,
+    PriceRefreshJob job, IConfiguration config, CancellationToken ct) =>
+{
+    if (!Authorised(request)) return Forbidden();
+
+    if (!listings.IsEnabled)
+    {
+        return Results.BadRequest(new
+        {
+            Message = "Listing collection is disabled. Set Prices:ListingsEnabled=true to enable it — "
+                + "note the source's terms restrict automated collection (see docs/SOURCES.md).",
+        });
+    }
+
+    var thresholds = PriceThresholds.FromConfiguration(config);
+    var runId = $"listings-{DateTimeOffset.UtcNow:yyyyMMdd-HHmmss}";
+    var targets = (await catalog.GetBreedsAsync(ct))
+        .Where(b => breed is null
+            // Aliases like "Teacup Poodle" aren't breeds anywhere but here — every one of
+            // them 404s on the vendor, which read as five errors on the first run. They
+            // carry a LinkSlugOverride pointing at the real breed, which is the marker.
+            ? SiteCatalog.IsCurated(b.Slug) && b.LinkSlugOverride is null
+            : b.Slug.Equals(breed, StringComparison.OrdinalIgnoreCase))
+        .ToList();
+
+    if (targets.Count == 0)
+    {
+        return Results.BadRequest(new { Message = $"No such breed '{breed}'." });
+    }
+
+    List<object> outcomes = [];
+    foreach (var target in targets)
+    {
+        var fetched = await listings.FetchAsync(target, runId, ct);
+        if (!fetched.Succeeded)
+        {
+            outcomes.Add(new { Breed = target.Slug, Error = fetched.Error });
+            continue;
+        }
+
+        await prices.AddListingPricesAsync(fetched.Prices, ct);
+
+        // The floor guard compares against the *editorial* range, which is re-derived from
+        // the stored observations rather than read from breed_price — because breed_price
+        // is what we're about to overwrite. Aggregation being pure over the observation
+        // table is what makes that possible.
+        var observations = await prices.GetObservationsAsync(target.Slug, status: null, ct);
+        var editorial = PriceObservationValidator
+            .Aggregate(target.Slug, observations, thresholds).Price;
+
+        // Fall back to the unsourced seed range as a floor guard when no researched range
+        // exists — which is most breeds. Without this the guard simply never fired for them
+        // and listings published unchecked: the first real run put Australian Shepherd at
+        // $450–$1,000 and Siberian Husky at $425–$1,200, both well under any published
+        // figure. The seed is never published, only used to refuse.
+        var guard = editorial;
+        if (guard is null && SiteCatalog.SeedPrice(target.Slug) is { } seed)
+        {
+            guard = new BreedPrice(target.Slug, seed.Low, seed.High,
+                PriceConfidence.Unverified, 0, DateTimeOffset.UtcNow);
+        }
+
+        var sample = await prices.GetListingPricesAsync(target.Slug, latestRunOnly: true, ct);
+        var aggregation = ListingPriceAggregator.Aggregate(
+            target.Slug, sample, thresholds, guard);
+
+        // Publish the listing range only when it actually clears the bar. Otherwise leave
+        // the editorial range in place: a contested listing sample is not an improvement on
+        // a verified published range, it's a reason to keep what we had.
+        var published = aggregation.Price is { Confidence: PriceConfidence.Verified } listing
+            ? listing with { Basis = PriceBasis.Listings }
+            : editorial;
+        if (published is not null)
+        {
+            await prices.UpsertAsync(published, ct);
+        }
+
+        outcomes.Add(new
+        {
+            Breed = target.Slug,
+            fetched.SeenTotal,
+            fetched.DroppedMixes,
+            Kept = fetched.Prices.Count,
+            aggregation.SampleSize,
+            aggregation.Median,
+            ListingRange = aggregation.Price,
+            aggregation.Rationale,
+            Editorial = editorial is null ? null : new { editorial.PriceLow, editorial.PriceHigh, editorial.Confidence },
+            Published = published is null ? null : new { published.PriceLow, published.PriceHigh, published.Confidence, published.Basis },
+        });
+    }
+
+    // This path writes breed_price directly rather than via ReaggregateBreedAsync, so it
+    // needs its own invalidation — the same stale-cache bug that made German Shepherd read
+    // as "verified" at the legacy price, arriving through a new door.
+    catalog.InvalidatePrices();
+
+    return Results.Ok(new { RunId = runId, Thresholds = thresholds, Breeds = outcomes });
+})
+.WithName("CollectListingPrices");
 
 // Re-derive every breed's confidence from stored observations under the current
 // thresholds. Free and idempotent — this is how a threshold change is applied.
