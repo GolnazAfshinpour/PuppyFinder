@@ -192,24 +192,51 @@ average folding both together. Three different questions reported as one.
 
 ### Rules the research job follows
 
+Implemented in `backend/Services/PriceObservationValidator.cs` (pure, no I/O) and
+`backend/Data/PriceSources.cs`. Three of these were wrong on the first attempt and were
+corrected by running the research by hand before writing the code:
+
 - **Scope normalization.** Every figure is tagged `pet_standard` / `show_or_pedigree` /
-  `rare_colour` / `rescue` / `unscoped`. **Only `pet_standard` feeds the published
-  range.** A source giving one undifferentiated number is `unscoped` and excluded — that
-  is the point, not a limitation.
-- **Tiered sources.** Tier A = editorially accountable publishers (insurance, financial,
-  veterinary). Tier B = breed-content sites, which do real research but run on affiliate
-  revenue. **Tier B alone can never reach `verified`.**
+  `rare_colour` / `regional` / `rescue` / `unscoped`. **Only `pet_standard` feeds the
+  published range.** `regional` was added after a Beagle search returned Northeast
+  $1,200–2,500 mixed in with national figures — real data on the wrong axis.
+- **`figure_kind`.** Tier A publishers often give an average, not a band ("about
+  $5,000"). Averages corroborate but never widen; one falling outside the aggregated
+  range forces `contested`, which is how genuine disagreement surfaces instead of being
+  averaged away.
+- **Spread on midpoints, not lows.** The first metric was max(low) ÷ min(low), which
+  scored Beagle at 3.33 over a $700 absolute difference and would have flagged a sensible
+  $700–$1,500 band as contested. It measured "one source quoted a wide band", not
+  "sources disagree".
+- **Outliers by MAD, not Tukey.** The 1.5 × IQR rule silently fails on the case it was
+  added for: with five points and one extreme, the extreme sits in the upper half and
+  inflates Q3 past its own fence. Median absolute deviation has no such feedback loop.
+- **Tier is re-derived, never trusted.** A stored `publisher_tier` is recomputed from the
+  reviewed list on every read, so a row from an older build — or a model that mislabelled
+  itself — can't grant itself Tier A standing.
+- **Tiered sources.** Tier A = editorially accountable publishers. Tier B = breed-content
+  sites, which do real research but run on affiliate revenue. **Tier B alone can never
+  reach `verified`.**
 - **Excluded as price authority.** Anyone *selling* the breed (conflicted), and the
   classifieds we caution users about — Lancaster, Greenfield, Puppies.com, Craigslist.
   Their listing prices are *what the scam check screens against*; letting them set the
   floor would drag it down and quietly disarm the feature.
-- **Independence.** Two domains reporting byte-identical ranges is copied content, so it
-  collapses to one source rather than counting as corroboration.
+- **Independence.** Two domains reporting byte-identical figures collapse to one source —
+  copied content, not corroboration.
 - **Extraction, never estimation.** No source URL and verbatim quote → no write. A breed
   with nothing citable stays `unverified`. An empty result is a correct answer.
-- **Confidence is a property of the data**, surfaced through `/api/breeds` and
-  `/api/price-sources`, so the UI reads it rather than asserting "verified" itself. The
-  hero badge counts only `verified` breeds and therefore cannot overstate.
+
+### Gathering and judging are separate steps
+
+`price_observation` is the durable artifact; `breed_price.confidence` is a pure function
+over it. The research job only ever writes observations. That split is what makes the
+`verified` bar cheap to re-tune — `POST /api/admin/price-reaggregate` re-derives every
+breed from stored rows in seconds, with no re-research and no API spend — and it's why the
+threshold decision could be deferred until there were real numbers to look at.
+
+Thresholds live in config: `Prices:MinSources` (3), `Prices:RequireTierA` (true),
+`Prices:MaxSpreadRatio` (2.0), `Prices:DriftReviewPercent` (40).
+
 
 ## Roadmap
 

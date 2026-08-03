@@ -139,11 +139,13 @@ public sealed class PriceStoreTests : IDisposable
         var pending = await store.GetPendingAsync(Ct);
         var target = Assert.Single(pending);
 
-        var changed = await store.SetObservationStatusAsync(
+        var slug = await store.SetObservationStatusAsync(
             target.Id, ObservationStatus.Rejected, "publisher is a breeder selling the breed",
             Ct);
 
-        Assert.True(changed);
+        // The slug comes back so the caller can re-aggregate that breed without a
+        // second lookup.
+        Assert.Equal("beagle", slug);
         Assert.Empty(await store.GetPendingAsync(Ct));
         var kept = Assert.Single(await store.GetObservationsAsync("beagle", ObservationStatus.Rejected, Ct));
         Assert.Equal("publisher is a breeder selling the breed", kept.RejectReason);

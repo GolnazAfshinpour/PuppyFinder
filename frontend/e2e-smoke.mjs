@@ -53,6 +53,12 @@ console.log('api verdict level:', gated.level, '| isWarning:', gated.isWarning)
 // ---------- adopting: the secondary path ----------
 await page.click('button:has-text("Adopt a rescue dog")')
 await settle()
+
+// Pick a breed the shelter feeds actually carry. With a breed that has zero matches
+// the auto-broadening kicks in and correctly returns everything, which would make
+// "does the filter narrow?" unanswerable.
+await page.selectOption(breedSelect, 'beagle')
+await settle()
 const countAll = await cards().count()
 console.log('adopt mode, breed=beagle:', countAll, 'cards')
 

@@ -156,8 +156,16 @@ public sealed class PriceStore(PriceDb db, ILogger<PriceStore> logger)
         return results;
     }
 
-    /// <summary>Records a human decision on a pending observation. The row is kept either way.</summary>
-    public async Task<bool> SetObservationStatusAsync(
+    /// <summary>
+    /// Records a human decision on a pending observation. The row is kept either way — a
+    /// rejection is evidence about a source, not something to erase.
+    /// </summary>
+    /// <returns>
+    /// The affected breed slug, or null when no such observation exists. Returned rather
+    /// than a bool because the caller has to re-aggregate that breed, and looking the slug
+    /// up separately needs a query this one already has in hand.
+    /// </returns>
+    public async Task<string?> SetObservationStatusAsync(
         long id, string status, string? reason, CancellationToken ct)
     {
         await _lock.WaitAsync(ct);
@@ -166,18 +174,20 @@ public sealed class PriceStore(PriceDb db, ILogger<PriceStore> logger)
             await using var connection = await db.OpenAsync(ct);
             await using var command = connection.CreateCommand();
             command.CommandText = """
-                UPDATE price_observation SET status = $status, reject_reason = $reason WHERE id = $id;
+                UPDATE price_observation SET status = $status, reject_reason = $reason
+                WHERE id = $id
+                RETURNING breed_slug;
                 """;
             command.Parameters.AddWithValue("$status", status);
             command.Parameters.AddWithValue("$reason", reason ?? (object)DBNull.Value);
             command.Parameters.AddWithValue("$id", id);
-            var changed = await command.ExecuteNonQueryAsync(ct) > 0;
-            if (changed)
+            var slug = await command.ExecuteScalarAsync(ct) as string;
+            if (slug is not null)
             {
                 _cache = null;
             }
 
-            return changed;
+            return slug;
         }
         finally
         {

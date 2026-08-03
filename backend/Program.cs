@@ -30,6 +30,11 @@ builder.Services.AddHttpClient("dogceo", client =>
 builder.Services.AddSingleton<PriceDb>();
 builder.Services.AddSingleton<PriceStore>();
 builder.Services.AddSingleton<BreedCatalogService>();
+// The research job gathers cited figures; it never decides confidence. Aggregation is a
+// pure function over stored observations, so thresholds can be re-tuned for free.
+builder.Services.AddSingleton<PriceResearchService>();
+builder.Services.AddSingleton<PriceRefreshJob>();
+builder.Services.AddHostedService(sp => sp.GetRequiredService<PriceRefreshJob>());
 
 // Government open-data feeds — public JSON, no API key needed.
 var montgomeryCounty = new SocrataDataset(
@@ -331,6 +336,168 @@ app.MapGet("/api/alerts/unsubscribe", async (string id, string email, AlertStore
         ? Results.Text("You're unsubscribed — no more PuppyFinder alerts for this search. 🐾")
         : Results.Text("This alert was already removed."))
 .WithName("UnsubscribeAlert");
+
+// ---------------------------------------------------------------- admin
+// These mutate the source of truth behind a fraud check, so they sit behind a shared
+// secret. Absent config means the whole group is disabled rather than open.
+var adminSecret = app.Configuration["Prices:AdminSecret"];
+
+bool Authorised(HttpRequest request) =>
+    !string.IsNullOrWhiteSpace(adminSecret)
+    && request.Headers.TryGetValue("X-Admin-Secret", out var provided)
+    && System.Security.Cryptography.CryptographicOperations.FixedTimeEquals(
+        System.Text.Encoding.UTF8.GetBytes(provided.ToString()),
+        System.Text.Encoding.UTF8.GetBytes(adminSecret));
+
+IResult Forbidden() => Results.Json(new
+{
+    Message = string.IsNullOrWhiteSpace(adminSecret)
+        ? "Admin endpoints are disabled — set Prices:AdminSecret to enable them."
+        : "A valid X-Admin-Secret header is required.",
+}, statusCode: StatusCodes.Status403Forbidden);
+
+// Research one breed on demand. This is the calibration loop: run it, read the
+// observations, tune the prompt, repeat — before anything is scheduled.
+app.MapPost("/api/admin/price-research", async (HttpRequest request, string? breed,
+    PriceRefreshJob job, CancellationToken ct) =>
+{
+    if (!Authorised(request)) return Forbidden();
+    var summary = await job.RunAsync(ct, onlyBreedSlug: breed);
+    return summary.Errors.Count > 0 && summary.BreedsChecked == 0
+        ? Results.BadRequest(summary)
+        : Results.Ok(summary);
+})
+.WithName("ResearchPrices");
+
+// Re-derive every breed's confidence from stored observations under the current
+// thresholds. Free and idempotent — this is how a threshold change is applied.
+app.MapPost("/api/admin/price-reaggregate", async (HttpRequest request,
+    PriceRefreshJob job, IConfiguration config, CancellationToken ct) =>
+{
+    if (!Authorised(request)) return Forbidden();
+    var thresholds = PriceThresholds.FromConfiguration(config);
+    var results = await job.ReaggregateAllAsync(thresholds, ct);
+    return Results.Ok(new
+    {
+        Thresholds = thresholds,
+        Breeds = results.Count,
+        Distribution = results.Values
+            .Where(r => r.Price is not null)
+            .GroupBy(r => r.Price!.Confidence)
+            .ToDictionary(g => g.Key, g => g.Count()),
+    });
+})
+.WithName("ReaggregatePrices");
+
+// What the verified bar should be, decided from evidence rather than guessed: the
+// confidence distribution now, plus how many breeds would qualify under each
+// candidate threshold. Read-only — it never writes.
+app.MapGet("/api/admin/price-report", async (HttpRequest request,
+    PriceStore prices, IConfiguration config, CancellationToken ct) =>
+{
+    if (!Authorised(request)) return Forbidden();
+
+    var live = await prices.GetAllAsync(ct);
+    var observationsBySlug = new Dictionary<string, IReadOnlyList<PriceObservation>>();
+    foreach (var slug in live.Keys)
+    {
+        observationsBySlug[slug] = await prices.GetObservationsAsync(slug, status: null, ct);
+    }
+
+    // Each candidate is a full re-aggregation over the same stored rows — which is
+    // exactly why deferring this decision costs nothing.
+    PriceThresholds[] candidates =
+    [
+        new(MinSources: 2, RequireTierA: false, MaxSpreadRatio: 3.0),
+        new(MinSources: 2, RequireTierA: true, MaxSpreadRatio: 2.0),
+        new(MinSources: 3, RequireTierA: true, MaxSpreadRatio: 3.0),
+        new(MinSources: 3, RequireTierA: true, MaxSpreadRatio: 2.0), // the strict default
+        new(MinSources: 4, RequireTierA: true, MaxSpreadRatio: 1.5),
+    ];
+
+    object Summarise(PriceThresholds t) => new
+    {
+        Thresholds = t,
+        Distribution = observationsBySlug
+            .Select(kv => PriceObservationValidator
+                .Aggregate(kv.Key, kv.Value, t, live.GetValueOrDefault(kv.Key)).Price)
+            .Where(p => p is not null)
+            .GroupBy(p => p!.Confidence)
+            .ToDictionary(g => g.Key, g => g.Count()),
+    };
+
+    return Results.Ok(new
+    {
+        Current = PriceThresholds.FromConfiguration(config),
+        LiveDistribution = live.Values
+            .GroupBy(p => p.Confidence)
+            .ToDictionary(g => g.Key, g => g.Count()),
+        TotalObservations = observationsBySlug.Values.Sum(o => o.Count),
+        BreedsWithAnyObservation = observationsBySlug.Count(kv => kv.Value.Count > 0),
+        WhatIf = candidates.Select(Summarise),
+    });
+})
+.WithName("PriceReport");
+
+// Everything waiting on a human decision, with the live value beside it so a change
+// can be judged in context.
+app.MapGet("/api/admin/price-review", async (HttpRequest request,
+    PriceStore prices, CancellationToken ct) =>
+{
+    if (!Authorised(request)) return Forbidden();
+
+    var pending = await prices.GetPendingAsync(ct);
+    var live = await prices.GetAllAsync(ct);
+    return Results.Ok(pending.Select(o => new
+    {
+        o.Id,
+        o.BreedSlug,
+        Proposed = new { o.PriceLow, o.PriceHigh, o.Scope, o.Kind },
+        Live = live.GetValueOrDefault(o.BreedSlug) is { } current
+            ? new { current.PriceLow, current.PriceHigh, current.Confidence, current.SourceCount }
+            : null,
+        o.Publisher,
+        o.PublisherTier,
+        o.SourceUrl,
+        o.Quote,
+        o.PublishedAt,
+        o.RetrievedAt,
+        o.RunId,
+    }));
+})
+.WithName("PriceReviewQueue");
+
+// Accept or reject a pending observation. The row is kept either way — a rejection is
+// evidence about a source, not something to erase.
+app.MapPost("/api/admin/price-review/{id:long}", async (HttpRequest request, long id,
+    string decision, string? reason, PriceStore prices, PriceRefreshJob job,
+    IConfiguration config, CancellationToken ct) =>
+{
+    if (!Authorised(request)) return Forbidden();
+
+    var status = decision.ToLowerInvariant() switch
+    {
+        "accept" => ObservationStatus.Accepted,
+        "reject" => ObservationStatus.Rejected,
+        _ => null,
+    };
+    if (status is null)
+    {
+        return Results.BadRequest(new { Message = "decision must be 'accept' or 'reject'." });
+    }
+
+    if (await prices.SetObservationStatusAsync(id, status, reason, ct) is not { } slug)
+    {
+        return Results.NotFound(new { Message = $"No observation {id}." });
+    }
+
+    // The decision changes what aggregation sees, so re-derive that breed immediately.
+    var aggregation = await job.ReaggregateBreedAsync(
+        slug, PriceThresholds.FromConfiguration(config), ct);
+
+    return Results.Ok(new { Id = id, Decision = status, Breed = slug, Result = aggregation?.Price, aggregation?.Rationale });
+})
+.WithName("PriceReviewDecide");
 
 app.Run();
 

@@ -1,9 +1,12 @@
 # PuppyFinder
 
-Buy a puppy without getting scammed. PuppyFinder's primary path is **buying**: what a
-breed actually costs, which marketplaces really vet their breeders, and a price check
-that catches the most common fraud. Adoption is a real secondary path, backed by live
+Buy a puppy without getting scammed. PuppyFinder's primary path is **buying**: which
+marketplaces really vet their breeders, which have a complaint record, and the checks
+that catch a scam before money moves. Adoption is a real secondary path, backed by live
 shelter feeds.
+
+Price-based scam screening is **built but switched off** until the database holds sourced
+ranges — see below.
 
 - **Price ranges that label their own reliability** — every range carries a `confidence` derived from its sources, so the UI never claims more than the data supports. Ranges live in SQLite with provenance (source URL, verbatim quote, retrieval date); the original hardcoded numbers are imported as `unverified` because no source was ever recorded for them. See [docs/SOURCES.md](docs/SOURCES.md)
 - **Price scam check — currently switched off** (`GET /api/price-check`). The screening logic is built and tested, but it returns `Unavailable` for any breed whose range isn't `verified`, and today none are. Owner decision: don't run fraud detection on numbers we can't attribute. It re-enables per breed, automatically, as the research job sources each range — there is no flag to flip
@@ -54,9 +57,32 @@ The Vite dev server proxies `/api/*` to the backend.
 | `GET /api/sources` | Per-source status: enabled, count, last error |
 | `GET /api/breeds` | Breed list with price ranges plus `confidence` (`unverified`/`single_source`/`contested`/`verified`), `sourceCount` and `priceUpdatedAt`. Null price = no range at all. |
 | `GET /api/price-sources?breed=` | The cited sources behind a breed's range — publisher, URL, verbatim quote, scope, retrieval date |
-| `GET /api/price-check?breed=&price=` | Verdict on a quoted price: `Unknown` / `Free` / `FarBelow` / `Below` / `Typical` / `Above` |
+| `GET /api/price-check?breed=&price=` | Verdict on a quoted price. Returns `Unavailable` unless the breed's range is `verified` — today, always. Otherwise `Free` / `FarBelow` / `Below` / `Typical` / `Above`. |
 | `GET /api/sites?breed=&state=&city=` | Deep links into each source site, plus which filters each link carries |
 | `POST /api/alerts` | Save an email alert for a search (`breed`, `state`, `city`, `size`, `age`) |
+
+### Admin (price research)
+
+Disabled unless `Prices:AdminSecret` is set; all require an `X-Admin-Secret` header.
+
+| Endpoint | Description |
+|---|---|
+| `POST /api/admin/price-research?breed=` | Research one breed (or all, if omitted). Writes observations only — never sets confidence. |
+| `POST /api/admin/price-reaggregate` | Re-derive every breed's confidence from stored observations. Free and idempotent: this is how a threshold change is applied. |
+| `GET /api/admin/price-report` | Confidence distribution plus a what-if column per candidate threshold. Read-only — pick the bar from evidence. |
+| `GET /api/admin/price-review` | Pending observations with the live value beside each. |
+| `POST /api/admin/price-review/{id}?decision=accept\|reject&reason=` | Record a decision; the row is kept either way, and that breed re-aggregates. |
+
+### Turning the research job on
+
+1. `export ANTHROPIC_API_KEY=...` (or set `Anthropic:ApiKey`), and set `Prices:AdminSecret`.
+2. `POST /api/admin/price-research?breed=french-bulldog` — read `price_observation` and
+   check every row has an allowlisted URL, a verbatim quote and a correct scope.
+3. Tune the prompt in `PriceResearchPrompt.SystemRules` against the calibration breeds.
+4. `GET /api/admin/price-report` — pick the `verified` bar from the distribution, set
+   `Prices:MinSources` / `RequireTierA` / `MaxSpreadRatio`, then re-aggregate.
+5. The monthly job (`Prices:RefreshDays`, default 30) then maintains it. **Without a key it
+   is dormant** — it logs and returns, changing nothing.
 
 ## Architecture
 
