@@ -18,3 +18,7 @@ frontend/adopt-tab.png
 # this file is only for non-secret local overrides.
 backend/appsettings.Development.json
 backend/appsettings.*.Local.json
+
+# e2e screenshot artifacts (e2e-smoke.mjs writes here when SCRATCH is unset)
+adopt-tab.png
+*-tab.png
