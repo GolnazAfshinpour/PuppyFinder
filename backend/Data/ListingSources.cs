@@ -46,6 +46,17 @@ public static class ListingSources
         // The bare "poodle" slug mixes Toy/Miniature/Standard and only returned one page;
         // "standard-poodle" is the size our catalogue actually means by "Poodle (Standard)".
         ["poodle"] = "standard-poodle",
+
+        // Catalog breeds beyond the curated 25. Our slugs come from dog.ceo, whose naming
+        // is idiosyncratic ("airedale", "english-sheepdog", "shepherd-australian"), so most
+        // of these are shape fixes rather than different breeds. Probed August 2026; only
+        // the ones that actually differ are listed.
+        ["airedale"] = "airedale-terrier",
+        ["cardigan-corgi"] = "cardigan-welsh-corgi",
+        ["english-sheepdog"] = "old-english-sheepdog",
+        ["mexican-hairless"] = "xoloitzcuintli",
+        ["pembroke"] = "pembroke-welsh-corgi",
+        ["shepherd-australian"] = "australian-shepherd",
     };
 
     public static string VendorSlug(string breedSlug) =>
@@ -72,10 +83,102 @@ public static class ListingSources
         ["bulldog"] = "English Bulldog",
         ["german-shepherd"] = "German Shepherd Dog",
         ["poodle"] = "Poodle - Standard",
+
+        // Read off the most common *purebred* title on each page, not the most common title
+        // outright: cardigan-corgi's single commonest listing is "Cardigan Welsh Corgi and
+        // Pembroke Welsh Corgi", and using that would invert the filter into accepting only
+        // crossbreeds. The poodle sizes are named "Poodle - <Size>" on their side.
+        ["airedale"] = "Airedale Terrier",
+        ["cardigan-corgi"] = "Cardigan Welsh Corgi",
+        ["english-sheepdog"] = "Old English Sheepdog",
+        ["mexican-hairless"] = "Xoloitzcuintli",
+        ["miniature-poodle"] = "Poodle - Miniature",
+        ["pembroke"] = "Pembroke Welsh Corgi",
+        ["shepherd-australian"] = "Australian Shepherd",
+        ["standard-poodle"] = "Poodle - Standard",
+        ["toy-poodle"] = "Poodle - Toy",
     };
 
     public static string VendorName(string breedSlug, string displayName) =>
         VendorNames.TryGetValue(breedSlug, out var mapped) ? mapped : displayName;
+
+    /// <summary>
+    /// Catalog breeds the vendor was measured to carry with enough inventory to matter.
+    ///
+    /// <para>
+    /// An explicit list rather than "try everything", because a probe of all 154 unpriced
+    /// breeds found only 54 worth collecting. The other 100 split into two groups that no
+    /// mapping fixes: breeds that resolve but have almost no listings (Kerry Blue Terrier 4,
+    /// Affenpinscher 1, Finnish Lapphund 0 — you cannot compute a percentile band from
+    /// those), and entries that aren't sold in the US or aren't breeds at all. Attempting
+    /// them every run would be ~100 pointless requests against a site whose terms we are
+    /// already stretching.
+    /// </para>
+    ///
+    /// <para>
+    /// Inventory is the ceiling here, not effort: popular breeds have listings, rare ones
+    /// don't, and that correlation is permanent. Re-probe if coverage matters more later.
+    /// </para>
+    /// </summary>
+    public static readonly HashSet<string> KnownToVendor = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "afghan-hound",
+        "airedale",
+        "akita",
+        "basenji",
+        "basset-hound",
+        "bichon-frise",
+        "border-collie",
+        "boston-terrier",
+        "cairn-terrier",
+        "cardigan-corgi",
+        "caucasian-ovcharka",
+        "cavapoo",
+        "cockapoo",
+        "cocker-spaniel",
+        "coton-de-tulear",
+        "dalmatian",
+        "english-bulldog",
+        "english-mastiff",
+        "english-setter",
+        "english-sheepdog",
+        "fox-terrier",
+        "giant-schnauzer",
+        "havanese",
+        "irish-setter",
+        "irish-terrier",
+        "irish-wolfhound",
+        "italian-greyhound",
+        "keeshond",
+        "labradoodle",
+        "maltese",
+        "mexican-hairless",
+        "miniature-pinscher",
+        "miniature-poodle",
+        "miniature-schnauzer",
+        "newfoundland",
+        "norwegian-elkhound",
+        "papillon",
+        "pembroke",
+        "pug",
+        "puggle",
+        "rhodesian-ridgeback",
+        "samoyed",
+        "schipperke",
+        "scottish-terrier",
+        "shepherd-australian",
+        "shetland-sheepdog",
+        "silky-terrier",
+        "staffordshire-bull-terrier",
+        "standard-poodle",
+        "tibetan-mastiff",
+        "toy-poodle",
+        "vizsla",
+        "weimaraner",
+        "whippet",
+    };
+
+    public static bool IsKnownToVendor(string breedSlug) => KnownToVendor.Contains(breedSlug);
 
     /// <summary>
     /// Is this listing's title a purebred of the breed we asked for?

@@ -523,12 +523,17 @@ app.MapPost("/api/admin/listing-prices", async (HttpRequest request, string? bre
 
     var thresholds = PriceThresholds.FromConfiguration(config);
     var runId = $"listings-{DateTimeOffset.UtcNow:yyyyMMdd-HHmmss}";
+    // Every breed the vendor is known to carry, not just the curated 25 — the catalog's
+    // other 154 entries had no price at all. Of those, 54 were probed as reachable with
+    // enough inventory; the rest either aren't sold in the US or aren't breeds (dog.ceo's
+    // list includes a wild canid and a coat colour).
     var targets = (await catalog.GetBreedsAsync(ct))
         .Where(b => breed is null
             // Aliases like "Teacup Poodle" aren't breeds anywhere but here — every one of
             // them 404s on the vendor, which read as five errors on the first run. They
             // carry a LinkSlugOverride pointing at the real breed, which is the marker.
-            ? SiteCatalog.IsCurated(b.Slug) && b.LinkSlugOverride is null
+            ? b.LinkSlugOverride is null
+                && (SiteCatalog.IsCurated(b.Slug) || ListingSources.IsKnownToVendor(b.Slug))
             : b.Slug.Equals(breed, StringComparison.OrdinalIgnoreCase))
         .ToList();
 
@@ -538,9 +543,32 @@ app.MapPost("/api/admin/listing-prices", async (HttpRequest request, string? bre
     }
 
     List<object> outcomes = [];
+    // Several catalog entries are the same breed on the vendor's side — bulldog and
+    // english-bulldog, poodle and standard-poodle, australian-shepherd and
+    // shepherd-australian, pembroke-welsh-corgi and pembroke — because the curated list and
+    // the dog.ceo list overlap. Fetching each vendor breed once and reusing the result keeps
+    // us from making the same request twice against a site whose terms we're already
+    // stretching. (The duplicate catalog entries are a separate problem, noted in the docs.)
+    Dictionary<string, ListingFetchResult> byVendorSlug = new(StringComparer.OrdinalIgnoreCase);
+
     foreach (var target in targets)
     {
-        var fetched = await listings.FetchAsync(target, runId, ct);
+        var vendorSlug = ListingSources.VendorSlug(target.Slug);
+        if (!byVendorSlug.TryGetValue(vendorSlug, out var fetched))
+        {
+            fetched = await listings.FetchAsync(target, runId, ct);
+            byVendorSlug[vendorSlug] = fetched;
+        }
+        else
+        {
+            // Same listings, recorded under this breed's slug so each catalog entry has its
+            // own sample rather than sharing rows.
+            fetched = fetched with
+            {
+                Prices = [.. fetched.Prices.Select(p => p with { BreedSlug = target.Slug })],
+            };
+        }
+
         if (!fetched.Succeeded)
         {
             outcomes.Add(new { Breed = target.Slug, Error = fetched.Error });

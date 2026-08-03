@@ -230,5 +230,53 @@ public class ListingPriceAggregatorTests
         Assert.Equal("german-shepherd-dog", ListingSources.VendorSlug("german-shepherd"));
         Assert.Equal("english-bulldog", ListingSources.VendorSlug("bulldog"));
         Assert.Equal("beagle", ListingSources.VendorSlug("beagle"));
+        // dog.ceo's naming needs reshaping rather than translating.
+        Assert.Equal("old-english-sheepdog", ListingSources.VendorSlug("english-sheepdog"));
+        Assert.Equal("australian-shepherd", ListingSources.VendorSlug("shepherd-australian"));
+    }
+
+    [Fact]
+    public void ThePoodleSizesAreDistinctBreedsWithDistinctVendorNames()
+    {
+        // Their titles are "Poodle - <Size>", where " - " is the size separator and not the
+        // sex marker. Getting this wrong collapsed all three sizes into one name.
+        Assert.Equal("Poodle - Standard", ListingSources.VendorName("standard-poodle", "Standard Poodle"));
+        Assert.Equal("Poodle - Miniature", ListingSources.VendorName("miniature-poodle", "Miniature Poodle"));
+        Assert.Equal("Poodle - Toy", ListingSources.VendorName("toy-poodle", "Toy Poodle"));
+
+        Assert.True(ListingSources.IsPurebredTitle("Poodle - Standard - F", "Poodle - Standard"));
+        Assert.False(ListingSources.IsPurebredTitle("Poodle - Miniature - F", "Poodle - Standard"));
+        Assert.False(ListingSources.IsPurebredTitle("Bernedoodle and Poodle - Standard", "Poodle - Standard"));
+    }
+
+    [Fact]
+    public void TheExpectedNameIsThePurebredTitleNotTheCommonestOne()
+    {
+        // cardigan-corgi's single most common listing title is "Cardigan Welsh Corgi and
+        // Pembroke Welsh Corgi" — a mix. Taking the commonest title outright would have
+        // inverted the filter into accepting only crossbreeds.
+        var expected = ListingSources.VendorName("cardigan-corgi", "Cardigan Corgi");
+
+        Assert.Equal("Cardigan Welsh Corgi", expected);
+        Assert.True(ListingSources.IsPurebredTitle("Cardigan Welsh Corgi - M", expected));
+        Assert.False(ListingSources.IsPurebredTitle("Cardigan Welsh Corgi and Pembroke Welsh Corgi", expected));
+    }
+
+    [Fact]
+    public void VendorCoverageIsAMeasuredListNotAnAspiration()
+    {
+        // 54 of the 154 unpriced breeds were probed as reachable with real inventory. The
+        // rest resolve to almost nothing or aren't breeds; retrying them every run would be
+        // ~100 pointless requests.
+        Assert.True(ListingSources.IsKnownToVendor("akita"));
+        Assert.True(ListingSources.IsKnownToVendor("boston-terrier"));
+        Assert.True(ListingSources.IsKnownToVendor("mexican-hairless")); // Xoloitzcuintli
+
+        // Measured as having too little inventory to compute a band from.
+        Assert.False(ListingSources.IsKnownToVendor("affenpinscher"));
+        Assert.False(ListingSources.IsKnownToVendor("kerryblue-terrier"));
+        // Not a dog breed at all — dog.ceo's list is not a breed list.
+        Assert.False(ListingSources.IsKnownToVendor("dhole"));
+        Assert.False(ListingSources.IsKnownToVendor("blenheim-spaniel"));
     }
 }
