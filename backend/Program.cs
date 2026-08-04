@@ -529,153 +529,27 @@ app.MapPost("/api/admin/price-observations", async (HttpRequest request,
 // Off unless Prices:ListingsEnabled — the source's terms restrict automated collection, so
 // this must be a deliberate act by the operator, never something that starts on its own.
 app.MapPost("/api/admin/listing-prices", async (HttpRequest request, string? breed,
-    ListingPriceProvider listings, PriceStore prices, BreedCatalogService catalog,
     PriceRefreshJob job, IConfiguration config, CancellationToken ct) =>
 {
     if (!Authorised(request)) return Forbidden();
 
-    if (!listings.IsEnabled)
-    {
-        return Results.BadRequest(new
+    // The loop itself lives on PriceRefreshJob, because the scheduled pass needs it too and
+    // two copies of the vendor-dedup, run-recording and precedence rules would drift apart.
+    // This endpoint is now the manual trigger for it, nothing more.
+    var summary = await job.CollectListingsAsync(ct, onlyBreedSlug: breed);
+
+    return summary.BreedsChecked == 0 && summary.Errors.Count > 0
+        ? Results.BadRequest(new { Message = summary.Errors[0] })
+        : Results.Ok(new
         {
-            Message = "Listing collection is disabled. Set Prices:ListingsEnabled=true to enable it — "
-                + "note the source's terms restrict automated collection (see docs/SOURCES.md).",
+            summary.RunId,
+            Thresholds = PriceThresholds.FromConfiguration(config),
+            summary.BreedsChecked,
+            summary.Published,
+            summary.Refused,
+            summary.CrossbreedsDropped,
+            summary.Breeds,
         });
-    }
-
-    var thresholds = PriceThresholds.FromConfiguration(config);
-    var runId = $"listings-{DateTimeOffset.UtcNow:yyyyMMdd-HHmmss}";
-    // Every breed the vendor is known to carry, not just the curated 25 — the catalog's
-    // other 154 entries had no price at all. Of those, 54 were probed as reachable with
-    // enough inventory; the rest either aren't sold in the US or aren't breeds (dog.ceo's
-    // list includes a wild canid and a coat colour).
-    var targets = (await catalog.GetBreedsAsync(ct))
-        .Where(b => breed is null
-            // Aliases like "Teacup Poodle" aren't breeds anywhere but here — every one of
-            // them 404s on the vendor, which read as five errors on the first run. They
-            // carry a LinkSlugOverride pointing at the real breed, which is the marker.
-            ? b.LinkSlugOverride is null
-                && (SiteCatalog.IsCurated(b.Slug) || ListingSources.IsKnownToVendor(b.Slug))
-            : b.Slug.Equals(breed, StringComparison.OrdinalIgnoreCase))
-        .ToList();
-
-    if (targets.Count == 0)
-    {
-        return Results.BadRequest(new { Message = $"No such breed '{breed}'." });
-    }
-
-    List<object> outcomes = [];
-    // Several catalog entries are the same breed on the vendor's side — bulldog and
-    // english-bulldog, poodle and standard-poodle, australian-shepherd and
-    // shepherd-australian, pembroke-welsh-corgi and pembroke — because the curated list and
-    // the dog.ceo list overlap. Fetching each vendor breed once and reusing the result keeps
-    // us from making the same request twice against a site whose terms we're already
-    // stretching. (The duplicate catalog entries are a separate problem, noted in the docs.)
-    Dictionary<string, ListingFetchResult> byVendorSlug = new(StringComparer.OrdinalIgnoreCase);
-
-    // Record the run, like the editorial job does. Listing collection stamped a run_id on
-    // every row but never wrote a price_run record, so the path that now produces most of the
-    // live ranges was the one with no audit trail — you could not ask "which run touched what,
-    // when, and did it finish" of it.
-    await prices.StartRunAsync(new PriceRun(runId, DateTimeOffset.UtcNow), ct);
-
-    int publishedCount = 0, refusedCount = 0, crossbreedsDropped = 0;
-    List<string> fetchErrors = [];
-
-    foreach (var target in targets)
-    {
-        var vendorSlug = ListingSources.VendorSlug(target.Slug);
-        if (!byVendorSlug.TryGetValue(vendorSlug, out var fetched))
-        {
-            fetched = await listings.FetchAsync(target, runId, ct);
-            byVendorSlug[vendorSlug] = fetched;
-        }
-        else
-        {
-            // Same listings, recorded under this breed's slug so each catalog entry has its
-            // own sample rather than sharing rows.
-            fetched = fetched with
-            {
-                Prices = [.. fetched.Prices.Select(p => p with { BreedSlug = target.Slug })],
-            };
-        }
-
-        if (!fetched.Succeeded)
-        {
-            fetchErrors.Add($"{target.Slug}: {fetched.Error}");
-            outcomes.Add(new { Breed = target.Slug, Error = fetched.Error });
-            continue;
-        }
-
-        crossbreedsDropped += fetched.DroppedMixes;
-
-        await prices.AddListingPricesAsync(fetched.Prices, ct);
-
-        // Publishing goes through the same path as /api/admin/price-reaggregate rather than
-        // repeating the precedence rules here. Two writers deciding independently is what let
-        // a re-aggregation silently revert listing-derived ranges to editorial ones.
-        var aggregation = await job.ReaggregateBreedAsync(target.Slug, thresholds, ct);
-
-        // Reported separately from what got published, so a refusal is legible: you can see
-        // the listing sample that was gathered *and* the reason it didn't win.
-        var sample = await prices.GetListingPricesAsync(target.Slug, thresholds.ListingWindowDays, ct);
-        var guard = await prices.FindAsync(target.Slug, ct);
-        var listingView = ListingPriceAggregator.Aggregate(target.Slug, sample, thresholds, guard);
-
-        if (aggregation?.Price is { Basis: PriceBasis.Listings, Confidence: PriceConfidence.Verified })
-        {
-            publishedCount++;
-        }
-        else
-        {
-            refusedCount++;
-        }
-
-        outcomes.Add(new
-        {
-            Breed = target.Slug,
-            fetched.SeenTotal,
-            fetched.DroppedMixes,
-            Kept = fetched.Prices.Count,
-            listingView.SampleSize,
-            listingView.Median,
-            ListingRange = listingView.Price,
-            Rationale = listingView.Rationale,
-            Published = aggregation?.Price is { } p
-                ? new { p.PriceLow, p.PriceHigh, p.Confidence, p.Basis }
-                : null,
-        });
-    }
-
-    // This path writes breed_price directly rather than via ReaggregateBreedAsync, so it
-    // needs its own invalidation — the same stale-cache bug that made German Shepherd read
-    // as "verified" at the legacy price, arriving through a new door.
-    catalog.InvalidatePrices();
-
-    // Field names come from the editorial job: Accepted = breeds whose listing range went
-    // live, Pending = breeds whose sample was refused (too small, or a guard), Rejected =
-    // crossbreed listings discarded.
-    await prices.FinishRunAsync(
-        new PriceRun(runId, DateTimeOffset.UtcNow)
-        {
-            FinishedAt = DateTimeOffset.UtcNow,
-            BreedsChecked = targets.Count,
-            Accepted = publishedCount,
-            Pending = refusedCount,
-            Rejected = crossbreedsDropped,
-            Error = fetchErrors.Count > 0 ? string.Join("; ", fetchErrors.Take(5)) : null,
-        }, ct);
-
-    return Results.Ok(new
-    {
-        RunId = runId,
-        Thresholds = thresholds,
-        BreedsChecked = targets.Count,
-        Published = publishedCount,
-        Refused = refusedCount,
-        CrossbreedsDropped = crossbreedsDropped,
-        Breeds = outcomes,
-    });
 })
 .WithName("CollectListingPrices");
 

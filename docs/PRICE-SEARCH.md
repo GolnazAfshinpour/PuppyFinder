@@ -342,6 +342,36 @@ host, median, full span and retrieval date, with published figures shown separat
 The UI reads "the middle half of 49 puppies listed for sale right now" rather than crediting
 an article that didn't produce the number.
 
+## The schedule maintains listings without a model key
+
+Two sources, two independent gates — and this was wrong at first in a way worth recording.
+`ExecuteAsync` tested `research.IsEnabled` alone, so with no Anthropic key **nothing** ran on a
+schedule, including listing collection, which needs no model and produces 49 of the 50 live
+ranges. The only automatable job was the one that couldn't run, and the one that could wasn't
+automatable.
+
+That expires quietly rather than failing loudly: the listing window is 90 days, so with nothing
+re-collecting the samples age out and the next re-aggregation withdraws every listing range at
+once — a withdrawn range being the right answer to an empty sample. The ranges don't decay
+gradually, they vanish together.
+
+Each pass now does whatever it currently can: collect listings if `Prices:ListingsEnabled`,
+research if a key exists, re-aggregate either way. The startup log names both states
+("listings: on, research: off (no API key)") because a single "dormant" line misreported a
+half-configured app.
+
+The collection loop lives on `PriceRefreshJob.CollectListingsAsync` rather than in the admin
+endpoint, which is now a 24-line manual trigger for it. Two copies of the vendor-dedup,
+run-recording and precedence rules would have drifted, and the scheduler needed the same
+behaviour the endpoint had grown.
+
+| Setting | Effect |
+|---|---|
+| `Prices:AutoRefresh` | Master switch, default **off**. Nothing is scheduled without it. |
+| `Prices:RefreshDays` | Interval, default 30. |
+| `Prices:ListingsEnabled` | Listing collection. Needs **no** model key. |
+| `Anthropic:ApiKey` | Editorial research only. Absent = that half is skipped, not the whole job. |
+
 ## What the schedule will not do
 
 Two guards, because each would spend money or change data without being asked:

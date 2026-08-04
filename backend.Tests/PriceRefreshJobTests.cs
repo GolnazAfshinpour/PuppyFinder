@@ -1,5 +1,7 @@
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Data.Sqlite;
+using Microsoft.Extensions.DependencyInjection;
+using PuppyFinder.Api.Services;
 
 namespace PuppyFinder.Api.Tests;
 
@@ -20,21 +22,26 @@ public sealed class PriceRefreshJobTests : IDisposable
 
     private static CancellationToken Ct => CancellationToken.None;
 
-    private WebApplicationFactory<Program> NewApp(bool autoRefresh)
+    // withKey defaults true because the original tests need a present-but-fake key to exercise
+    // the *schedule*; the listings tests need it absent, which is the state the app ships in.
+    private WebApplicationFactory<Program> NewApp(
+        bool autoRefresh, bool listingsEnabled = false, bool withKey = true)
     {
         var factory = new WebApplicationFactory<Program>().WithWebHostBuilder(b => b
             .UseSetting("Prices:DbPath", DbPath)
             .UseSetting("Alerts:StorePath", Path.Combine(_dir, "alerts.json"))
             // A key that is present but not real: IsEnabled is true, so we are testing the
             // schedule rather than the dormant-without-a-key path.
-            .UseSetting("Anthropic:ApiKey", "sk-ant-not-a-real-key")
+            .UseSetting("Anthropic:ApiKey", withKey ? "sk-ant-not-a-real-key" : "")
             // Belt and braces: if the startup-run regression ever comes back, this test
             // makes one failing API call rather than 179.
             .UseSetting("Prices:MaxBreedsPerRun", "1")
             .UseSetting("Prices:AutoRefresh", autoRefresh ? "true" : "false")
-            // Never let a test reach a third-party site. The host loads user-secrets, so this
-            // is off by explicit setting rather than by hoping it wasn't enabled locally.
-            .UseSetting("Prices:ListingsEnabled", "false"));
+            // Never let a test reach a third-party site by accident. The host loads
+            // user-secrets, so this is set explicitly rather than by hoping it wasn't enabled
+            // locally. Tests that need it on set it deliberately and cap the work.
+            .UseSetting("Prices:ListingsEnabled", listingsEnabled ? "true" : "false")
+            .UseSetting("Prices:ListingPages", "1"));
 
         // CreateClient boots the host, which is what starts the BackgroundService.
         factory.CreateClient().Dispose();
@@ -75,6 +82,61 @@ public sealed class PriceRefreshJobTests : IDisposable
         await Task.Delay(TimeSpan.FromSeconds(2), Ct);
 
         Assert.Equal(0, await RunRowsAsync());
+    }
+
+    [Fact]
+    public async Task WithNeitherSourceConfiguredTheJobIsDormant()
+    {
+        using var app = NewApp(autoRefresh: true, listingsEnabled: false, withKey: false);
+
+        await Task.Delay(TimeSpan.FromSeconds(2), Ct);
+
+        // No key and no listings: nothing to do, and nothing written.
+        Assert.Equal(0, await RunRowsAsync());
+    }
+
+    [Fact]
+    public async Task ListingCollectionIsNotGatedOnTheModelKey()
+    {
+        // The bug this covers: ExecuteAsync tested research.IsEnabled alone, so with no
+        // Anthropic key *nothing* ran — including listing collection, which needs no model and
+        // produces 49 of the 50 live ranges. The only automatable job was the one that couldn't
+        // run, and the one that could wasn't automatable. Left alone the 90-day listing window
+        // expires and the next re-aggregation withdraws every listing range at once.
+        var app = NewApp(autoRefresh: true, listingsEnabled: true, withKey: false);
+        using (app)
+        {
+            var job = app.Services.GetRequiredService<PriceRefreshJob>();
+            var research = app.Services.GetRequiredService<PriceResearchService>();
+            var listings = app.Services.GetRequiredService<ListingPriceProvider>();
+
+            Assert.False(research.IsEnabled);  // no key, as shipped
+            Assert.True(listings.IsEnabled);
+
+            // The collector reports its own gate rather than the model's: with listings on it
+            // does not refuse for a missing API key.
+            var summary = await job.CollectListingsAsync(Ct, onlyBreedSlug: "not-a-real-breed");
+            Assert.DoesNotContain(
+                summary.Errors,
+                e => e.Contains("API key", StringComparison.OrdinalIgnoreCase));
+        }
+    }
+
+    [Fact]
+    public async Task CollectionRefusesWhenListingsAreOffAndSaysWhy()
+    {
+        var app = NewApp(autoRefresh: false, listingsEnabled: false);
+        using (app)
+        {
+            var job = app.Services.GetRequiredService<PriceRefreshJob>();
+
+            var summary = await job.CollectListingsAsync(Ct, onlyBreedSlug: "beagle");
+
+            Assert.Equal(0, summary.BreedsChecked);
+            Assert.Contains(summary.Errors, e => e.Contains("Prices:ListingsEnabled"));
+            // The terms caveat travels with the refusal, so nobody flips the flag without it.
+            Assert.Contains(summary.Errors, e => e.Contains("terms"));
+        }
     }
 
     public void Dispose() => Directory.Delete(_dir, recursive: true);

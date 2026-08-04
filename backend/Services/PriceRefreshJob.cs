@@ -3,6 +3,33 @@ using PuppyFinder.Api.Models;
 
 namespace PuppyFinder.Api.Services;
 
+/// <summary>What one breed's listing collection produced, for the admin response.</summary>
+public record ListingBreedOutcome(
+    string Breed,
+    int SeenTotal,
+    int DroppedMixes,
+    int Kept,
+    int SampleSize,
+    int Median,
+    BreedPrice? ListingRange,
+    string Rationale,
+    BreedPrice? Published,
+    string? Error = null);
+
+/// <summary>Summary of one listing-collection pass.</summary>
+public record ListingCollectionSummary(
+    string RunId,
+    int BreedsChecked,
+    int Published,
+    int Refused,
+    int CrossbreedsDropped,
+    IReadOnlyList<string> Errors,
+    IReadOnlyList<ListingBreedOutcome> Breeds)
+{
+    public static ListingCollectionSummary Empty(string reason) =>
+        new("", 0, 0, 0, 0, [reason], []);
+}
+
 /// <summary>Summary of one refresh pass, for the run record and the admin response.</summary>
 public record PriceRefreshSummary(
     string RunId,
@@ -29,6 +56,7 @@ public record PriceRefreshSummary(
 public sealed class PriceRefreshJob(
     PriceStore store,
     PriceResearchService research,
+    ListingPriceProvider listings,
     BreedCatalogService catalog,
     IConfiguration configuration,
     ILogger<PriceRefreshJob> logger) : BackgroundService
@@ -37,11 +65,16 @@ public sealed class PriceRefreshJob(
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        if (!research.IsEnabled)
+        // Two sources, two independent gates. This used to test research.IsEnabled alone, so
+        // with no Anthropic key nothing ran at all — including listing collection, which needs
+        // no model and produces almost every live range. The only automatable job was the one
+        // that couldn't run, and the one that could wasn't automatable.
+        if (!research.IsEnabled && !listings.IsEnabled)
         {
-            // Same posture as RescueGroupsProvider: absent key means dormant, not broken.
+            // Same posture as RescueGroupsProvider: nothing configured means dormant, not broken.
             logger.LogInformation(
-                "Price refresh is dormant — no Anthropic API key configured. Prices stay as they are.");
+                "Price refresh is dormant — no Anthropic API key and listing collection is off. "
+                + "Prices stay as they are.");
             return;
         }
 
@@ -66,8 +99,11 @@ public sealed class PriceRefreshJob(
         var interval = TimeSpan.FromDays(configuration.GetValue("Prices:RefreshDays", 30));
         using var timer = new PeriodicTimer(interval);
         logger.LogInformation(
-            "Price refresh is scheduled every {Days} day(s); first run is one interval away, not at startup.",
-            interval.TotalDays);
+            "Price refresh is scheduled every {Days} day(s) — listings: {Listings}, research: {Research}. "
+            + "First run is one interval away, not at startup.",
+            interval.TotalDays,
+            listings.IsEnabled ? "on" : "off",
+            research.IsEnabled ? "on" : "off (no API key)");
         try
         {
             // Wait for the first tick before the first run. Running at startup would mean
@@ -75,12 +111,171 @@ public sealed class PriceRefreshJob(
             // reasons that have nothing to do with prices being stale.
             while (await timer.WaitForNextTickAsync(stoppingToken))
             {
-                await RunAsync(stoppingToken);
+                // Each pass does whatever it currently can. Listings first: they are the
+                // primary source, they cost nothing but requests, and their 90-day window is
+                // what actually expires.
+                if (listings.IsEnabled)
+                {
+                    await CollectListingsAsync(stoppingToken);
+                }
+
+                if (research.IsEnabled)
+                {
+                    await RunAsync(stoppingToken);
+                }
             }
         }
         catch (OperationCanceledException)
         {
             // normal shutdown
+        }
+    }
+
+    /// <summary>
+    /// Collects live asking prices and re-derives the affected breeds.
+    ///
+    /// <para>
+    /// Lives here rather than in the admin endpoint because the scheduler needs it too, and
+    /// two copies of the vendor-dedup, run-recording and precedence rules would drift. Holds
+    /// the same lock as the research pass: both write breed_price, so they must not interleave.
+    /// </para>
+    /// </summary>
+    public async Task<ListingCollectionSummary> CollectListingsAsync(
+        CancellationToken ct, string? onlyBreedSlug = null)
+    {
+        if (!listings.IsEnabled)
+        {
+            return ListingCollectionSummary.Empty(
+                "Listing collection is disabled. Set Prices:ListingsEnabled=true to enable it — "
+                + "note the source's terms restrict automated collection (see docs/SOURCES.md).");
+        }
+
+        if (!await _runLock.WaitAsync(TimeSpan.Zero, ct))
+        {
+            return ListingCollectionSummary.Empty("A price run is already in progress.");
+        }
+
+        try
+        {
+            var thresholds = PriceThresholds.FromConfiguration(configuration);
+            var runId = $"listings-{DateTimeOffset.UtcNow:yyyyMMdd-HHmmss}";
+
+            // Every breed the vendor is known to carry, not just the curated 25. Aliases like
+            // "Teacup Poodle" aren't breeds anywhere but here and 404 on the vendor, which read
+            // as five errors on the first run; LinkSlugOverride is the marker.
+            var targets = (await catalog.GetBreedsAsync(ct))
+                .Where(b => onlyBreedSlug is null
+                    ? b.LinkSlugOverride is null
+                        && (SiteCatalog.IsCurated(b.Slug) || ListingSources.IsKnownToVendor(b.Slug))
+                    : b.Slug.Equals(onlyBreedSlug, StringComparison.OrdinalIgnoreCase))
+                .ToList();
+
+            if (targets.Count == 0)
+            {
+                return ListingCollectionSummary.Empty($"No such breed '{onlyBreedSlug}'.");
+            }
+
+            await store.StartRunAsync(new PriceRun(runId, DateTimeOffset.UtcNow), ct);
+
+            // Several catalog entries are the same breed on the vendor's side —
+            // bulldog/english-bulldog, poodle/standard-poodle, australian-shepherd/
+            // shepherd-australian, pembroke-welsh-corgi/pembroke — because the curated list and
+            // the dog.ceo list overlap. Fetch each vendor breed once and reuse it, so we don't
+            // make the same request twice against a site whose terms we are already stretching.
+            Dictionary<string, ListingFetchResult> byVendorSlug = new(StringComparer.OrdinalIgnoreCase);
+            List<ListingBreedOutcome> outcomes = [];
+            int published = 0, refused = 0, mixes = 0;
+            List<string> errors = [];
+
+            foreach (var target in targets)
+            {
+                ct.ThrowIfCancellationRequested();
+
+                var vendorSlug = ListingSources.VendorSlug(target.Slug);
+                if (!byVendorSlug.TryGetValue(vendorSlug, out var fetched))
+                {
+                    fetched = await listings.FetchAsync(target, runId, ct);
+                    byVendorSlug[vendorSlug] = fetched;
+                }
+                else
+                {
+                    // Same listings, recorded under this breed's slug so each catalog entry has
+                    // its own sample rather than sharing rows.
+                    fetched = fetched with
+                    {
+                        Prices = [.. fetched.Prices.Select(p => p with { BreedSlug = target.Slug })],
+                    };
+                }
+
+                if (!fetched.Succeeded)
+                {
+                    errors.Add($"{target.Slug}: {fetched.Error}");
+                    outcomes.Add(new ListingBreedOutcome(
+                        target.Slug, 0, 0, 0, 0, 0, null, fetched.Error ?? "", null, fetched.Error));
+                    continue;
+                }
+
+                mixes += fetched.DroppedMixes;
+                await store.AddListingPricesAsync(fetched.Prices, ct);
+
+                // Publishing goes through the shared precedence path, not a second copy of the
+                // rules — two writers deciding independently is what let a re-aggregation
+                // silently revert listing ranges to editorial ones.
+                var aggregation = await ReaggregateBreedAsync(target.Slug, thresholds, ct);
+
+                // Reported separately from what got published, so a refusal is legible: the
+                // sample that was gathered *and* the reason it didn't win.
+                var sample = await store.GetListingPricesAsync(target.Slug, thresholds.ListingWindowDays, ct);
+                var guard = await store.FindAsync(target.Slug, ct);
+                var view = ListingPriceAggregator.Aggregate(target.Slug, sample, thresholds, guard);
+
+                if (aggregation?.Price is { Basis: PriceBasis.Listings, Confidence: PriceConfidence.Verified })
+                {
+                    published++;
+                }
+                else
+                {
+                    refused++;
+                }
+
+                outcomes.Add(new ListingBreedOutcome(
+                    target.Slug, fetched.SeenTotal, fetched.DroppedMixes, fetched.Prices.Count,
+                    view.SampleSize, view.Median, view.Price, view.Rationale, aggregation?.Price));
+            }
+
+            catalog.InvalidatePrices();
+
+            // Field names are the editorial job's: Accepted = breeds published, Pending =
+            // breeds refused, Rejected = crossbreed listings dropped.
+            await store.FinishRunAsync(
+                new PriceRun(runId, DateTimeOffset.UtcNow)
+                {
+                    FinishedAt = DateTimeOffset.UtcNow,
+                    BreedsChecked = targets.Count,
+                    Accepted = published,
+                    Pending = refused,
+                    Rejected = mixes,
+                    Error = errors.Count > 0 ? string.Join("; ", errors.Take(5)) : null,
+                }, ct);
+
+            logger.LogInformation(
+                "Listing run {RunId}: {Checked} breeds, {Published} published, {Refused} refused, "
+                + "{Mixes} crossbreeds dropped",
+                runId, targets.Count, published, refused, mixes);
+
+            return new ListingCollectionSummary(
+                runId, targets.Count, published, refused, mixes, errors, outcomes);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            // Same swallow-and-log posture as the research pass: a bad run must not take the
+            // API down.
+            logger.LogWarning("Listing collection failed: {Message}", ex.Message);
+            return ListingCollectionSummary.Empty(ex.Message);
+        }
+        finally
+        {
+            _runLock.Release();
         }
     }
 
