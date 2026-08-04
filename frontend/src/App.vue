@@ -15,6 +15,7 @@ import PriceCheck from './components/PriceCheck.vue'
 import AlertSignup from './components/AlertSignup.vue'
 import BreedQuiz from './components/BreedQuiz.vue'
 import SafetyGuide from './components/SafetyGuide.vue'
+import SourcedPrices from './components/SourcedPrices.vue'
 import ThemePicker from './components/ThemePicker.vue'
 import PuppyLogo from './components/PuppyLogo.vue'
 
@@ -42,6 +43,7 @@ const sort = ref(fromUrl.sort)
 const openDogId = ref(fromUrl.dog) // '' = no detail view open
 const quizOpen = ref(false)
 const guideOpen = ref(false)
+const pricesOpen = ref(false)
 const filtersOpen = ref(false) // mobile-only filter drawer state
 const error = ref('')
 
@@ -495,9 +497,14 @@ onMounted(() => {
         record, and the checks that catch a scam before you send a cent.
       </p>
       <div class="mt-4 flex flex-wrap justify-center gap-2">
-        <span v-if="verifiedBreedCount" class="badge badge-lg badge-outline">
+        <button
+          v-if="verifiedBreedCount"
+          type="button"
+          class="badge badge-lg badge-outline cursor-pointer"
+          @click="pricesOpen = true"
+        >
           {{ verifiedBreedCount }} sourced price ranges
-        </span>
+        </button>
         <span class="badge badge-lg badge-outline">7 breeder marketplaces, honestly rated</span>
         <button type="button" class="badge badge-lg badge-outline cursor-pointer" @click="guideOpen = true">
           🛡️ Scam-safety checklist
@@ -820,5 +827,11 @@ onMounted(() => {
       @profile-saved="applyProfileToFilters"
     />
     <SafetyGuide v-if="guideOpen" @close="guideOpen = false" />
+    <SourcedPrices
+      v-if="pricesOpen"
+      :breeds="breeds"
+      @close="pricesOpen = false"
+      @pick-breed="selectedBreed = $event"
+    />
   </main>
 </template>

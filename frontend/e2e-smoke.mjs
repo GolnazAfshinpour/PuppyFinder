@@ -135,6 +135,31 @@ console.log('no-range card — stale claim present:', staleClaim,
   '| names a count:', namesSourcedCount, '| examples:', exampleCount,
   '| chip selected:', chipSelectedBreed)
 
+// The hero advertised "N sourced price ranges" as plain text, with no way to see them: the
+// only routes in were guessing a breed in the dropdown or reading the card's six examples.
+// Advertising a number you can't inspect is the same shape of problem as publishing a range
+// with no way to see its sources. The badge now opens the full list.
+await page.click('button:has-text("sourced price ranges")')
+await page.waitForTimeout(900)
+const listedRanges = await page.locator('[data-testid="sourced-prices"] > li').count()
+const claimedRanges = await page.evaluate(async () => {
+  const all = await (await fetch('/api/breeds')).json()
+  return all.filter((b) => b.confidence === 'verified' && b.priceLow).length
+})
+// Every row must name what backs it — "143 live listings" and "3 published sources" are very
+// different claims, and a bare count would read as more authoritative than one of them is.
+const rangesCiteEvidence = await page.locator(
+  '[data-testid="sourced-prices"] >> text=/live listings|published source/',
+).count()
+// Picking a row has to select that breed, or the list is a dead end.
+await page.locator('[data-testid="sourced-prices"] > li button').first().click()
+await settle()
+const listClosed = (await page.locator('.modal-box').count()) === 0
+const listPickedBreed = await page.locator(breedSelect).first().inputValue()
+console.log('sourced list — rows:', listedRanges, 'of', claimedRanges, 'claimed |',
+  'rows citing evidence:', rangesCiteEvidence, '| closed:', listClosed,
+  '| selected:', listPickedBreed)
+
 // ---------- adopting: the secondary path ----------
 await page.click('button:has-text("Adopt a rescue dog")')
 await settle()
@@ -211,6 +236,9 @@ const checks = {
   'sourced range is shown': sourcedRange === 1,
   'provenance cites the sources': sourcedProvenance >= 1,
   'a non-round price still gets a verdict': oddVerdictShown,
+  'the badge opens every sourced range, not a sample': listedRanges === claimedRanges,
+  'each listed range says what backs it': rangesCiteEvidence === listedRanges,
+  'picking from the list selects that breed': listClosed && listPickedBreed.length > 0,
   'no-range card does not claim we publish nothing': staleClaim === false,
   'no-range card says how many breeds are sourced': namesSourcedCount,
   'no-range card offers real breeds to pick': exampleCount >= 3,
