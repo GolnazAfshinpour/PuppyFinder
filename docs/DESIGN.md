@@ -84,6 +84,29 @@ special. Never larger than `text-5xl` (3rem) — bigger reads as shouting.
 - **Site card:** Fraunces name + kind badge → description → icon rows
   (vetting/price/delivery/best-for) → caution alert (if any) → link-depth
   badges → one primary CTA.
+- **Price card (buying path):** photo (4:3, `sm:` and up) + label + the range as the one large
+  number + a one-line provenance summary with "how we know →" → the **price meter** → quote
+  input → verdict alert → two collapsed accordions. One card, not two: the verdict belongs *on*
+  the price, the way CarGurus puts its deal rating on the listing. Everything secondary is
+  deferred — the five price drivers behind an accordion were most of the card's bulk and none
+  of its point.
+- **Price meter:** a recessive `base-300` track, the sourced band in `primary/70` with rounded
+  ends, a 2px `error/45` rule at the 0.5x far-below boundary (the rule that decides "scam" used
+  to exist only inside a sentence), and the quote as a status-coloured dot with a 2px surface
+  ring. Zone labels above, selective direct labels below — never a number on every tick.
+  **Only one status colour is ever on screen**, so status hues never sit adjacent; the sub-3:1
+  warning tone is legitimate only because the flag, headline and detail sentence always
+  accompany it. `role="img"` with one spoken sentence, since the geometry is meaningless read
+  out piecewise. Position maths lives in `frontend/src/priceMeter.js` so it is unit-testable
+  without mounting.
+- **Running text is capped at `max-w-prose`** (~65ch). Measured before this rule existed: 13 of
+  13 prose blocks on the buying page ran 91–117 chars, past the 80 of WCAG 1.4.8, which Baymard
+  finds readers experience as "intimidating and overwhelming".
+- **The hero follows the mode.** "Buy a puppy. Don't get scammed." over a grid of rescue dogs
+  contradicted the page under it; headline, subhead and chip row all switch on `goal`.
+- **Results page rather than dump.** The grid reveals 24 at a time and the heading always
+  states the true total. 53 cards in one scroll measured 10,539px. The honest-coverage rule
+  applies to a "show more" button as much as to an empty state.
 - **Badges:** `badge-soft` for data (sex, size), `badge-outline` for meta
   (trust chips), `badge-primary badge-soft` for interactive chips (removable
   filters, fit %). Text never wraps inside a badge (`whitespace-nowrap`).

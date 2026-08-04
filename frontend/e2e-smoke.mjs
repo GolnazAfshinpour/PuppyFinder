@@ -20,6 +20,13 @@ page.on('pageerror', (e) => console.log('PAGE ERROR:', e.message))
 // Counted off a test hook, not link text: two site cards in the fallback happen
 // to contain the word "meet" and used to be counted as dogs.
 const cards = () => page.locator('[data-testid="dog-results"] > li')
+// The results heading states the full count ("53 adoptable dogs"); the grid reveals 24 at a
+// time. Filter assertions must read the total, or a working filter looks broken once both
+// sides of the comparison hit the page cap.
+const resultTotal = async () => {
+  const heading = await page.locator('h2:has-text("adoptable"), h2:has-text("Showing")').first().innerText()
+  return Number(heading.match(/\d+/)?.[0] ?? 0)
+}
 const settle = () => page.waitForTimeout(2500)
 const breedSelect = 'select:below(:text("BREED"))'
 
@@ -59,7 +66,7 @@ console.log('buying is the default path:', buyDefault)
 await page.selectOption(breedSelect, examples.unsourced)
 await settle()
 const heroSub = await page.locator('header p').first().innerText()
-const checkerPresent = await page.locator('text=Been quoted a price').count()
+const checkerPresent = await page.locator('input[aria-label="Price you were quoted, in dollars"]').count()
 const rangeShown = await page.locator('.text-primary.text-4xl').count()
 const priceFreeAdvice = await page.locator('text=What to check before you send money').count()
 console.log('checker offered:', checkerPresent, '| range shown:', rangeShown, '| price-free advice:', priceFreeAdvice)
@@ -77,14 +84,14 @@ console.log('api verdict level:', gated.level, '| isWarning:', gated.isWarning)
 // anyone.
 await page.selectOption(breedSelect, examples.sourced)
 await settle()
-const sourcedChecker = await page.locator('text=Been quoted a price').count()
+const sourcedChecker = await page.locator('input[aria-label="Price you were quoted, in dollars"]').count()
 const sourcedRange = await page.locator('.text-primary.text-4xl').count()
 // The provenance sentence differs by basis, and deliberately so — "49 sources" means 49
 // articles for an editorial range and 49 puppies for sale for a listing one. Accept either
 // wording, but require one of them: a range that can't say where it came from is the fault
 // this whole feature exists to fix.
 const sourcedProvenance = (await page.locator('text=independent source').count())
-  + (await page.locator('text=listed for sale').count())
+  + (await page.locator('text=live listings').count())
 console.log('sourced breed — checker:', sourcedChecker, '| range:', sourcedRange,
   '| provenance lines:', sourcedProvenance)
 
@@ -110,7 +117,7 @@ const odd = await page.evaluate(async (slug) => {
   return Math.round(priceLow / 4) * 10 + 9 // deliberately not a multiple of 50
 }, examples.sourced)
 await page.fill('input[aria-label="Price you were quoted, in dollars"]', String(odd))
-await page.click('button:has-text("Check this price")')
+await page.click('button:has-text("Check a quote")')
 await page.waitForTimeout(2500)
 const oddVerdictShown = (await page.locator('[data-testid="price-verdict"]').count()) === 1
 console.log(`non-round quote $${odd} produced a verdict:`, oddVerdictShown)
@@ -149,7 +156,7 @@ await settle()
 const seeAllFromCard = await priceCard.locator('button:has-text("See all")').count()
 await page.selectOption(breedSelect, examples.sourced)
 await settle()
-const compareFromCard = await priceCard.locator('button:has-text("Compare with the other")').count()
+const compareFromCard = await priceCard.locator('button:has-text("Compare")').count()
 const clickableChipsMarked = await page.locator('div.mt-4 > button.underline').count()
 const staticChipsMarked = await page.locator('div.mt-4 > span.underline').count()
 console.log('routes to the list — card "See all":', seeAllFromCard,
@@ -192,30 +199,45 @@ await settle()
 // "does the filter narrow?" unanswerable.
 await page.selectOption(breedSelect, 'beagle')
 await settle()
-const countAll = await cards().count()
-console.log('adopt mode, breed=beagle:', countAll, 'cards')
+const countAll = await resultTotal()
+console.log('adopt mode, breed=beagle:', countAll, 'results')
 
 await page.selectOption(breedSelect, '')
 await settle()
-const countAny = await cards().count()
-console.log('any breed:', countAny, 'cards')
+const countAny = await resultTotal()
+console.log('any breed:', countAny, 'results')
 
 await page.click('button:has-text("Puppy")')
 await settle()
-const countPuppies = await cards().count()
-console.log('age=Puppy:', countPuppies, 'cards')
+const countPuppies = await resultTotal()
+console.log('age=Puppy:', countPuppies, 'results')
 await page.click('button:has-text("Any age")')
 await settle()
 
 await page.selectOption('select:below(:text("State"))', 'MD')
 await settle()
-const countMd = await cards().count()
-console.log('state=MD:', countMd, 'cards')
+const countMd = await resultTotal()
+console.log('state=MD:', countMd, 'results')
 
 await page.selectOption('select:has(option[value="youngest"])', 'youngest')
 await settle()
-const countSorted = await cards().count()
-console.log('sort=youngest:', countSorted, 'cards')
+const countSorted = await resultTotal()
+console.log('sort=youngest:', countSorted, 'results')
+
+// Paging: the grid reveals a page at a time, but the heading must keep stating the true
+// total — the honest-coverage rule applies to a "show more" button as much as to an empty
+// state. 53 cards in one scroll measured 10,539px, about ten screens.
+await page.selectOption('select:below(:text("State"))', '')
+await settle()
+const pagedTotal = await resultTotal()
+const pagedShown = await cards().count()
+const revealButton = page.locator('button:has-text("more dogs")')
+const hasReveal = (await revealButton.count()) === 1
+if (hasReveal) await revealButton.click()
+await page.waitForTimeout(900)
+const afterReveal = await cards().count()
+console.log('paging — total:', pagedTotal, '| first page:', pagedShown,
+  '| after reveal:', afterReveal)
 
 // ---------- the in-app dog detail view ----------
 await page.click('[data-testid="dog-results"] > li a:has-text("Meet")')
@@ -278,6 +300,9 @@ const checks = {
   'puppy filter narrows the list': countPuppies > 0 && countPuppies < countAny,
   'state filter narrows the list': countMd < countAny,
   'sorting keeps the same dogs': countSorted === countMd,
+  'the grid pages rather than dumping every dog': pagedShown < pagedTotal && hasReveal,
+  'revealing more shows more': afterReveal > pagedShown,
+  'the heading states the true total, not the page': pagedTotal > pagedShown,
   'detail view opens in-app': detailOpen === 1 && detailAddressable,
   'detail view closes on Escape': detailClosed,
   'shared dog link resolves': sharedResolves,

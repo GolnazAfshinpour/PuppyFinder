@@ -143,7 +143,15 @@ onUnmounted(() => {
             <span class="badge badge-soft">{{ dog.breed }}</span>
           </div>
 
-          <p class="text-sm">📍 {{ dog.city }}, {{ dog.state }}</p>
+          <p class="flex items-center gap-1.5 text-sm">
+            <svg class="text-primary/80 h-4 w-4 shrink-0" viewBox="0 0 24 24" fill="none"
+              stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"
+              aria-hidden="true">
+              <path d="M15 10.5a3 3 0 11-6 0 3 3 0 016 0z" />
+              <path d="M19.5 10.5c0 7.142-7.5 11.25-7.5 11.25S4.5 17.642 4.5 10.5a7.5 7.5 0 1115 0z" />
+            </svg>
+            {{ dog.city }}, {{ dog.state }}
+          </p>
 
           <p v-if="dog.description" class="text-sm leading-relaxed">{{ dog.description }}</p>
           <p v-else class="text-sm opacity-60 italic">

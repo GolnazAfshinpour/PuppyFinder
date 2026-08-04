@@ -11,7 +11,6 @@ import ResultsFallback from './components/ResultsFallback.vue'
 import ListingCard from './components/ListingCard.vue'
 import DogDetail from './components/DogDetail.vue'
 import BreedCost from './components/BreedCost.vue'
-import PriceCheck from './components/PriceCheck.vue'
 import AlertSignup from './components/AlertSignup.vue'
 import BreedQuiz from './components/BreedQuiz.vue'
 import SafetyGuide from './components/SafetyGuide.vue'
@@ -186,6 +185,21 @@ function resetSearch() {
 // it only appears when there's actually something to refine.
 const strictMatch = ref(false)
 const unconfirmedCount = computed(() => rankedListings.value.filter((l) => l.unconfirmed).length)
+
+// Reveal in pages rather than dumping every dog into one scroll: 53 cards measured 10,539px,
+// about ten screens, with no way to tell how far in you were. The full count stays in the
+// heading, so this shortens the page without hiding how many dogs there are — the honest-
+// coverage rule applies to a "show more" button as much as to an empty state.
+const PAGE = 24
+const shownCount = ref(PAGE)
+const visibleListings = computed(() => rankedListings.value.slice(0, shownCount.value))
+const moreCount = computed(() => Math.max(0, rankedListings.value.length - shownCount.value))
+
+// Any change to the search starts the reveal over — otherwise a narrowed search inherits a
+// large count from the previous one and silently shows everything.
+watch([rankedListings, () => sort.value], () => {
+  shownCount.value = PAGE
+})
 
 const SORTS = [
   { value: '', label: 'Best match' },
@@ -486,15 +500,33 @@ onMounted(() => {
   </nav>
 
   <main class="mx-auto max-w-6xl px-4 pt-6 pb-16 sm:px-6">
-    <!-- Editorial hero: one headline doing the brand work, numeric trust under it. -->
+    <!--
+      Editorial hero: one headline doing the brand work, numeric trust under it.
+
+      Mode-aware, because it wasn't: "Buy a puppy. Don't get scammed." sat above a grid of
+      rescue dogs, and the subhead talked about which marketplaces vet their breeders while
+      you were browsing shelters. The headline contradicted the page under it.
+    -->
     <header class="mb-8 text-center">
       <h1 class="font-display mx-auto max-w-2xl text-3xl leading-[1.1] font-semibold tracking-tight sm:text-5xl">
-        Buy a puppy.
-        <span class="text-primary">Don't get scammed.</span>
+        <template v-if="buying">
+          Buy a puppy.
+          <span class="text-primary">Don't get scammed.</span>
+        </template>
+        <template v-else>
+          Adopt a dog.
+          <span class="text-primary">They're already waiting.</span>
+        </template>
       </h1>
       <p class="text-base-content/70 mx-auto mt-3 max-w-xl text-base">
-        Which marketplaces actually vet their breeders, which ones have a complaint
-        record, and the checks that catch a scam before you send a cent.
+        <template v-if="buying">
+          Which marketplaces actually vet their breeders, which ones have a complaint
+          record, and the checks that catch a scam before you send a cent.
+        </template>
+        <template v-else>
+          Real dogs from public shelter feeds — photo, age, size and the shelter's own phone
+          number. No listing fees, no middlemen, and most are already vaccinated and neutered.
+        </template>
       </p>
       <!--
         The clickable chips carry an arrow and an underline; the static one carries neither.
@@ -504,14 +536,21 @@ onMounted(() => {
       -->
       <div class="mt-4 flex flex-wrap justify-center gap-2">
         <button
-          v-if="verifiedBreedCount"
+          v-if="buying && verifiedBreedCount"
           type="button"
           class="badge badge-lg badge-outline hover:badge-primary cursor-pointer underline decoration-dotted underline-offset-2"
           @click="pricesOpen = true"
         >
           {{ verifiedBreedCount }} sourced price ranges →
         </button>
-        <span class="badge badge-lg badge-outline opacity-70">7 breeder marketplaces, honestly rated</span>
+        <span v-if="buying" class="badge badge-lg badge-outline opacity-70">
+          7 breeder marketplaces, honestly rated
+        </span>
+        <!-- Adopting: the honest headline number is coverage, and it is already computed. -->
+        <span v-else-if="coverage.length" class="badge badge-lg badge-outline opacity-70">
+          {{ liveCount }} dogs live across {{ coverage.length }}
+          {{ coverage.length === 1 ? 'state' : 'states' }}
+        </span>
         <button
           type="button"
           class="badge badge-lg badge-outline hover:badge-primary cursor-pointer underline decoration-dotted underline-offset-2"
@@ -528,7 +567,7 @@ onMounted(() => {
           :class="goal === 'adopt' ? 'badge-primary' : 'badge-outline hover:badge-primary'"
           @click="goal = goal === 'adopt' ? 'buy' : 'adopt'"
         >
-          🤝 {{ goal === 'adopt' ? 'Adopting' : 'Or adopt' }} ({{ liveCount }} live)
+          {{ goal === 'adopt' ? '🛍️ Or buy from a breeder' : `🤝 Or adopt (${liveCount} live)` }}
         </button>
       </div>
     </header>
@@ -608,19 +647,17 @@ onMounted(() => {
              vetting differences between sites. -->
         <template v-if="buying">
           <div class="flex flex-col gap-5">
+            <!-- One card: the range, the meter and the quote checker together. They were two
+                 stacked cards, which duplicated the breed name and the "far below market" line
+                 and put the answer a scroll away from the question. -->
             <BreedCost
               :breed="selectedBreedInfo"
               :breeds="breeds"
+              :photo="breedPhoto"
               @pick-breed="selectedBreed = $event"
               @open-quiz="quizOpen = true"
               @open-guide="guideOpen = true"
               @open-prices="pricesOpen = true"
-            />
-            <PriceCheck
-              v-if="canScreenSelectedBreed"
-              :breed-slug="selectedBreed"
-              :breed-name="selectedBreedName"
-              @open-guide="guideOpen = true"
             />
             <div
               v-if="listings.length"
@@ -730,7 +767,7 @@ onMounted(() => {
             class="grid list-none gap-6 p-0 sm:grid-cols-2 xl:grid-cols-3"
           >
             <ListingCard
-              v-for="l in rankedListings"
+              v-for="l in visibleListings"
               :key="l.id"
               :listing="l"
               :favorite="favoriteIds.has(l.id)"
@@ -739,6 +776,16 @@ onMounted(() => {
               @open="openDog(l)"
             />
           </ul>
+
+          <!-- Names the remaining number rather than saying "load more": the count is the
+               useful part, and hiding it would understate coverage. -->
+          <div v-if="moreCount" class="mt-6 text-center">
+            <button type="button" class="btn btn-outline" @click="shownCount += PAGE">
+              Show {{ Math.min(moreCount, PAGE) }} more
+              {{ moreCount === 1 ? 'dog' : 'dogs' }}
+              <span class="opacity-60">({{ moreCount }} left)</span>
+            </button>
+          </div>
           <div v-else class="card bg-base-100 shadow-md">
             <div class="card-body items-center text-center">
               <span class="text-4xl">🐾</span>

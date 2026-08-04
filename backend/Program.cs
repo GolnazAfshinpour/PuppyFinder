@@ -62,7 +62,9 @@ var montgomeryCounty = new SocrataDataset(
     FallbackListingUrl: "https://www.montgomerycountymd.gov/animal-services-adoption-center/adopt-pet",
     SizeField: "petsize",
     // Verified July 2026 against their PetHarbor pages.
-    ContactInfo: "📞 (240) 773-5900 · Derwood, MD");
+    // No emoji and no city: the card renders a Heroicon, and the city already appears on
+    // its own line directly above — "Derwood, MD" was printed twice, two lines apart.
+    ContactInfo: "(240) 773-5900");
 
 var kingCounty = new SocrataDataset(
     SourceName: "King County Pet Adoption",
@@ -75,7 +77,8 @@ var kingCounty = new SocrataDataset(
     FallbackListingUrl: "https://kingcounty.gov/en/dept/executive-services/animals-pets-pests/regional-animal-services/adopt-a-pet",
     MemoField: "memo",
     // Verified July 2026 against their PetHarbor pages (visit hours: noon-5 weekdays, noon-4 weekends).
-    ContactInfo: "📞 (206) 296-3936 · 21615 64th Ave S, Kent, WA");
+    // Street kept (it is genuinely extra), city dropped as duplicated by the line above.
+    ContactInfo: "(206) 296-3936 · 21615 64th Ave S");
 
 builder.Services.AddSingleton<IListingProvider>(sp => new SocrataProvider(
     montgomeryCounty, sp.GetRequiredService<IHttpClientFactory>(), sp.GetRequiredService<ILogger<SocrataProvider>>()));

@@ -73,13 +73,12 @@ const summary = computed(() => {
   // than calling live puppies "sources".
   if (confidence.value === 'verified' && fromListings.value) {
     const median = listings.value?.median
-    return `The middle half of ${n} puppies listed for sale right now`
-      + `${median ? `, where the typical asking price is $${median.toLocaleString()}` : ''}`
-      + `${lastChecked.value ? ` (checked ${lastChecked.value})` : ''}.`
+    return `Middle half of ${n} live listings`
+      + `${median ? ` · typical asking price $${median.toLocaleString()}` : ''}`
   }
   switch (confidence.value) {
     case 'verified':
-      return `Range from ${n} independent ${n === 1 ? 'source' : 'sources'}${lastChecked.value ? `, last checked ${lastChecked.value}` : ''}.`
+      return `Range from ${n} independent ${n === 1 ? 'source' : 'sources'}`
     case 'contested':
       return `Sources disagree materially about this breed — the spread below is real, not a rounding artefact.`
     case 'single_source':
@@ -91,36 +90,47 @@ const summary = computed(() => {
 </script>
 
 <template>
+  <!--
+    One line by default, detail on demand. Expanded, this block was three paragraphs plus a
+    row of publisher links and had become the densest part of the card — burying the range it
+    exists to support. Provenance still has to be *reachable*, so nothing is removed: the
+    count and the median stay visible, and the rest is one click away.
+  -->
   <div v-if="breed?.priceLow" class="text-xs">
-    <p :class="label.tone" class="flex items-start gap-1.5">
-      <span aria-hidden="true">{{ label.icon }}</span>
-      <span>{{ summary }}</span>
-    </p>
+    <details class="group">
+      <summary class="flex cursor-pointer items-baseline gap-1.5 list-none">
+        <span :class="label.tone" aria-hidden="true">{{ label.icon }}</span>
+        <span :class="label.tone">{{ summary }}</span>
+        <span class="link ml-1 whitespace-nowrap opacity-70 group-open:hidden">how we know →</span>
+      </summary>
 
-    <p v-if="loading" class="mt-1 opacity-50">Loading sources…</p>
+      <div class="border-base-300 mt-1.5 border-l-2 pl-2.5">
+        <p v-if="loading" class="opacity-50">Loading sources…</p>
 
-    <template v-else>
-      <!-- Live listings: the sample is the evidence, so describe the sample. Showing the
-           full span alongside the band is the point — it's where the scam-priced end and
-           the rare-colour end both become visible. -->
-      <p v-if="listings" class="mt-1 opacity-70">
-        From {{ listings.count }} live listings on {{ listings.host }}, spanning
-        ${{ listings.cheapest.toLocaleString() }}–${{ listings.dearest.toLocaleString() }}.
-        The band above trims the extremes at both ends.
-      </p>
+        <template v-else>
+          <!-- The full span alongside the band is the point: it's where the scam-priced end
+               and the rare-colour end both become visible. -->
+          <p v-if="listings" class="max-w-prose opacity-70">
+            {{ listings.count }} live listings on {{ listings.host }}, spanning
+            ${{ listings.cheapest.toLocaleString() }}–${{ listings.dearest.toLocaleString() }}.
+            The band trims the extremes at both ends.
+            <span v-if="lastChecked">Checked {{ lastChecked }}.</span>
+          </p>
 
-      <ul v-if="sources.length" class="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 opacity-70">
-        <!-- Labelled when a listing range is showing, so published articles are never
-             mistaken for the source of a number they didn't produce. -->
-        <li v-if="listings" class="opacity-70">Published estimates for comparison:</li>
-        <li v-for="s in sources" :key="s.sourceUrl">
-          <a :href="s.sourceUrl" target="_blank" rel="noopener noreferrer" class="link" :title="s.quote">
-            {{ s.publisher }}
-          </a>
-        </li>
-      </ul>
+          <ul v-if="sources.length" class="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 opacity-70">
+            <!-- Labelled when a listing range is showing, so published articles are never
+                 mistaken for the source of a number they didn't produce. -->
+            <li v-if="listings">Published estimates for comparison:</li>
+            <li v-for="s in sources" :key="s.sourceUrl">
+              <a :href="s.sourceUrl" target="_blank" rel="noopener noreferrer" class="link" :title="s.quote">
+                {{ s.publisher }}
+              </a>
+            </li>
+          </ul>
 
-      <p v-if="failed" class="mt-1 opacity-50">Couldn't load the source list.</p>
-    </template>
+          <p v-if="failed" class="opacity-50">Couldn't load the source list.</p>
+        </template>
+      </div>
+    </details>
   </div>
 </template>
