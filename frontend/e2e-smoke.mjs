@@ -135,6 +135,29 @@ console.log('no-range card — stale claim present:', staleClaim,
   '| names a count:', namesSourcedCount, '| examples:', exampleCount,
   '| chip selected:', chipSelectedBreed)
 
+// The list existed, worked, and nobody could find it. Two causes: the hero's chips were all
+// styled identically so three buttons sat in a row of four with nothing marking them as
+// clickable, and the hero was the only entry point — while someone asking "which breeds have a
+// price?" is reading the price card, not re-scanning the header. So assert the routes from
+// where the question is actually asked, and that clickable chips are distinguishable from the
+// static one.
+const priceCard = page.locator('section.card-lift').first()
+// Clear the breed first: a breed is still selected from the checks above, and with one
+// selected the card shows that breed's range rather than the examples-and-"See all" state.
+await page.selectOption(breedSelect, '')
+await settle()
+const seeAllFromCard = await priceCard.locator('button:has-text("See all")').count()
+await page.selectOption(breedSelect, examples.sourced)
+await settle()
+const compareFromCard = await priceCard.locator('button:has-text("Compare with the other")').count()
+const clickableChipsMarked = await page.locator('div.mt-4 > button.underline').count()
+const staticChipsMarked = await page.locator('div.mt-4 > span.underline').count()
+console.log('routes to the list — card "See all":', seeAllFromCard,
+  '| card "Compare":', compareFromCard,
+  '| chips marked clickable:', clickableChipsMarked, '| static chips underlined:', staticChipsMarked)
+await page.selectOption(breedSelect, '')
+await settle()
+
 // The hero advertised "N sourced price ranges" as plain text, with no way to see them: the
 // only routes in were guessing a breed in the dropdown or reading the card's six examples.
 // Advertising a number you can't inspect is the same shape of problem as publishing a range
@@ -236,6 +259,10 @@ const checks = {
   'sourced range is shown': sourcedRange === 1,
   'provenance cites the sources': sourcedProvenance >= 1,
   'a non-round price still gets a verdict': oddVerdictShown,
+  'the price card offers a way to see every range': seeAllFromCard === 1,
+  'a sourced breed offers the comparison': compareFromCard === 1,
+  'clickable chips are visually distinct from static ones':
+    clickableChipsMarked >= 3 && staticChipsMarked === 0,
   'the badge opens every sourced range, not a sample': listedRanges === claimedRanges,
   'each listed range says what backs it': rangesCiteEvidence === listedRanges,
   'picking from the list selects that breed': listClosed && listPickedBreed.length > 0,

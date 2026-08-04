@@ -8,7 +8,7 @@ const props = defineProps({
   breeds: { type: Array, default: () => [] },
 })
 
-const emit = defineEmits(['pick-breed', 'open-quiz', 'open-guide'])
+const emit = defineEmits(['pick-breed', 'open-quiz', 'open-guide', 'open-prices'])
 
 // A range is only shown when it's sourced. Displaying "$2,500–$5,000" while
 // refusing to check quotes against it would invite the reader to do the same
@@ -118,6 +118,14 @@ const ONGOING_COSTS = [
           <!-- The range labels its own reliability; the copy never asserts more than
                the data supports. -->
           <PriceProvenance :breed="breed" class="mt-2" />
+          <button
+            v-if="sourcedCount > 1"
+            type="button"
+            class="link mt-2 block text-xs font-semibold"
+            @click="emit('open-prices')"
+          >
+            Compare with the other {{ sourcedCount - 1 }} sourced ranges →
+          </button>
         </div>
 
         <p v-if="breed.blurb" class="border-base-300 border-l-2 pl-3 text-sm italic opacity-80">
@@ -172,6 +180,17 @@ const ONGOING_COSTS = [
             >
               {{ b.displayName }}
               <span class="opacity-60">{{ b.typicalPrice }}</span>
+            </button>
+            <!-- Six of fifty, so the way to the rest belongs right here rather than only in
+                 the header. This is where someone asking "which breeds do you cover?" is
+                 looking. -->
+            <button
+              v-if="sourcedCount > examples.length"
+              type="button"
+              class="btn btn-ghost btn-sm normal-case"
+              @click="emit('open-prices')"
+            >
+              See all {{ sourcedCount }} →
             </button>
           </div>
         </div>

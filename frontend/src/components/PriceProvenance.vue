@@ -30,8 +30,17 @@ watch(
       const res = await fetch(`/api/price-sources?breed=${encodeURIComponent(slug)}`)
       if (!res.ok) throw new Error(String(res.status))
       const body = await res.json()
-      // Drop the legacy placeholder — it has no URL and nothing to click.
-      sources.value = (body.sources ?? []).filter((s) => s.sourceUrl)
+      // Drop the legacy placeholder — it has no URL and nothing to click — and show each
+      // publisher once. A page that states several figures produces several observations, so
+      // the raw list read "Dogster, Dogster, Insuranceopedia, Insuranceopedia, MetLife, MetLife"
+      // — which looks like a rendering bug and also overstates how many voices there are. The
+      // aggregation already counts one vote per publisher; this makes the display agree.
+      const byPublisher = new Map()
+      for (const s of body.sources ?? []) {
+        if (!s.sourceUrl) continue
+        if (!byPublisher.has(s.publisher)) byPublisher.set(s.publisher, s)
+      }
+      sources.value = [...byPublisher.values()]
       listings.value = body.listings ?? null
     } catch {
       failed.value = true

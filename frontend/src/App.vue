@@ -496,27 +496,39 @@ onMounted(() => {
         Which marketplaces actually vet their breeders, which ones have a complaint
         record, and the checks that catch a scam before you send a cent.
       </p>
+      <!--
+        The clickable chips carry an arrow and an underline; the static one carries neither.
+        Before this they were all `badge badge-outline` and visually identical, so three
+        buttons sat in a row of four chips with nothing to say they did anything — and
+        cursor-pointer only helps after you have already guessed.
+      -->
       <div class="mt-4 flex flex-wrap justify-center gap-2">
         <button
           v-if="verifiedBreedCount"
           type="button"
-          class="badge badge-lg badge-outline cursor-pointer"
+          class="badge badge-lg badge-outline hover:badge-primary cursor-pointer underline decoration-dotted underline-offset-2"
           @click="pricesOpen = true"
         >
-          {{ verifiedBreedCount }} sourced price ranges
+          {{ verifiedBreedCount }} sourced price ranges →
         </button>
-        <span class="badge badge-lg badge-outline">7 breeder marketplaces, honestly rated</span>
-        <button type="button" class="badge badge-lg badge-outline cursor-pointer" @click="guideOpen = true">
-          🛡️ Scam-safety checklist
+        <span class="badge badge-lg badge-outline opacity-70">7 breeder marketplaces, honestly rated</span>
+        <button
+          type="button"
+          class="badge badge-lg badge-outline hover:badge-primary cursor-pointer underline decoration-dotted underline-offset-2"
+          @click="guideOpen = true"
+        >
+          🛡️ Scam-safety checklist →
         </button>
+        <!-- Underlined like the others because it is clickable; no arrow, because it toggles
+             the view rather than opening something. -->
         <button
           v-if="liveCount"
           type="button"
-          class="badge badge-lg cursor-pointer"
-          :class="goal === 'adopt' ? 'badge-primary' : 'badge-outline'"
+          class="badge badge-lg cursor-pointer underline decoration-dotted underline-offset-2"
+          :class="goal === 'adopt' ? 'badge-primary' : 'badge-outline hover:badge-primary'"
           @click="goal = goal === 'adopt' ? 'buy' : 'adopt'"
         >
-          🤝 Or adopt ({{ liveCount }} live)
+          🤝 {{ goal === 'adopt' ? 'Adopting' : 'Or adopt' }} ({{ liveCount }} live)
         </button>
       </div>
     </header>
@@ -602,6 +614,7 @@ onMounted(() => {
               @pick-breed="selectedBreed = $event"
               @open-quiz="quizOpen = true"
               @open-guide="guideOpen = true"
+              @open-prices="pricesOpen = true"
             />
             <PriceCheck
               v-if="canScreenSelectedBreed"
