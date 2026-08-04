@@ -239,6 +239,25 @@ const afterReveal = await cards().count()
 console.log('paging — total:', pagedTotal, '| first page:', pagedShown,
   '| after reveal:', afterReveal)
 
+// The advice must not slide back to a bare "have a video call". That was this guide's central
+// recommendation until BBB warned it "may be going away" because generated video can satisfy
+// it — so the call now has to be interactive on the buyer's terms, and a clean reverse-image
+// result no longer clears anyone. Asserting the caveats exist is what stops a future copy edit
+// quietly restoring advice that no longer holds.
+await page.click('button:has-text("Scam-safety checklist")')
+await page.waitForTimeout(1000)
+// Open the section first: it's collapsed by default (correctly — that's the progressive
+// disclosure the guide is built on), and innerText excludes hidden content.
+await page.click('summary:has-text("Make the video call prove something")')
+await page.waitForTimeout(500)
+const guideText = await page.locator('.modal-box').innerText()
+const namesLivenessTests = /on the spot|name the test|continuous pan/i.test(guideText)
+const cleanImageSearchCaveated = /appears nowhere else|no longer clears/i.test(guideText)
+await page.keyboard.press('Escape')
+await page.waitForTimeout(600)
+console.log('advice — liveness tests named:', namesLivenessTests,
+  '| clean image search caveated:', cleanImageSearchCaveated)
+
 // Line length, asserted rather than eyeballed. Measured at 91-117 chars across 13 of 13 prose
 // blocks before this rule existed — past the 80 of WCAG 1.4.8, which Baymard finds readers
 // experience as "intimidating and overwhelming". This is the check that stops it drifting back
@@ -382,6 +401,8 @@ const checks = {
   'Back restores the rest of the search, not just the URL': backKeptBreed,
   'Forward redoes it': forwardUrl === afterAdopt,
   'every dialog closes on Escape': Object.values(escapes).every(Boolean),
+  'video-call advice names liveness tests, not just "have a call"': namesLivenessTests,
+  'a clean reverse-image result is caveated, not treated as proof': cleanImageSearchCaveated,
   'detail view opens in-app': detailOpen === 1 && detailAddressable,
   'detail view closes on Escape': detailClosed,
   'shared dog link resolves': sharedResolves,

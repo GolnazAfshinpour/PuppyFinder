@@ -16,9 +16,25 @@ const SECTIONS = [
       'A price far below the typical range for the breed (our breed cards show typical ranges) — bargain purebreds are the classic scam bait.',
       'Payment by wire transfer, gift cards, Zelle, Venmo, or crypto to someone you have never met. No legitimate breeder asks for these.',
       'Any surprise fee after you pay — "shipping insurance", "climate-controlled crate", "vaccine deposit". This is the standard scam script; the puppy does not exist.',
-      'Seller refuses a live video call with the puppy, or the photos look professional (reverse-image-search them — scammers reuse stolen photos).',
+      'Seller refuses a live video call, or will only send pre-recorded clips. A refusal is still damning — but a call happening is no longer proof by itself (see below).',
+      'Photos that look professional or stock-like. Reverse-image-search them: a hit is damning. A clean result no longer clears anyone, because an AI-generated photo appears nowhere else.',
       'Pressure and urgency: "three other families are coming today", "price goes up tomorrow".',
       'Many breeds always available from one seller, or puppies always "ready to ship today" — responsible breeders have waitlists, not inventory.',
+    ],
+  },
+  {
+    // Added August 2026. "Have a video call" was this guide's central recommendation and BBB
+    // now warns that advice "may be going away" because generated video can satisfy it. The
+    // answer isn't to drop the call — it's to make it interactive on the buyer's terms, which
+    // a pre-rendered or replayed video cannot survive.
+    title: '📹 Make the video call prove something',
+    items: [
+      'Name the test yourself, during the call: ask them to pick the puppy up, turn it over, and show its belly and paws. Generated and recycled footage cannot take instructions.',
+      'Ask them to hold up something you choose on the spot — today\'s date on a handwritten note, a specific number of fingers, a spoon.',
+      'Ask for one continuous pan from the puppy to the mother to the room, without cutting. Scam footage is short, tightly cropped, and never shows the surroundings.',
+      'Watch for the tells of a replayed clip: no response to what you just asked, audio that does not match the mouth, a loop, or a "bad connection" the moment you make a specific request.',
+      'Do it twice, days apart, and ask for something different each time. One good call can be staged or borrowed; two on your terms is much harder.',
+      'Best of all, still visit in person. Everything above exists because that is not always possible — it is a substitute, not an equal.',
     ],
   },
   {

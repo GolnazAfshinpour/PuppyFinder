@@ -167,7 +167,7 @@ const alertClass = computed(() => {
 // advice while price screening is switched off.
 const PRICE_FREE_CHECKS = [
   'Get quotes from three breeders. The one that sharply undercuts the others is the outlier, not the bargain.',
-  'See the puppy and its mother on a live video call, or in person. A refusal here ends the conversation.',
+  'See the puppy and its mother in person, or on a video call where you name what they do on the spot — pick the puppy up, show today\'s date. A refusal ends the conversation; a pre-recorded clip proves nothing.',
   'Ask for OFA, PennHIP or Embark results for both parents — on paper, not described.',
   'Never pay by wire transfer, gift card, Zelle or crypto. Those are chosen because they are unrecoverable.',
   'Walk away from any fee that appears after you commit — shipping insurance, a climate-controlled crate, a vaccine deposit.',

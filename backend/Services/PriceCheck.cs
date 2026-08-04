@@ -164,8 +164,8 @@ public static class PriceCheck
                 "FarBelow",
                 $"${price:n0} is {PercentBelow(price, low)}% below the typical {range}",
                 "A price far under market is the most common puppy-scam signal there is. If the seller also "
-                + "won't do a live video call, wants a wire transfer, gift cards, Zelle or crypto, or adds fees "
-                + "after you commit, walk away — those four together are the whole playbook.",
+                + "won't do a live video call on your terms, wants a wire transfer, gift cards, Zelle or crypto, "
+                + "or adds fees after you commit, walk away — those four together are the whole playbook.",
                 IsWarning: true,
                 low, high, PercentBelow(price, low), confidence, sources, basis);
         }
