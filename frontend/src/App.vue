@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { TRAITS, breedMatches } from './breedFilters.js'
 import { clearProfile, loadProfile, rankListings } from './adopterProfile.js'
 import { loadFavorites, loadRecent, recordViewed, toggleFavorite } from './favorites.js'
@@ -440,20 +440,60 @@ function pickQuizBreed(slug) {
 watch([selectedBreed, selectedState], loadSites)
 watch([selectedBreed, selectedState, selectedSize, selectedAge, sort, strictMatch], loadListings)
 
-// Keep the address bar in sync (replace, not push — no history spam).
+// Keep the address bar in sync, and make Back/Forward actually work.
+//
+// This used to call replaceState on every change, so no history entry was ever created:
+// two filter changes left history.length at 2, and pressing Back left the site instead of
+// undoing the change. The old comment said "replace, not push — no history spam", and the
+// price of avoiding spam was having no history at all. There was also no popstate listener,
+// so even with entries the UI would not have reacted to Back — the address bar would have
+// changed while the page silently disagreed with it.
+const currentQuery = () => buildSearchQuery({
+  breed: selectedBreed.value,
+  state: selectedState.value,
+  city: selectedCity.value,
+  size: selectedSize.value,
+  age: selectedAge.value,
+  traits: traits.value,
+  goal: goal.value,
+  sort: sort.value,
+  dog: openDogId.value,
+})
+
+// Set while applying a URL back onto the state, so the watcher below doesn't push a new
+// entry for a change that *came from* history — the classic popstate feedback loop.
+let applyingHistory = false
+
 watch([selectedBreed, selectedState, selectedCity, selectedSize, selectedAge, traits, goal, sort, openDogId], () => {
-  const query = buildSearchQuery({
-    breed: selectedBreed.value,
-    state: selectedState.value,
-    city: selectedCity.value,
-    size: selectedSize.value,
-    age: selectedAge.value,
-    traits: traits.value,
-    goal: goal.value,
-    sort: sort.value,
-    dog: openDogId.value,
+  if (applyingHistory) return
+
+  const query = currentQuery()
+  const url = query ? `?${query}` : window.location.pathname
+  // Nothing actually changed (a watcher can fire on an identical value): pushing here would
+  // add an entry that makes Back appear to do nothing.
+  if (url === window.location.search || (!query && !window.location.search)) return
+
+  history.pushState(null, '', url)
+})
+
+// The other half: apply the URL back onto the state when the user navigates history.
+window.addEventListener('popstate', () => {
+  const from = parseSearchUrl(window.location.search, US_STATES)
+  applyingHistory = true
+  selectedBreed.value = from.breed
+  selectedState.value = from.state
+  selectedCity.value = from.city
+  selectedSize.value = from.size
+  selectedAge.value = from.age
+  traits.value = from.traits
+  goal.value = from.goal
+  sort.value = from.sort
+  openDogId.value = from.dog
+  // Release after Vue has flushed, or the watcher fires with the flag already cleared and
+  // pushes the state we just arrived at back onto the stack.
+  nextTick(() => {
+    applyingHistory = false
   })
-  history.replaceState(null, '', query ? `?${query}` : window.location.pathname)
 })
 
 // City is free text — debounce so we don't refetch per keystroke.

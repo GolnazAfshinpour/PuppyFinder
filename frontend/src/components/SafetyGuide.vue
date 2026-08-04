@@ -1,7 +1,12 @@
 <script setup>
 import PuppyLogo from './PuppyLogo.vue'
+import { useModal } from '../useModal.js'
 
-defineEmits(['close'])
+const emit = defineEmits(['close'])
+
+// Escape closed the dog detail and did nothing here, which teaches the key and then ignores
+// it — worse than never supporting it.
+useModal(() => emit('close'))
 
 const SECTIONS = [
   {

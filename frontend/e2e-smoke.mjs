@@ -283,6 +283,59 @@ await page.waitForTimeout(2500)
 const goneHandled = (await page.locator('text=no longer listed').count()) === 1
 console.log('adopted dog handled gracefully:', goneHandled)
 
+// Back and Forward, which did not work at all: the address bar synced with replaceState, so
+// two filter changes created ZERO history entries and pressing Back left the site instead of
+// undoing a filter. There was no popstate listener either, so even with entries the page would
+// have silently disagreed with its own URL. A shareable URL that isn't navigable is half a
+// feature.
+await page.goto('about:blank')                 // give Back somewhere real to go
+await page.goto('http://localhost:5173')
+await page.waitForSelector('h1', { timeout: 15000 })
+await settle()
+await page.selectOption(breedSelect, 'beagle')
+await settle()
+const afterPick = page.url()
+await page.click('button:has-text("Or adopt")')
+await settle()
+const afterAdopt = page.url()
+await page.goBack()
+await settle()
+const backUrl = page.url()
+const backHeading = await page.locator('h1').innerText()
+const backKeptBreed = (await page.locator(breedSelect).first().inputValue()) === 'beagle'
+await page.goForward()
+await settle()
+const forwardUrl = page.url()
+const stillOnApp = page.url().includes('localhost:5173')
+console.log('history — after pick:', afterPick.includes('beagle'),
+  '| adopt:', afterAdopt.includes('goal=adopt'),
+  '| Back undid it:', backUrl === afterPick,
+  '| Back kept the breed:', backKeptBreed,
+  '| Forward redid it:', forwardUrl === afterAdopt)
+
+// Escape closed the dog detail and silently did nothing on the other three dialogs, which
+// teaches the key and then ignores it.
+//
+// Back in buying mode first: goForward() above left us adopting, and the price-ranges chip is
+// correctly hidden there — it advertises something that mode can't answer.
+await page.click('button:has-text("Or buy from a breeder")')
+await settle()
+const dialogCount = () => page.locator('.modal-box').count()
+const escapes = {}
+for (const [name, selector] of [
+  ['guide', 'button:has-text("Scam-safety checklist")'],
+  ['prices', 'button:has-text("sourced price ranges")'],
+  ['quiz', 'button:has-text("breed quiz")'],
+]) {
+  await page.click(selector)
+  await page.waitForTimeout(800)
+  const opened = (await dialogCount()) === 1
+  await page.keyboard.press('Escape')
+  await page.waitForTimeout(700)
+  escapes[name] = opened && (await dialogCount()) === 0
+}
+console.log('escape closes:', JSON.stringify(escapes))
+
 console.log('API calls observed:', JSON.stringify(apiCalls, null, 1))
 await page.screenshot({ path: (process.env.SCRATCH ?? '.') + '/adopt-tab.png', fullPage: false })
 await browser.close()
@@ -324,6 +377,11 @@ const checks = {
   'revealing more shows more': afterReveal > pagedShown,
   'the heading states the true total, not the page': pagedTotal > pagedShown,
   'no prose block exceeds 80 characters per line': longLines.length === 0,
+  'Back undoes a filter change instead of leaving the site':
+    stillOnApp && backUrl === afterPick,
+  'Back restores the rest of the search, not just the URL': backKeptBreed,
+  'Forward redoes it': forwardUrl === afterAdopt,
+  'every dialog closes on Escape': Object.values(escapes).every(Boolean),
   'detail view opens in-app': detailOpen === 1 && detailAddressable,
   'detail view closes on Escape': detailClosed,
   'shared dog link resolves': sharedResolves,

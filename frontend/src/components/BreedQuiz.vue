@@ -3,8 +3,11 @@ import { computed, ref } from 'vue'
 import { fetchBreedImage } from '../dogImages.js'
 import { saveProfile } from '../adopterProfile.js'
 import PuppyLogo from './PuppyLogo.vue'
+import { useModal } from '../useModal.js'
 
 const emit = defineEmits(['close', 'select', 'profile-saved'])
+
+useModal(() => emit('close'))
 
 const QUESTIONS = [
   {

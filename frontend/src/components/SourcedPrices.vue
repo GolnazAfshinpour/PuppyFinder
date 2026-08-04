@@ -1,12 +1,15 @@
 <script setup>
 import { computed, ref } from 'vue'
 import { articleFor } from '../article.js'
+import { useModal } from '../useModal.js'
 
 const props = defineProps({
   breeds: { type: Array, default: () => [] }, // from /api/breeds
 })
 
 const emit = defineEmits(['close', 'pick-breed'])
+
+useModal(() => emit('close'))
 
 // The gap this closes: the hero advertised "50 sourced price ranges" as plain text, and the
 // only way to see any of them was to guess a breed in the dropdown, or read the card's six

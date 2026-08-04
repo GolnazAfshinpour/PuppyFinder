@@ -1,5 +1,6 @@
 <script setup>
-import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
+import { useModal } from '../useModal.js'
 
 const props = defineProps({
   // The grid already holds the full listing, so pass it to avoid a round trip.
@@ -32,16 +33,11 @@ const metaLine = computed(() => {
   ].filter(Boolean).join(' · ')
 })
 
-function onKeydown(event) {
-  if (event.key === 'Escape') emit('close')
-}
+// Escape, scroll lock and initial focus now come from the shared composable — this was the
+// only dialog that had them, and the other three each needed the same three behaviours.
+useModal(() => emit('close'), closeButton)
 
 onMounted(async () => {
-  document.addEventListener('keydown', onKeydown)
-  // Keep the page behind from scrolling under the dialog.
-  document.body.style.overflow = 'hidden'
-  closeButton.value?.focus()
-
   if (!props.listing && props.listingId) {
     loading.value = true
     try {
@@ -57,10 +53,7 @@ onMounted(async () => {
   }
 })
 
-onUnmounted(() => {
-  document.removeEventListener('keydown', onKeydown)
-  document.body.style.overflow = ''
-})
+
 </script>
 
 <template>
