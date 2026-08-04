@@ -79,8 +79,12 @@ function pick(slug) {
       </div>
 
       <div class="mt-4 flex flex-wrap items-center gap-2">
-        <label class="input input-bordered input-sm flex items-center gap-1">
-          <span class="opacity-60">🔎</span>
+        <label class="input input-bordered input-sm flex items-center gap-2">
+          <svg class="h-4 w-4 opacity-50" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+            stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <circle cx="11" cy="11" r="7" />
+            <path d="m21 21-4.3-4.3" />
+          </svg>
           <input v-model="query" class="grow" placeholder="Filter breeds" aria-label="Filter breeds" />
         </label>
         <select v-model="sort" class="select select-bordered select-sm" aria-label="Sort ranges">
