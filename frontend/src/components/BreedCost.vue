@@ -17,14 +17,60 @@ const hasRange = computed(
   () => props.breed?.priceLow != null && props.breed?.confidence === 'verified',
 )
 
-// A few well-known ranges to orient someone who hasn't chosen yet — real data,
-// not a sales pitch, and it makes the "is my quote sane?" question concrete.
+const sourcedCount = computed(
+  () => props.breeds.filter((b) => b.confidence === 'verified').length,
+)
+
+// Real ranges to orient someone who hasn't picked a breed yet, and a way in: each is
+// clickable. Ordered by how many live listings back them, which is a data-driven proxy for
+// "breeds people are actually shopping for" — sorting by price instead surfaced only the
+// most expensive breeds, which reads as a sales pitch rather than orientation.
 const examples = computed(() =>
   props.breeds
-    .filter((b) => b.priceLow != null)
-    .sort((a, b) => b.priceHigh - a.priceHigh)
-    .slice(0, 4),
+    .filter((b) => b.confidence === 'verified' && b.priceLow != null)
+    .sort((a, b) => (b.sourceCount ?? 0) - (a.sourceCount ?? 0))
+    .slice(0, 6),
 )
+
+// Three genuinely different situations, which the old copy answered with one sentence —
+// "We're not publishing price ranges or checking quotes yet". That was true when nothing was
+// sourced and is now false for 50 breeds: it understated what the app has, having previously
+// been written to avoid overstating it.
+const state = computed(() => {
+  if (!props.breed) return 'pick'
+  return props.breed.priceLow == null ? 'no-data' : 'below-bar'
+})
+
+const headline = computed(() => {
+  const name = props.breed?.displayName
+  switch (state.value) {
+    case 'pick':
+      return 'Check a quote against the real market'
+    case 'no-data':
+      return `We have no price data for ${articleFor(name)} ${name}`
+    default:
+      return `No sourced range for ${articleFor(name)} ${name} yet`
+  }
+})
+
+const explanation = computed(() => {
+  const name = props.breed?.displayName
+  switch (state.value) {
+    case 'pick':
+      return `${sourcedCount.value} breeds have a range built from live asking prices, so a quote`
+        + ' can be checked against what people are really charging. Pick a breed to see its'
+        + ' range — or use the checks below, which work whatever the price says.'
+    case 'no-data':
+      return `${name} is rare enough on the open market that there aren't enough live listings`
+        + ' to build a range from — and we would rather show nothing than a number we invented.'
+        + ' The checks below do not depend on knowing the price.'
+    default:
+      return `We have figures for ${name}, but they don't clear the bar: too few independent`
+        + ' sources, or they disagree too widely to call anything typical. Calling a quote a scam'
+        + ' means measuring it against something we can stand behind, so screening stays off for'
+        + ' this breed until it is.'
+  }
+})
 
 // Breed-agnostic and factual: these are the things that legitimately move a
 // purebred puppy's price, so a buyer can ask which ones apply to their quote.
@@ -104,27 +150,41 @@ const ONGOING_COSTS = [
         </details>
       </template>
 
-      <!-- No sourced range: say what we don't know, then give advice that doesn't
-           depend on knowing it. -->
+      <!-- No sourced range for this breed. Say which of the three reasons applies, then
+           give advice that doesn't depend on a price. -->
       <template v-else>
         <div>
-          <p class="font-display text-2xl font-semibold">
-            What to check before you send money
-          </p>
-          <p class="mt-1 text-sm opacity-70">
-            We're not publishing price ranges or checking quotes yet. Calling a quote a scam
-            means measuring it against a number we can stand behind, and we'd rather say
-            nothing than wrongly accuse a legitimate breeder — or reassure you about a real
-            one. Everything below works without a price.
-          </p>
+          <p class="font-display text-2xl font-semibold">{{ headline }}</p>
+          <p class="mt-1 text-sm opacity-70">{{ explanation }}</p>
         </div>
 
-        <ul class="space-y-1.5 text-sm">
-          <li v-for="check in PRICE_FREE_CHECKS" :key="check" class="flex gap-2">
-            <span class="text-primary/80 shrink-0">•</span>
-            <span>{{ check }}</span>
-          </li>
-        </ul>
+        <!-- Nothing picked yet: show real ranges and let them be the way in. Naming the
+             breeds we *can* answer for beats asking someone to guess which those are. -->
+        <div v-if="state === 'pick' && examples.length">
+          <p class="mb-2 text-sm font-semibold">Breeds with a sourced range</p>
+          <div class="flex flex-wrap gap-2">
+            <button
+              v-for="b in examples"
+              :key="b.slug"
+              type="button"
+              class="btn btn-outline btn-sm normal-case"
+              @click="emit('pick-breed', b.slug)"
+            >
+              {{ b.displayName }}
+              <span class="opacity-60">{{ b.typicalPrice }}</span>
+            </button>
+          </div>
+        </div>
+
+        <div>
+          <p class="mb-2 text-sm font-semibold">What to check before you send money</p>
+          <ul class="space-y-1.5 text-sm">
+            <li v-for="check in PRICE_FREE_CHECKS" :key="check" class="flex gap-2">
+              <span class="text-primary/80 shrink-0">•</span>
+              <span>{{ check }}</span>
+            </li>
+          </ul>
+        </div>
 
         <div class="flex flex-wrap gap-2">
           <button type="button" class="btn btn-primary btn-sm" @click="emit('open-guide')">

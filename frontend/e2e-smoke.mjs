@@ -115,6 +115,26 @@ await page.waitForTimeout(2500)
 const oddVerdictShown = (await page.locator('[data-testid="price-verdict"]').count()) === 1
 console.log(`non-round quote $${odd} produced a verdict:`, oddVerdictShown)
 
+// The no-range card must not claim we publish nothing. Its copy said "We're not publishing
+// price ranges or checking quotes yet" long after 50 breeds had sourced ranges — written to
+// avoid overstating what we had, and left understating it. Assert on what it must NOT say,
+// because that's the failure mode: copy that quietly outlives the state it described.
+await page.selectOption(breedSelect, '')
+await settle()
+const pickCard = page.locator('section.card-lift').first()
+const pickText = await pickCard.innerText()
+const staleClaim = /not publishing price ranges|checking quotes yet/i.test(pickText)
+const namesSourcedCount = /\d+ breeds have a range/.test(pickText)
+// Clicking a listed example must actually select that breed, or the card is decoration.
+const exampleChip = pickCard.locator('button.btn-outline.btn-sm').first()
+const exampleCount = await pickCard.locator('button.btn-outline.btn-sm').count()
+await exampleChip.click()
+await settle()
+const chipSelectedBreed = await page.locator(breedSelect).first().inputValue()
+console.log('no-range card — stale claim present:', staleClaim,
+  '| names a count:', namesSourcedCount, '| examples:', exampleCount,
+  '| chip selected:', chipSelectedBreed)
+
 // ---------- adopting: the secondary path ----------
 await page.click('button:has-text("Adopt a rescue dog")')
 await settle()
@@ -191,6 +211,10 @@ const checks = {
   'sourced range is shown': sourcedRange === 1,
   'provenance cites the sources': sourcedProvenance >= 1,
   'a non-round price still gets a verdict': oddVerdictShown,
+  'no-range card does not claim we publish nothing': staleClaim === false,
+  'no-range card says how many breeds are sourced': namesSourcedCount,
+  'no-range card offers real breeds to pick': exampleCount >= 3,
+  'picking a listed example selects that breed': chipSelectedBreed.length > 0,
   'api screens a sourced breed against its real range':
     screened.level === 'FarBelow' && screened.isWarning === true
     && screened.priceLow === screened.expectedLow && screened.priceHigh === screened.expectedHigh,
