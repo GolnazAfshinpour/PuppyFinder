@@ -663,7 +663,7 @@ onMounted(() => {
               v-if="listings.length"
               class="alert alert-soft alert-info flex flex-wrap items-center justify-between gap-2 py-2 text-sm"
             >
-              <span>
+              <span class="max-w-prose">
                 🐶 <strong>{{ listings.length }}</strong> adoptable
                 {{ listings.length === 1 ? 'dog matches' : 'dogs match' }} this search — usually
                 already vaccinated and neutered, for a fraction of a breeder's price.
@@ -708,7 +708,7 @@ onMounted(() => {
               </select>
             </label>
           </div>
-          <p class="mb-5 text-sm text-base-content/60">
+          <p class="mb-5 max-w-prose text-sm text-base-content/60">
             Live from public shelter feeds{{ activeSources.length ? ` (${activeSources.join(', ')})` : '' }}
             — refreshed every few minutes.
           </p>

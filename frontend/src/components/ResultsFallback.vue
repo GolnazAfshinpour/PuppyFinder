@@ -69,7 +69,7 @@ const filterSummary = computed(() =>
   <section :class="flush ? '' : 'border-base-300 mt-12 border-t pt-8'">
     <template v-if="buying">
       <h2 class="mb-1 text-2xl font-bold">Puppies from breeders</h2>
-      <p class="text-base-content/70 mb-5 max-w-2xl text-sm">
+      <p class="text-base-content/70 mb-5 max-w-prose text-sm">
         We don't list breeder puppies directly — no breeder marketplace offers a legitimate
         data feed. What we can do is tell you which ones actually vet their breeders and
         which ones have a complaint record, before any money changes hands.
@@ -79,7 +79,7 @@ const filterSummary = computed(() =>
       <h2 class="mb-1 text-2xl font-bold">
         {{ resultCount ? 'Want to search wider?' : 'Where to look instead' }}
       </h2>
-      <p class="text-base-content/70 mb-5 max-w-2xl text-sm">{{ coverageLine }}</p>
+      <p class="text-base-content/70 mb-5 max-w-prose text-sm">{{ coverageLine }}</p>
     </template>
 
     <div v-if="recommended" class="card bg-base-100 card-lift mb-4">
@@ -90,8 +90,8 @@ const filterSummary = computed(() =>
             <span class="badge badge-primary badge-soft">Our pick</span>
           </h3>
         </div>
-        <p class="text-sm opacity-80">{{ recommended.description }}</p>
-        <p class="text-sm"><strong>Best for:</strong> {{ recommended.bestFor }}</p>
+        <p class="max-w-prose text-sm opacity-80">{{ recommended.description }}</p>
+        <p class="max-w-prose text-sm"><strong>Best for:</strong> {{ recommended.bestFor }}</p>
         <div v-if="wanted.length" class="flex flex-wrap items-center gap-1">
           <span class="text-xs opacity-60">This link carries:</span>
           <span
@@ -132,7 +132,7 @@ const filterSummary = computed(() =>
       </div>
     </details>
 
-    <p class="text-base-content/60 mt-6 text-center text-sm">
+    <p class="text-base-content/60 mx-auto mt-6 max-w-prose text-center text-sm">
       PuppyFinder links you straight to each site's own listings — always verify a breeder
       or rescue yourself before sending money.
     </p>

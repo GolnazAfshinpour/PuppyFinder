@@ -70,14 +70,14 @@ const SECTIONS = [
         <PuppyLogo class="h-14 w-14 shrink-0 drop-shadow-sm" />
         <div>
           <h2 class="font-display text-3xl leading-none font-semibold tracking-wide">Buy &amp; adopt safely</h2>
-          <p class="text-sm opacity-60">
+          <p class="max-w-prose text-sm opacity-60">
             The rules that keep you from funding a scammer or a puppy mill.
           </p>
         </div>
       </div>
 
       <div role="alert" class="alert alert-warning alert-soft mb-3 py-2 text-sm">
-        <span>
+        <span class="max-w-prose">
           <strong>The one rule that beats every scam:</strong> never send money for a puppy you
           (or someone you trust) haven't seen in person. Video calls are the minimum; in person is the standard.
         </span>
@@ -93,13 +93,13 @@ const SECTIONS = [
           <summary class="collapse-title font-semibold">{{ s.title }}</summary>
           <div class="collapse-content">
             <ul class="list-inside list-disc space-y-2 text-sm">
-              <li v-for="item in s.items" :key="item">{{ item }}</li>
+              <li v-for="item in s.items" :key="item" class="max-w-prose">{{ item }}</li>
             </ul>
           </div>
         </details>
       </div>
 
-      <p class="mt-4 text-center text-xs opacity-60">
+      <p class="mx-auto mt-4 max-w-prose text-center text-xs opacity-60">
         PuppyFinder links to third-party sites and can't vet individual sellers — these checks are yours to run.
       </p>
     </div>

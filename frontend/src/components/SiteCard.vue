@@ -34,7 +34,7 @@ const FIELD_ROWS = [
           {{ site.kind }}
         </span>
       </div>
-      <p class="text-sm opacity-80">{{ site.description }}</p>
+      <p class="max-w-prose text-sm opacity-80">{{ site.description }}</p>
       <div class="border-base-300 flex-1 space-y-2 border-t border-dashed pt-3 text-sm">
         <div v-for="row in FIELD_ROWS" :key="row.key" class="flex gap-2">
           <svg class="text-primary/80 mt-0.5 h-4 w-4 shrink-0" viewBox="0 0 24 24" fill="none"

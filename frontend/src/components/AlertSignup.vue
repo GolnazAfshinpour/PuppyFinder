@@ -106,7 +106,7 @@ async function save() {
   <div class="card border-secondary/50 bg-secondary/10 mb-5 border">
     <div class="card-body gap-2 p-4">
       <p class="text-sm font-semibold">🔔 New dogs matching this search? Get an email.</p>
-      <p class="text-xs opacity-60">Watching: {{ filterSummary }} — one email per new dog, unsubscribe anytime.</p>
+      <p class="max-w-prose text-xs opacity-60">Watching: {{ filterSummary }} — one email per new dog, unsubscribe anytime.</p>
       <form class="join w-full max-w-md" @submit.prevent="save">
         <input
           ref="emailInput"
@@ -121,7 +121,7 @@ async function save() {
           Alert me
         </button>
       </form>
-      <p v-if="savedFor" class="text-success text-xs">✓ Alert saved — we'll email you about new dogs ({{ savedFor }}).</p>
+      <p v-if="savedFor" class="text-success max-w-prose text-xs">✓ Alert saved — we'll email you about new dogs ({{ savedFor }}).</p>
       <p v-if="error" class="text-error text-xs">{{ error }}</p>
 
       <button

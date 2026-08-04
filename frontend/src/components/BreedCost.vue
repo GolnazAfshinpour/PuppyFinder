@@ -355,7 +355,7 @@ const ONGOING_COSTS = [
           <ul class="space-y-1.5 text-sm">
             <li v-for="check in PRICE_FREE_CHECKS" :key="check" class="flex gap-2">
               <span class="text-primary/80 shrink-0">•</span>
-              <span>{{ check }}</span>
+              <span class="max-w-prose">{{ check }}</span>
             </li>
           </ul>
         </div>

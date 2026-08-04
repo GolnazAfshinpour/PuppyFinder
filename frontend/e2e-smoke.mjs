@@ -239,6 +239,26 @@ const afterReveal = await cards().count()
 console.log('paging — total:', pagedTotal, '| first page:', pagedShown,
   '| after reveal:', afterReveal)
 
+// Line length, asserted rather than eyeballed. Measured at 91-117 chars across 13 of 13 prose
+// blocks before this rule existed — past the 80 of WCAG 1.4.8, which Baymard finds readers
+// experience as "intimidating and overwhelming". This is the check that stops it drifting back
+// one unconstrained paragraph at a time, which is exactly how it got there.
+const longLines = await page.evaluate(() => {
+  const over = []
+  for (const el of document.querySelectorAll('main p, main li, main span, .modal-box p, .modal-box li')) {
+    const text = el.textContent.trim()
+    // Only leaf running text: short labels and wrapper elements aren't prose.
+    if (text.length < 60 || el.querySelector('p,li,span')) continue
+    const width = el.getBoundingClientRect().width
+    const fontSize = parseFloat(getComputedStyle(el).fontSize)
+    const chars = Math.round(width / (fontSize * 0.5)) // ~0.5em average glyph width
+    if (chars > 80) over.push(`${chars}ch: ${text.slice(0, 40)}`)
+  }
+  return over
+})
+if (longLines.length) console.log('  long lines:', longLines.join(' | '))
+console.log('prose blocks over 80 chars:', longLines.length)
+
 // ---------- the in-app dog detail view ----------
 await page.click('[data-testid="dog-results"] > li a:has-text("Meet")')
 await page.waitForTimeout(900)
@@ -303,6 +323,7 @@ const checks = {
   'the grid pages rather than dumping every dog': pagedShown < pagedTotal && hasReveal,
   'revealing more shows more': afterReveal > pagedShown,
   'the heading states the true total, not the page': pagedTotal > pagedShown,
+  'no prose block exceeds 80 characters per line': longLines.length === 0,
   'detail view opens in-app': detailOpen === 1 && detailAddressable,
   'detail view closes on Escape': detailClosed,
   'shared dog link resolves': sharedResolves,

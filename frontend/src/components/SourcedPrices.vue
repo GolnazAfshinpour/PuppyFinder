@@ -68,7 +68,7 @@ function pick(slug) {
           <h2 class="font-display text-2xl font-semibold">
             {{ sourced.length }} breeds with a sourced price range
           </h2>
-          <p class="mt-1 text-sm opacity-70">
+          <p class="mt-1 max-w-prose text-sm opacity-70">
             Each range is the middle half of real asking prices, or a median across published
             sources — never our own estimate. Pick a breed to check a quote against it.
           </p>
@@ -104,12 +104,12 @@ function pick(slug) {
         </li>
       </ul>
 
-      <p v-if="!shown.length" class="mt-3 text-sm opacity-70">
+      <p v-if="!shown.length" class="mt-3 max-w-prose text-sm opacity-70">
         No sourced range matches "{{ query }}". Try a shorter search — most breeds don't have
         enough live listings to build a range from.
       </p>
 
-      <p class="mt-4 text-xs opacity-60">
+      <p class="mt-4 max-w-prose text-xs opacity-60">
         Not listed means we couldn't source it, not that it's cheap or rare to find.
         {{ breeds.length - sourced.length }} of {{ breeds.length }} breeds have no range we can
         stand behind, so the app says nothing about their prices rather than guessing.

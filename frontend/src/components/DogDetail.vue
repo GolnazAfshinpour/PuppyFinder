@@ -93,7 +93,7 @@ onUnmounted(() => {
       <div v-else-if="gone || !dog" class="card-body items-center gap-3 text-center">
         <span class="text-4xl">🏡</span>
         <h2 class="font-display text-2xl font-semibold">This dog is no longer listed</h2>
-        <p class="text-sm opacity-70">
+        <p class="max-w-prose text-sm opacity-70">
           They may well have found a home. The shelters below get new dogs constantly.
         </p>
         <button type="button" class="btn btn-primary" @click="emit('search-similar')">
@@ -153,8 +153,8 @@ onUnmounted(() => {
             {{ dog.city }}, {{ dog.state }}
           </p>
 
-          <p v-if="dog.description" class="text-sm leading-relaxed">{{ dog.description }}</p>
-          <p v-else class="text-sm opacity-60 italic">
+          <p v-if="dog.description" class="max-w-prose text-sm leading-relaxed">{{ dog.description }}</p>
+          <p v-else class="max-w-prose text-sm opacity-60 italic">
             {{ dog.name }}'s shelter hasn't written a bio yet — worth asking about
             temperament and history when you call.
           </p>
@@ -178,7 +178,7 @@ onUnmounted(() => {
           >
             Start the adoption at {{ dog.source }} ↗
           </a>
-          <p class="text-center text-xs opacity-60">
+          <p class="mx-auto max-w-prose text-center text-xs opacity-60">
             Listed by
             <a :href="dog.sourceUrl" target="_blank" rel="noopener noreferrer" class="link">{{ dog.source }}</a>
             — adoption fees, hours, and requirements are theirs, not ours.
