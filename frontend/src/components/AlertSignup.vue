@@ -115,6 +115,7 @@ async function save() {
           required
           placeholder="you@example.com"
           class="input input-bordered join-item input-sm flex-1"
+          aria-label="Your email address for new-dog alerts"
         />
         <button type="submit" class="btn btn-primary join-item btn-sm" :disabled="saving">
           <span v-if="saving" class="loading loading-spinner loading-xs" />

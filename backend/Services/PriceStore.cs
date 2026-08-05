@@ -242,22 +242,6 @@ public sealed class PriceStore(PriceDb db, ILogger<PriceStore> logger)
         return results;
     }
 
-    /// <summary>Which breeds have any listing sample at all.</summary>
-    public async Task<IReadOnlyList<string>> GetBreedsWithListingsAsync(CancellationToken ct)
-    {
-        await using var connection = await db.OpenAsync(ct);
-        await using var command = connection.CreateCommand();
-        command.CommandText = "SELECT DISTINCT breed_slug FROM listing_price ORDER BY breed_slug;";
-
-        List<string> slugs = [];
-        await using var reader = await command.ExecuteReaderAsync(ct);
-        while (await reader.ReadAsync(ct))
-        {
-            slugs.Add(reader.GetString(0));
-        }
-
-        return slugs;
-    }
 
     /// <summary>The accepted observations backing a breed's range — what the UI cites.</summary>
     public async Task<IReadOnlyList<PriceObservation>> GetObservationsAsync(

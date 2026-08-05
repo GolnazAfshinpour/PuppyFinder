@@ -830,7 +830,7 @@ onMounted(() => {
             <div class="card-body items-center text-center">
               <span class="text-4xl">🐾</span>
               <p class="font-semibold">No live listings match your filters.</p>
-              <p class="text-sm opacity-70">
+              <p class="mx-auto max-w-prose text-sm opacity-70">
                 Our own feeds only reach a few counties so far — the sites below cover the
                 whole country.
               </p>
