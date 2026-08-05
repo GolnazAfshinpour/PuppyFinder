@@ -453,7 +453,39 @@ genuinely distinct breeds we don't otherwise carry.
 
 There are two collectors and one row, so precedence lives in exactly one place:
 `PriceRefreshJob.ReaggregateBreedAsync` derives both, prefers a listing range that clears its
-own bar, and otherwise keeps the editorial one. It used to derive from observations alone and
+own bar, and otherwise keeps the editorial one.
+
+### The approval gate
+
+Precedence decides *what* would be published; the gate decides *whether it may be*. A proposed
+range that moves the midpoint more than `Prices:DriftReviewPercent` (default 40%) away from a
+range already marked `verified` is not published at all. It is written to `price_hold`, the
+previous range stays live, and it waits for `POST /api/admin/price-holds/{breed}`.
+
+Four details carry the weight:
+
+- **The check runs after precedence, on the range actually about to go live.** It used to live
+  inside `Aggregate`, which only ever saw the *editorial* range — so a sharp move in a
+  listing-derived range was never gated, and listings are the path that actually runs, the
+  editorial job being dormant without a model key. The guard was watching the wrong number.
+- **Only a move away from something already `verified` is gated.** Moving off an unsourced legacy
+  seed is the entire point of this system: German Shepherd going from a hardcoded $1,000–$3,000
+  to a sourced $2,000–$4,000 is a 50% move and should happen automatically. Gating those would
+  mean every breed needed sign-off once, which is how a safety mechanism becomes something people
+  click through without reading.
+- **Approval publishes the stored proposal verbatim**, rather than re-deriving it. Re-deriving
+  would compare the new figures against the still-unchanged live row, find the same sharp move,
+  and re-raise the hold that was just approved.
+- **Dismissal is remembered.** The evidence behind a dismissed proposal is still in the database,
+  so without a record of the answer every run would ask the identical question again. A proposal
+  with different numbers is a new question and is raised.
+
+This replaced a guard that downgraded a sharply-moved range to `Contested` and published it
+anyway. That made the hold exactly one run long — the next run compared the new figures against
+the row it had just written, found no movement, and promoted them to `verified` with nobody
+involved. The review queue built on top of it read an observation status nothing ever wrote, so
+it returned an empty list by construction, and its test asserted that emptiness. Three mechanisms
+that each looked like oversight and collectively provided none. It used to derive from observations alone and
 upsert — which meant a single call to the free `/api/admin/price-reaggregate` **silently
 reverted every listing-derived range** to its editorial value. The "re-tune a threshold for
 free" operation was quietly throwing away the better data.
@@ -464,14 +496,12 @@ free" operation was quietly throwing away the better data.
   is shared, so for a listing run `accepted` means "breeds published", `pending` means "breeds
   refused" and `rejected` means "crossbreed listings dropped" — different nouns from the
   editorial job's row counts. Legible with the comment, but a `kind` column would be honest.
-- **The drift guard is a one-run delay, not a gate.** It downgrades a sharply-moved range to
-  `Contested` so nothing screens against it, but it still *publishes* the new figures — so the
-  next run compares them against the row it just wrote, reads no drift, and promotes to
-  `Verified` with nobody involved. That is the right trade with no admin UI (a real gate would
-  leave the breed unscreenable until someone POSTed to an API with a secret, degrading to
-  "silently stale forever" rather than "works without me"), but it means the window to notice a
-  move is one run wide. The hold is logged as a warning at the moment it happens; that log line
-  is the whole surfacing mechanism.
+- **An unattended hold freezes that breed's range indefinitely.** This is the accepted cost of a
+  real approval gate, and it is deliberate rather than unnoticed: the previous *verified* range
+  stays live, so the scam check keeps working and nothing looks broken from outside — which is
+  exactly why silence would be indistinguishable from having no holds. Every run logs a warning
+  naming each breed still waiting. An email would be better than a log line, and there is already
+  an `IEmailSender`; nothing is wired to it because there is no operator address configured.
 - **Coverage is capped by inventory, not by effort.** Rare breeds have too few live listings
   to compute a band from (Kerry Blue Terrier 4, Affenpinscher 1, Finnish Lapphund 0), and no
   slug mapping fixes that. Popular breeds have inventory; rare ones don't, and the

@@ -48,10 +48,23 @@ public sealed class PriceAdminApiTests : IDisposable
 
     // ---------------------------------------------------------------- the guard
 
-    [Fact]
-    public async Task ReadEndpointsRefuseWithoutTheSecret()
+    [Theory]
+    [InlineData("/api/admin/price-report")]
+    [InlineData("/api/admin/price-holds")]
+    public async Task ReadEndpointsRefuseWithoutTheSecret(string url)
     {
-        var response = await _client.GetAsync("/api/admin/price-report", Ct);
+        var response = await _client.GetAsync(url, Ct);
+
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task DecidingAHoldRefusesWithoutTheSecret()
+    {
+        // This one publishes a price range that a fraud check measures against, so an unguarded
+        // route here is worse than an unguarded read.
+        var response = await _client.PostAsync(
+            "/api/admin/price-holds/beagle?decision=approve", content: null, Ct);
 
         Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
     }
@@ -167,6 +180,121 @@ public sealed class PriceAdminApiTests : IDisposable
         // gate holds even after an explicit re-aggregation.
         Assert.Equal(PriceConfidence.Unverified, await CurrentConfidenceAsync("beagle"));
     }
+
+    [Fact]
+    public async Task NothingIsWaitingWhenNoRangeHasMovedSharply()
+    {
+        var response = await _client.SendAsync(Authorised(HttpMethod.Get, "/api/admin/price-holds"), Ct);
+        response.EnsureSuccessStatusCode();
+
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>(Ct);
+        Assert.Equal(0, body.GetProperty("waiting").GetInt32());
+        Assert.Empty(body.GetProperty("holds").EnumerateArray());
+    }
+
+    [Fact]
+    public async Task AHeldChangeIsListedWithBothRangesSoItCanBeJudged()
+    {
+        // "Beagle wants to go to $2,500-$4,100" is not a decision anyone can make. What it moved
+        // *from*, by how much, and on what evidence is the decision.
+        var store = _factory.Services.GetRequiredService<PriceStore>();
+        var job = _factory.Services.GetRequiredService<PriceRefreshJob>();
+        await SetUpASharpMoveAsync(store);
+        await job.ReaggregateBreedAsync("beagle", new PriceThresholds(), Ct);
+
+        var response = await _client.SendAsync(Authorised(HttpMethod.Get, "/api/admin/price-holds"), Ct);
+        response.EnsureSuccessStatusCode();
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>(Ct);
+
+        Assert.Equal(1, body.GetProperty("waiting").GetInt32());
+        var hold = body.GetProperty("holds").EnumerateArray().Single();
+        Assert.Equal("beagle", hold.GetProperty("breedSlug").GetString());
+        Assert.Equal(1000, hold.GetProperty("live").GetProperty("low").GetInt32());
+        Assert.Equal(2500, hold.GetProperty("proposed").GetProperty("low").GetInt32());
+        Assert.True(hold.GetProperty("driftPercent").GetInt32() > 40);
+        Assert.False(string.IsNullOrWhiteSpace(hold.GetProperty("rationale").GetString()));
+    }
+
+    [Fact]
+    public async Task ApprovingAHoldChangesWhatVisitorsSee()
+    {
+        // End to end through the API, including the served catalog: an approval that updated the
+        // database but left BreedCatalogService holding the old range would look applied and
+        // screen quotes against the superseded numbers.
+        var store = _factory.Services.GetRequiredService<PriceStore>();
+        var job = _factory.Services.GetRequiredService<PriceRefreshJob>();
+        await SetUpASharpMoveAsync(store);
+        await job.ReaggregateBreedAsync("beagle", new PriceThresholds(), Ct);
+
+        var before = await BeagleRangeFromApiAsync();
+        Assert.Equal(1000, before);
+
+        var decision = await _client.SendAsync(
+            Authorised(HttpMethod.Post, "/api/admin/price-holds/beagle?decision=approve&reason=checked"), Ct);
+        decision.EnsureSuccessStatusCode();
+
+        Assert.Equal(2500, await BeagleRangeFromApiAsync());
+    }
+
+    [Fact]
+    public async Task DecidingSomethingThatIsNotWaitingIs404()
+    {
+        var response = await _client.SendAsync(
+            Authorised(HttpMethod.Post, "/api/admin/price-holds/beagle?decision=approve"), Ct);
+
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task AnUnknownHoldDecisionIsRejected()
+    {
+        // Not 404: the difference between "no such breed is waiting" and "that isn't a decision"
+        // matters when you are driving this by hand from a terminal.
+        var response = await _client.SendAsync(
+            Authorised(HttpMethod.Post, "/api/admin/price-holds/beagle?decision=maybe"), Ct);
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    private async Task<int> BeagleRangeFromApiAsync()
+    {
+        var response = await _client.GetAsync("/api/breeds", Ct);
+        response.EnsureSuccessStatusCode();
+        var breeds = await response.Content.ReadFromJsonAsync<JsonElement>(Ct);
+        var beagle = breeds.EnumerateArray()
+            .Single(b => b.GetProperty("slug").GetString() == "beagle");
+        return beagle.GetProperty("priceLow").GetInt32();
+    }
+
+    private static async Task SetUpASharpMoveAsync(PriceStore store)
+    {
+        await store.UpsertAsync(
+            new BreedPrice("beagle", 1000, 1400, PriceConfidence.Verified, 3, DateTimeOffset.UtcNow), Ct);
+        await store.AddObservationsAsync(
+            [Editorial("beagle", 2500, 4000, "MetLife Pet Insurance",
+                 "https://www.metlifepetinsurance.com/blog/breed-spotlights/beagle/"),
+             Editorial("beagle", 2600, 4100, "Rover", "https://www.rover.com/blog/beagle-price/"),
+             Editorial("beagle", 2450, 4200, "Canine Bible", "https://www.caninebible.com/beagle-price/")],
+            Ct);
+    }
+
+    private static PriceObservation Editorial(
+        string slug, int low, int high, string publisher, string url) => new(
+        BreedSlug: slug,
+        PriceLow: low,
+        PriceHigh: high,
+        Scope: PriceScope.PetStandard,
+        Kind: FigureKind.Range,
+        SourceUrl: url,
+        Publisher: publisher,
+        // Re-derived from the URL at aggregation time, so these have to be real entries on the
+        // reviewed source list or the range never reaches the bar and nothing is ever gated.
+        PublisherTier: PublisherTier.A,
+        Quote: $"Expect to pay ${low:N0} to ${high:N0} for a puppy from a reputable breeder.",
+        RetrievedAt: DateTimeOffset.UtcNow,
+        RunId: "run-test",
+        Model: "manual",
+        Status: ObservationStatus.Accepted);
 
     [Fact]
     public async Task TheReviewQueueIsGoneRatherThanEmpty()

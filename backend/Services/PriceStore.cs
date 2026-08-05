@@ -308,6 +308,240 @@ public sealed class PriceStore(PriceDb db, ILogger<PriceStore> logger)
         }
     }
 
+    // ------------------------------------------------------------------ holds
+
+    private const string HoldColumns = """
+        id, breed_slug, proposed_low, proposed_high, proposed_confidence, proposed_basis,
+        proposed_sources, from_low, from_high, from_confidence, drift_percent, rationale,
+        raised_at, decision, decided_at, decided_reason
+        """;
+
+    /// <summary>
+    /// Records a proposed range as waiting on a person, replacing any open hold for that breed.
+    ///
+    /// <para>
+    /// Replacing rather than queueing: if the evidence moves twice before anyone looks, the
+    /// second proposal supersedes the first — reviewing a figure that has already been
+    /// overtaken is worse than useless, because approving it would publish a number nothing
+    /// currently supports.
+    /// </para>
+    /// </summary>
+    public async Task UpsertHoldAsync(PriceHold hold, CancellationToken ct)
+    {
+        await _lock.WaitAsync(ct);
+        try
+        {
+            await using var connection = await db.OpenAsync(ct);
+            await using var transaction = await connection.BeginTransactionAsync(ct);
+
+            await using (var clear = connection.CreateCommand())
+            {
+                clear.Transaction = (SqliteTransaction)transaction;
+                clear.CommandText = """
+                    UPDATE price_hold SET decision = $superseded, decided_at = $now,
+                        decided_reason = 'a newer proposal replaced this one'
+                    WHERE breed_slug = $slug AND decision IS NULL;
+                    """;
+                clear.Parameters.AddWithValue("$superseded", HoldDecision.Superseded);
+                clear.Parameters.AddWithValue("$now", hold.RaisedAt.ToString("o"));
+                clear.Parameters.AddWithValue("$slug", hold.BreedSlug);
+                await clear.ExecuteNonQueryAsync(ct);
+            }
+
+            await using (var insert = connection.CreateCommand())
+            {
+                insert.Transaction = (SqliteTransaction)transaction;
+                insert.CommandText = """
+                    INSERT INTO price_hold
+                        (breed_slug, proposed_low, proposed_high, proposed_confidence,
+                         proposed_basis, proposed_sources, from_low, from_high, from_confidence,
+                         drift_percent, rationale, raised_at)
+                    VALUES ($slug, $pLow, $pHigh, $pConf, $pBasis, $pSources,
+                            $fLow, $fHigh, $fConf, $drift, $rationale, $raised);
+                    """;
+                insert.Parameters.AddWithValue("$slug", hold.BreedSlug);
+                insert.Parameters.AddWithValue("$pLow", hold.ProposedLow);
+                insert.Parameters.AddWithValue("$pHigh", hold.ProposedHigh);
+                insert.Parameters.AddWithValue("$pConf", hold.ProposedConfidence);
+                insert.Parameters.AddWithValue("$pBasis", hold.ProposedBasis);
+                insert.Parameters.AddWithValue("$pSources", hold.ProposedSources);
+                insert.Parameters.AddWithValue("$fLow", hold.FromLow);
+                insert.Parameters.AddWithValue("$fHigh", hold.FromHigh);
+                insert.Parameters.AddWithValue("$fConf", hold.FromConfidence);
+                insert.Parameters.AddWithValue("$drift", hold.DriftPercent);
+                insert.Parameters.AddWithValue("$rationale", hold.Rationale);
+                insert.Parameters.AddWithValue("$raised", hold.RaisedAt.ToString("o"));
+                await insert.ExecuteNonQueryAsync(ct);
+            }
+
+            await transaction.CommitAsync(ct);
+        }
+        finally
+        {
+            _lock.Release();
+        }
+    }
+
+    /// <summary>The open hold for a breed, if one is waiting.</summary>
+    public async Task<PriceHold?> FindOpenHoldAsync(string breedSlug, CancellationToken ct)
+    {
+        await using var connection = await db.OpenAsync(ct);
+        await using var command = connection.CreateCommand();
+        command.CommandText = $"""
+            SELECT {HoldColumns} FROM price_hold
+            WHERE breed_slug = $slug AND decision IS NULL;
+            """;
+        command.Parameters.AddWithValue("$slug", breedSlug);
+
+        await using var reader = await command.ExecuteReaderAsync(ct);
+        return await reader.ReadAsync(ct) ? ReadHold(reader) : null;
+    }
+
+    /// <summary>Everything currently waiting on a person, oldest first.</summary>
+    public async Task<IReadOnlyList<PriceHold>> GetOpenHoldsAsync(CancellationToken ct)
+    {
+        await using var connection = await db.OpenAsync(ct);
+        await using var command = connection.CreateCommand();
+        command.CommandText = $"""
+            SELECT {HoldColumns} FROM price_hold
+            WHERE decision IS NULL
+            ORDER BY raised_at, breed_slug;
+            """;
+
+        var results = new List<PriceHold>();
+        await using var reader = await command.ExecuteReaderAsync(ct);
+        while (await reader.ReadAsync(ct))
+        {
+            results.Add(ReadHold(reader));
+        }
+
+        return results;
+    }
+
+    /// <summary>
+    /// True when this exact proposal has already been dismissed.
+    ///
+    /// <para>
+    /// Without this the gate becomes a nag: the evidence that produced a rejected proposal is
+    /// still in the database, so every run would re-raise the same figures and the answer would
+    /// have to be given again forever. Matched on the numbers, so a proposal that moves is a
+    /// genuinely new question and does get raised.
+    /// </para>
+    /// </summary>
+    public async Task<bool> WasDismissedAsync(string breedSlug, int low, int high, CancellationToken ct)
+    {
+        await using var connection = await db.OpenAsync(ct);
+        await using var command = connection.CreateCommand();
+        command.CommandText = """
+            SELECT 1 FROM price_hold
+            WHERE breed_slug = $slug AND proposed_low = $low AND proposed_high = $high
+              AND decision = $dismissed
+            LIMIT 1;
+            """;
+        command.Parameters.AddWithValue("$slug", breedSlug);
+        command.Parameters.AddWithValue("$low", low);
+        command.Parameters.AddWithValue("$high", high);
+        command.Parameters.AddWithValue("$dismissed", HoldDecision.Dismissed);
+        return await command.ExecuteScalarAsync(ct) is not null;
+    }
+
+    /// <summary>
+    /// Closes a breed's open hold, and publishes the proposal when it was approved.
+    ///
+    /// <para>
+    /// Both halves in one transaction, because they are the same decision: an approval that
+    /// recorded itself without writing the range would leave the old numbers live and look
+    /// applied. The stored proposal is published verbatim rather than re-derived — re-deriving
+    /// would compare against the still-old live row, detect the same sharp move, and raise the
+    /// hold that was just approved.
+    /// </para>
+    /// </summary>
+    /// <returns>The hold as decided, or null when nothing was waiting for that breed.</returns>
+    public async Task<PriceHold?> DecideHoldAsync(
+        string breedSlug, string decision, string? reason, CancellationToken ct)
+    {
+        await _lock.WaitAsync(ct);
+        try
+        {
+            await using var connection = await db.OpenAsync(ct);
+            PriceHold open;
+            await using (var find = connection.CreateCommand())
+            {
+                find.CommandText = $"""
+                    SELECT {HoldColumns} FROM price_hold
+                    WHERE breed_slug = $slug AND decision IS NULL;
+                    """;
+                find.Parameters.AddWithValue("$slug", breedSlug);
+                await using var reader = await find.ExecuteReaderAsync(ct);
+                if (!await reader.ReadAsync(ct))
+                {
+                    return null;
+                }
+
+                open = ReadHold(reader);
+            }
+
+            var decidedAt = DateTimeOffset.UtcNow;
+            await using var transaction = await connection.BeginTransactionAsync(ct);
+            await using (var update = connection.CreateCommand())
+            {
+                update.Transaction = (SqliteTransaction)transaction;
+                update.CommandText = """
+                    UPDATE price_hold
+                    SET decision = $decision, decided_at = $at, decided_reason = $reason
+                    WHERE id = $id;
+                    """;
+                update.Parameters.AddWithValue("$decision", decision);
+                update.Parameters.AddWithValue("$at", decidedAt.ToString("o"));
+                update.Parameters.AddWithValue("$reason", reason ?? (object)DBNull.Value);
+                update.Parameters.AddWithValue("$id", open.Id);
+                await update.ExecuteNonQueryAsync(ct);
+            }
+
+            if (decision == HoldDecision.Approved)
+            {
+                await UpsertAsync(
+                    connection,
+                    new BreedPrice(
+                        breedSlug,
+                        open.ProposedLow,
+                        open.ProposedHigh,
+                        open.ProposedConfidence,
+                        open.ProposedSources,
+                        decidedAt,
+                        Basis: open.ProposedBasis),
+                    transaction,
+                    ct);
+            }
+
+            await transaction.CommitAsync(ct);
+            _cache = null;
+            return open with { Decision = decision, DecidedAt = decidedAt, DecidedReason = reason };
+        }
+        finally
+        {
+            _lock.Release();
+        }
+    }
+
+    private static PriceHold ReadHold(SqliteDataReader r) => new(
+        BreedSlug: r.GetString(1),
+        ProposedLow: r.GetInt32(2),
+        ProposedHigh: r.GetInt32(3),
+        ProposedConfidence: r.GetString(4),
+        ProposedBasis: r.GetString(5),
+        ProposedSources: r.GetInt32(6),
+        FromLow: r.GetInt32(7),
+        FromHigh: r.GetInt32(8),
+        FromConfidence: r.GetString(9),
+        DriftPercent: r.GetInt32(10),
+        Rationale: r.GetString(11),
+        RaisedAt: DateTimeOffset.Parse(r.GetString(12)),
+        Id: r.GetInt64(0),
+        Decision: r.IsDBNull(13) ? null : r.GetString(13),
+        DecidedAt: r.IsDBNull(14) ? null : DateTimeOffset.Parse(r.GetString(14)),
+        DecidedReason: r.IsDBNull(15) ? null : r.GetString(15));
+
     public async Task StartRunAsync(PriceRun run, CancellationToken ct)
     {
         await using var connection = await db.OpenAsync(ct);

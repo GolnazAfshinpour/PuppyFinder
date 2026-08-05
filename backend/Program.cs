@@ -627,17 +627,100 @@ app.MapGet("/api/admin/price-report", async (HttpRequest request,
 })
 .WithName("PriceReport");
 
+// Price changes waiting on a person, and the previous range each would replace.
+//
+// A sharp move away from an already-verified range is not published automatically, because it is
+// genuinely ambiguous: either the market moved or our evidence went bad, and those need opposite
+// responses. Until it is decided, the old range stays live — so nothing here is urgent in the
+// sense of the app being broken, but an unattended hold means that breed's range is frozen.
+// The count is logged on every run for that reason.
+app.MapGet("/api/admin/price-holds", async (HttpRequest request,
+    PriceStore prices, CancellationToken ct) =>
+{
+    if (!Authorised(request)) return Forbidden();
+
+    var holds = await prices.GetOpenHoldsAsync(ct);
+    return Results.Ok(new
+    {
+        Waiting = holds.Count,
+        Holds = holds.Select(h => new
+        {
+            h.BreedSlug,
+            Live = new { Low = h.FromLow, High = h.FromHigh, Confidence = h.FromConfidence },
+            Proposed = new
+            {
+                Low = h.ProposedLow,
+                High = h.ProposedHigh,
+                h.ProposedConfidence,
+                h.ProposedBasis,
+                h.ProposedSources,
+            },
+            h.DriftPercent,
+            h.Rationale,
+            h.RaisedAt,
+            Decide = $"POST /api/admin/price-holds/{h.BreedSlug}?decision=approve|dismiss",
+        }),
+    });
+})
+.WithName("PriceHolds");
+
+// Approve a held change (publishes it) or dismiss it (keeps what is live).
+//
+// Dismissing is not "the evidence is wrong" — for that, reject the observation behind it. It
+// means "I have seen this and I am keeping the current range", and it stops the same proposal
+// being raised every run. A proposal with different numbers is a new question and will be.
+//
+// Approval publishes the stored proposal verbatim rather than re-deriving it. Re-deriving would
+// compare against the still-unchanged live row, find the same sharp move, and re-raise the hold
+// that was just approved.
+app.MapPost("/api/admin/price-holds/{breed}", async (HttpRequest request, string breed,
+    string decision, string? reason, PriceStore prices, BreedCatalogService catalog,
+    CancellationToken ct) =>
+{
+    if (!Authorised(request)) return Forbidden();
+
+    var resolved = decision.ToLowerInvariant() switch
+    {
+        "approve" => HoldDecision.Approved,
+        "dismiss" => HoldDecision.Dismissed,
+        _ => null,
+    };
+    if (resolved is null)
+    {
+        return Results.BadRequest(new { Message = "decision must be 'approve' or 'dismiss'." });
+    }
+
+    if (await prices.DecideHoldAsync(breed, resolved, reason, ct) is not { } decided)
+    {
+        return Results.NotFound(new { Message = $"No price change is waiting for '{breed}'." });
+    }
+
+    // An approval changes what every visitor sees, so the served catalog must not keep the
+    // superseded range — the exact combination this project exists to prevent.
+    catalog.InvalidatePrices();
+
+    return Results.Ok(new
+    {
+        decided.BreedSlug,
+        Decision = resolved,
+        Published = resolved == HoldDecision.Approved
+            ? new { Low = decided.ProposedLow, High = decided.ProposedHigh, decided.ProposedConfidence }
+            : null,
+        Live = resolved == HoldDecision.Approved
+            ? null
+            : new { Low = decided.FromLow, High = decided.FromHigh },
+        decided.DecidedAt,
+    });
+})
+.WithName("PriceHoldDecide");
+
 // Reject an observation, or restore one previously rejected. The row is kept either way — a
 // rejection is evidence about a source, not something to erase.
 //
-// This used to be half of a review queue. The GET half is gone: it read an observation status
-// nothing ever wrote, and the drift event it was meant to surface lasts exactly one run, so
-// there was never anything queued. See docs/PRICE-SEARCH.md.
-//
-// "accept" does not approve a range and cannot force one live — aggregation is a pure function
-// of the evidence, so the only way to change an outcome is to change what evidence counts.
-// Rejecting is the operative decision and accepting is its undo. Ids come from the
-// price_observation table; nothing in the logs prints them.
+// Not the same thing as approving a price change — that is /api/admin/price-holds. This acts on
+// one piece of evidence: "this publisher's figure is wrong, stop counting it". Aggregation is a
+// pure function of the evidence, so rejecting is how you change what a range is derived *from*.
+// Ids come from the price_observation table; nothing in the logs prints them.
 app.MapPost("/api/admin/price-observation/{id:long}", async (HttpRequest request, long id,
     string decision, string? reason, PriceStore prices, PriceRefreshJob job,
     IConfiguration config, CancellationToken ct) =>

@@ -262,6 +262,7 @@ public sealed class PriceRefreshJob(
                 "Listing run {RunId}: {Checked} breeds, {Published} published, {Refused} refused, "
                 + "{Mixes} crossbreeds dropped",
                 runId, targets.Count, published, refused, mixes);
+            await ReportOutstandingHoldsAsync(ct);
 
             return new ListingCollectionSummary(
                 runId, targets.Count, published, refused, mixes, errors, outcomes);
@@ -375,6 +376,7 @@ public sealed class PriceRefreshJob(
             logger.LogInformation(
                 "Price run {RunId}: {Checked} breeds, {Accepted} verified, {Pending} needing review, {Rejected} rejected rows",
                 runId, breeds.Count, accepted, pending, rejected);
+            await ReportOutstandingHoldsAsync(ct);
 
             return new PriceRefreshSummary(runId, breeds.Count, accepted, pending, rejected, unverifiable, errors);
         }
@@ -474,23 +476,24 @@ public sealed class PriceRefreshJob(
             return aggregation;
         }
 
+        // ---- the approval gate.
+        //
+        // Checked here, against the range that is genuinely about to go live, rather than inside
+        // Aggregate: precedence may have just replaced the editorial range with a listing one,
+        // and it is the published number the scam check measures against. The old code compared
+        // the editorial range only, so a sharp move from listings — the path that actually runs
+        // today — was never gated.
+        //
+        // Held changes are not published. The previous range stays live, so the app keeps
+        // screening against figures it already trusted instead of going quiet on that breed;
+        // that is what makes waiting for a person affordable.
+        if (await GateAsync(breedSlug, aggregation, current, thresholds, timestampNow, ct) is { } held)
+        {
+            return held;
+        }
+
         if (aggregation.Price is not null)
         {
-            // A drift hold used to leave no trace anywhere: it downgraded the confidence,
-            // published the new figures, and said nothing. The queue that was supposed to
-            // surface it read a status nothing wrote, and the window is one run wide — so
-            // unless it is logged at the moment it happens, a sharp move in the number the
-            // scam check measures against passes unobserved. Warning, not information: this
-            // is the one price event worth interrupting someone for.
-            if (aggregation.ReviewReason == PriceReviewReason.Drifted)
-            {
-                logger.LogWarning(
-                    "Held {Breed} at {Confidence} for review: {Rationale} (was {WasLow}-{WasHigh}, now {Low}-{High})",
-                    breedSlug, aggregation.Price.Confidence, aggregation.Rationale,
-                    current?.PriceLow, current?.PriceHigh,
-                    aggregation.Price.PriceLow, aggregation.Price.PriceHigh);
-            }
-
             await store.UpsertAsync(aggregation.Price, ct);
 
             // Invalidate here rather than in each caller. Only RunAsync and
@@ -506,6 +509,117 @@ public sealed class PriceRefreshJob(
         }
 
         return aggregation;
+    }
+
+    /// <summary>
+    /// Says how many price changes are waiting on a person, every run.
+    ///
+    /// <para>
+    /// This is the honest cost of a real approval gate: a hold nobody looks at freezes that
+    /// breed's range for good. Nothing looks broken from outside — the previously trusted range
+    /// keeps serving — so silence would be indistinguishable from having no holds at all. Said
+    /// on every run rather than only the one that raised it, because the run that raised it is
+    /// the one nobody was watching.
+    /// </para>
+    /// </summary>
+    private async Task ReportOutstandingHoldsAsync(CancellationToken ct)
+    {
+        var holds = await store.GetOpenHoldsAsync(ct);
+        if (holds.Count == 0)
+        {
+            return;
+        }
+
+        logger.LogWarning(
+            "{Count} price change(s) waiting for approval: {Breeds}. Those ranges stay frozen "
+            + "until decided — GET /api/admin/price-holds",
+            holds.Count, string.Join(", ", holds.Select(h => h.BreedSlug)));
+    }
+
+    /// <summary>
+    /// Decides whether a proposed range may publish itself, or has to wait for a person.
+    ///
+    /// <para>
+    /// Only a move away from something already <see cref="PriceConfidence.Verified"/> is gated.
+    /// Moving off an unsourced legacy seed is the entire point of this system, not a warning
+    /// sign: German Shepherd going from a hardcoded $1,000-$3,000 to a sourced $2,000-$4,000 is
+    /// a 50% move and is exactly what should happen automatically. A sharp move is only evidence
+    /// of a problem when it contradicts something we already trusted — and then it is genuinely
+    /// ambiguous, because it is either the market moving or our own evidence going bad, and
+    /// those need opposite responses. That ambiguity is what a person is for.
+    /// </para>
+    /// </summary>
+    /// <returns>The unpublished aggregation when held, or null when publishing may proceed.</returns>
+    private async Task<PriceAggregation?> GateAsync(
+        string breedSlug, PriceAggregation aggregation, BreedPrice? current,
+        PriceThresholds thresholds, DateTimeOffset now, CancellationToken ct)
+    {
+        var proposal = aggregation.Price;
+        var gated = proposal is not null
+            && current is { Confidence: PriceConfidence.Verified }
+            && PriceDrift.Percent(current, proposal.PriceLow, proposal.PriceHigh)
+                is { } drift && drift > thresholds.DriftReviewPercent;
+
+        if (!gated)
+        {
+            // An open hold that no longer describes reality has to close itself, or it sits
+            // there asking about a change the evidence has already walked back — and approving
+            // it would publish figures nothing currently supports.
+            if (await store.FindOpenHoldAsync(breedSlug, ct) is not null)
+            {
+                await store.DecideHoldAsync(
+                    breedSlug, HoldDecision.Superseded,
+                    "the evidence no longer proposes a sharp change", ct);
+                logger.LogInformation(
+                    "Closed the open hold on {Breed}: it no longer proposes a sharp change", breedSlug);
+            }
+
+            return null;
+        }
+
+        var moved = PriceDrift.Percent(current, proposal!.PriceLow, proposal.PriceHigh)!.Value;
+
+        // Already answered. Without this the gate becomes a nag: the evidence behind a dismissed
+        // proposal is still stored, so every run would ask the same question again.
+        if (await store.WasDismissedAsync(breedSlug, proposal.PriceLow, proposal.PriceHigh, ct))
+        {
+            logger.LogDebug(
+                "Not publishing {Breed} {Low}-{High}: dismissed previously",
+                breedSlug, proposal.PriceLow, proposal.PriceHigh);
+            return aggregation with { Price = current, ReviewReason = PriceReviewReason.Drifted };
+        }
+
+        var existing = await store.FindOpenHoldAsync(breedSlug, ct);
+        if (existing is null
+            || existing.ProposedLow != proposal.PriceLow
+            || existing.ProposedHigh != proposal.PriceHigh)
+        {
+            await store.UpsertHoldAsync(
+                new PriceHold(
+                    BreedSlug: breedSlug,
+                    ProposedLow: proposal.PriceLow,
+                    ProposedHigh: proposal.PriceHigh,
+                    ProposedConfidence: proposal.Confidence,
+                    ProposedBasis: proposal.Basis,
+                    ProposedSources: proposal.SourceCount,
+                    FromLow: current!.PriceLow,
+                    FromHigh: current.PriceHigh,
+                    FromConfidence: current.Confidence,
+                    DriftPercent: moved,
+                    Rationale: aggregation.Rationale,
+                    RaisedAt: now),
+                ct);
+
+            // Warning rather than information: this is the one price event worth interrupting
+            // someone for, and until they look, the range does not change.
+            logger.LogWarning(
+                "Holding {Breed} for approval: {WasLow}-{WasHigh} -> {Low}-{High} ({Drift}% move). "
+                + "The previous range stays live. {Rationale}",
+                breedSlug, current.PriceLow, current.PriceHigh,
+                proposal.PriceLow, proposal.PriceHigh, moved, aggregation.Rationale);
+        }
+
+        return aggregation with { Price = current, ReviewReason = PriceReviewReason.Drifted };
     }
 
     /// <summary>Re-derives every breed. Seconds, free, and safe to run repeatedly.</summary>

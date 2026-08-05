@@ -63,27 +63,35 @@ public sealed class PriceRefreshJobTests : IDisposable
         return Convert.ToInt32(await command.ExecuteScalarAsync(Ct));
     }
 
-    [Fact]
-    public async Task ASharpMoveIsLoggedAsAWarningSinceNothingElseSurfacesIt()
+    // ------------------------------------------------------- the approval gate
+
+    private sealed record Fixture(
+        WebApplicationFactory<Program> Factory, PriceStore Store, PriceRefreshJob Job,
+        CapturingLoggerProvider Logs) : IDisposable
     {
-        // The review queue that was supposed to surface this is gone: it read an observation
-        // status nothing ever wrote, and the hold it existed to show lasts exactly one run —
-        // the guard downgrades to Contested but still publishes, so the next aggregation sees
-        // no drift and promotes it. That leaves this log line as the only trace, so it is worth
-        // a test: without it the guard is decorative, which is where this started.
+        public void Dispose() => Factory.Dispose();
+    }
+
+    private Fixture NewGateFixture()
+    {
         var logs = new CapturingLoggerProvider();
-        using var factory = new WebApplicationFactory<Program>().WithWebHostBuilder(b => b
+        var factory = new WebApplicationFactory<Program>().WithWebHostBuilder(b => b
             .UseSetting("Prices:DbPath", DbPath)
             .UseSetting("Alerts:StorePath", Path.Combine(_dir, "alerts.json"))
             .UseSetting("Anthropic:ApiKey", "")
             .UseSetting("Prices:ListingsEnabled", "false")
             .ConfigureServices(s => s.AddSingleton<ILoggerProvider>(logs)));
         factory.CreateClient().Dispose();
+        return new Fixture(
+            factory,
+            factory.Services.GetRequiredService<PriceStore>(),
+            factory.Services.GetRequiredService<PriceRefreshJob>(),
+            logs);
+    }
 
-        var store = factory.Services.GetRequiredService<PriceStore>();
-        var job = factory.Services.GetRequiredService<PriceRefreshJob>();
-
-        // A range we already trusted, then evidence that moves it sharply.
+    /// <summary>A trusted range, plus editorial evidence that moves it sharply upward.</summary>
+    private static async Task SetUpASharpMoveAsync(PriceStore store)
+    {
         await store.UpsertAsync(
             new BreedPrice("beagle", 1000, 1400, PriceConfidence.Verified, 3, DateTimeOffset.UtcNow), Ct);
         await store.AddObservationsAsync(
@@ -92,15 +100,160 @@ public sealed class PriceRefreshJobTests : IDisposable
              Editorial(2600, 4100, "Rover", "https://www.rover.com/blog/beagle-price/"),
              Editorial(2450, 4200, "Canine Bible", "https://www.caninebible.com/beagle-price/")],
             Ct);
+    }
 
-        var result = await job.ReaggregateBreedAsync("beagle", new PriceThresholds(), Ct);
+    [Fact]
+    public async Task ASharpMoveWaitsForApprovalAndDoesNotPublishItself()
+    {
+        // The point of the whole exercise. The old guard downgraded the range to Contested and
+        // published it anyway, so the next run compared the new figures against the row it had
+        // just written, found no movement, and promoted them — a one-run delay dressed up as
+        // oversight. Now nothing is published until someone decides.
+        using var f = NewGateFixture();
+        await SetUpASharpMoveAsync(f.Store);
 
-        Assert.Equal(PriceConfidence.Contested, result!.Price!.Confidence);
-        var warning = Assert.Single(logs.Entries,
-            e => e.Level == LogLevel.Warning && e.Message.Contains("Held beagle"));
-        // The old numbers have to be in it: "held for review" without them can't be judged
-        // later, and by then the previous range is overwritten and unrecoverable.
-        Assert.Contains("1000-1400", warning.Message);
+        await f.Job.ReaggregateBreedAsync("beagle", new PriceThresholds(), Ct);
+
+        // The previous range is still live, so the scam check keeps working off numbers we
+        // already trusted rather than going quiet on this breed.
+        var live = await f.Store.FindAsync("beagle", Ct);
+        Assert.Equal(1000, live!.PriceLow);
+        Assert.Equal(1400, live.PriceHigh);
+        Assert.Equal(PriceConfidence.Verified, live.Confidence);
+
+        var hold = await f.Store.FindOpenHoldAsync("beagle", Ct);
+        Assert.NotNull(hold);
+        Assert.Equal(2500, hold!.ProposedLow);
+        Assert.Equal(1000, hold.FromLow);
+        Assert.True(hold.DriftPercent > 40);
+
+        Assert.Contains(f.Logs.Entries,
+            e => e.Level == LogLevel.Warning && e.Message.Contains("Holding beagle for approval"));
+    }
+
+    [Fact]
+    public async Task TheHoldSurvivesRepeatedRunsInsteadOfPromotingItself()
+    {
+        // The exact defect the gate replaces, asserted directly: re-running must not quietly
+        // accept the change, and must not stack up duplicate holds either.
+        using var f = NewGateFixture();
+        await SetUpASharpMoveAsync(f.Store);
+
+        for (var run = 0; run < 3; run++)
+        {
+            await f.Job.ReaggregateBreedAsync("beagle", new PriceThresholds(), Ct);
+        }
+
+        var live = await f.Store.FindAsync("beagle", Ct);
+        Assert.Equal(1000, live!.PriceLow);
+        Assert.NotNull(await f.Store.FindOpenHoldAsync("beagle", Ct));
+        // One conversation, not one per run — the schema's partial unique index enforces this.
+        Assert.Single(await f.Store.GetOpenHoldsAsync(Ct), h => h.BreedSlug == "beagle");
+    }
+
+    [Fact]
+    public async Task ApprovingAHoldPublishesTheProposalAndStaysPublished()
+    {
+        using var f = NewGateFixture();
+        await SetUpASharpMoveAsync(f.Store);
+        await f.Job.ReaggregateBreedAsync("beagle", new PriceThresholds(), Ct);
+
+        var decided = await f.Store.DecideHoldAsync("beagle", HoldDecision.Approved, "checked by hand", Ct);
+
+        Assert.NotNull(decided);
+        var live = await f.Store.FindAsync("beagle", Ct);
+        Assert.Equal(2500, live!.PriceLow);
+        Assert.Equal(4100, live.PriceHigh);
+        Assert.Empty(await f.Store.GetOpenHoldsAsync(Ct));
+
+        // And it stays: the next run must not treat the approved range as a fresh sharp move
+        // against... itself. Approval publishes the stored proposal verbatim precisely so this
+        // comparison comes out at zero.
+        await f.Job.ReaggregateBreedAsync("beagle", new PriceThresholds(), Ct);
+        Assert.Equal(2500, (await f.Store.FindAsync("beagle", Ct))!.PriceLow);
+        Assert.Empty(await f.Store.GetOpenHoldsAsync(Ct));
+    }
+
+    [Fact]
+    public async Task DismissingAHoldKeepsTheLiveRangeAndStopsAsking()
+    {
+        // Dismissing means "I've seen it and I'm keeping what we have". Without the memory of
+        // that answer the gate becomes a nag: the evidence is still stored, so every run would
+        // raise the identical proposal again.
+        using var f = NewGateFixture();
+        await SetUpASharpMoveAsync(f.Store);
+        await f.Job.ReaggregateBreedAsync("beagle", new PriceThresholds(), Ct);
+
+        await f.Store.DecideHoldAsync("beagle", HoldDecision.Dismissed, "one publisher looked wrong", Ct);
+        await f.Job.ReaggregateBreedAsync("beagle", new PriceThresholds(), Ct);
+
+        var live = await f.Store.FindAsync("beagle", Ct);
+        Assert.Equal(1000, live!.PriceLow);
+        Assert.Empty(await f.Store.GetOpenHoldsAsync(Ct));
+    }
+
+    [Fact]
+    public async Task AHoldClosesItselfWhenTheEvidenceWalksTheChangeBack()
+    {
+        // Otherwise the hold sits there asking about a change nothing supports any more, and
+        // approving it would publish figures the evidence has already abandoned.
+        using var f = NewGateFixture();
+        await SetUpASharpMoveAsync(f.Store);
+        await f.Job.ReaggregateBreedAsync("beagle", new PriceThresholds(), Ct);
+        Assert.NotNull(await f.Store.FindOpenHoldAsync("beagle", Ct));
+
+        // Reject the evidence behind the move, so the proposal is no longer a sharp one.
+        foreach (var o in await f.Store.GetObservationsAsync("beagle", ObservationStatus.Accepted, Ct))
+        {
+            await f.Store.SetObservationStatusAsync(o.Id, ObservationStatus.Rejected, "test", Ct);
+        }
+
+        await f.Job.ReaggregateBreedAsync("beagle", new PriceThresholds(), Ct);
+
+        Assert.Null(await f.Store.FindOpenHoldAsync("beagle", Ct));
+    }
+
+    [Fact]
+    public async Task MovingOffAnUnsourcedSeedNeedsNoApproval()
+    {
+        // Moving off the hardcoded legacy ranges is the entire purpose of this system, not a
+        // warning sign. Gating it would mean every breed needed sign-off once, which is how a
+        // safety mechanism becomes something people click through without reading.
+        using var f = NewGateFixture();
+        await f.Store.UpsertAsync(
+            new BreedPrice("beagle", 1000, 1400, PriceConfidence.Unverified, 0, DateTimeOffset.UtcNow), Ct);
+        await f.Store.AddObservationsAsync(
+            [Editorial(2500, 4000, "MetLife Pet Insurance",
+                 "https://www.metlifepetinsurance.com/blog/breed-spotlights/beagle/"),
+             Editorial(2600, 4100, "Rover", "https://www.rover.com/blog/beagle-price/"),
+             Editorial(2450, 4200, "Canine Bible", "https://www.caninebible.com/beagle-price/")],
+            Ct);
+
+        await f.Job.ReaggregateBreedAsync("beagle", new PriceThresholds(), Ct);
+
+        Assert.Equal(2500, (await f.Store.FindAsync("beagle", Ct))!.PriceLow);
+        Assert.Empty(await f.Store.GetOpenHoldsAsync(Ct));
+    }
+
+    [Fact]
+    public async Task ARoutineReconfirmationIsNotGated()
+    {
+        // If ordinary monthly movement needed approval the queue would fill with noise and the
+        // one entry that mattered would be lost in it.
+        using var f = NewGateFixture();
+        await f.Store.UpsertAsync(
+            new BreedPrice("beagle", 2400, 4000, PriceConfidence.Verified, 3, DateTimeOffset.UtcNow), Ct);
+        await f.Store.AddObservationsAsync(
+            [Editorial(2500, 4000, "MetLife Pet Insurance",
+                 "https://www.metlifepetinsurance.com/blog/breed-spotlights/beagle/"),
+             Editorial(2600, 4100, "Rover", "https://www.rover.com/blog/beagle-price/"),
+             Editorial(2450, 4200, "Canine Bible", "https://www.caninebible.com/beagle-price/")],
+            Ct);
+
+        await f.Job.ReaggregateBreedAsync("beagle", new PriceThresholds(), Ct);
+
+        Assert.Equal(2500, (await f.Store.FindAsync("beagle", Ct))!.PriceLow);
+        Assert.Empty(await f.Store.GetOpenHoldsAsync(Ct));
     }
 
     private static PriceObservation Editorial(int low, int high, string publisher, string url) => new(

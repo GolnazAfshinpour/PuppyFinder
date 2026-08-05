@@ -98,7 +98,19 @@ Disabled unless `Prices:AdminSecret` is set; all require an `X-Admin-Secret` hea
 | `POST /api/admin/listing-prices?breed=` | Collect live asking prices for one breed (or every curated breed) and publish the middle half when it clears the floor guard. Requires `Prices:ListingsEnabled=true`; off by default because the source's terms restrict automated collection |
 | `POST /api/admin/price-reaggregate` | Re-derive every breed's confidence from stored observations. Free and idempotent: this is how a threshold change is applied. |
 | `GET /api/admin/price-report` | Confidence distribution plus a what-if column per candidate threshold. Read-only — pick the bar from evidence. |
-| `POST /api/admin/price-observation/{id}?decision=accept\|reject&reason=` | Reject a bad source figure, or restore one. The row is kept either way, and that breed re-aggregates. `accept` cannot force a range live — it only undoes a rejection. |
+| `GET /api/admin/price-holds` | Price changes waiting on approval, each with the range it would replace and how far it moved. |
+| `POST /api/admin/price-holds/{breed}?decision=approve\|dismiss&reason=` | `approve` publishes the held range; `dismiss` keeps what is live and stops the same proposal being raised again. |
+| `POST /api/admin/price-observation/{id}?decision=accept\|reject&reason=` | Reject a bad source figure, or restore one. The row is kept either way, and that breed re-aggregates. Acts on one piece of *evidence* — to approve a price *change*, use `price-holds`. |
+
+### When a price change waits for you
+
+A range that moves sharply away from one already marked `verified` is **not published**. It is
+recorded as a hold, the previous range stays live, and the run logs a warning naming every breed
+still waiting. Nothing looks broken while a hold sits open — that is the point, the app keeps
+screening quotes against figures it already trusted — but that breed's range is frozen until you
+decide, so the outstanding count is repeated on every run rather than only when it is raised.
+
+Moving off an unsourced seed range is never gated: that is the system working, not a warning.
 
 ### Turning the research job on
 

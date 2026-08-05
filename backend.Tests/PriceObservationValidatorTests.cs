@@ -283,22 +283,28 @@ public class PriceObservationValidatorTests
             "german-shepherd", ThreeAgreeingSources, Strict, legacy);
 
         Assert.Equal(PriceConfidence.Verified, result.Price!.Confidence);
-        Assert.Contains("flagged for review", result.Rationale);
+        Assert.Contains("moved 50%", result.Rationale);
+        // Reported, but not gated: only a move away from something already verified waits for a
+        // person. See PriceRefreshJobTests for the gate itself.
+        Assert.Equal(PriceReviewReason.Drifted, result.ReviewReason);
     }
 
     [Fact]
-    public void ALargeMoveThatOverwritesAVerifiedRangeIsHeldBack()
+    public void ALargeMoveOverAVerifiedRangeIsReportedForTheGateToDecide()
     {
-        // Flagging alone wasn't enough: CanScreen arms on Verified, so the old code named
-        // the problem and then let the change arm the scam check anyway.
+        // This used to assert Aggregate downgraded the range to Contested. That downgrade was
+        // the old hold, and it still published the new figures — so the next run compared them
+        // against the row it had just written, saw no movement, and promoted them. Aggregate now
+        // reports the move and PriceRefreshJob decides whether it may publish at all.
         var trusted = new BreedPrice("german-shepherd", 1000, 3000, PriceConfidence.Verified, 4, DateTimeOffset.UtcNow);
 
         var result = PriceObservationValidator.Aggregate(
             "german-shepherd", ThreeAgreeingSources, Strict, trusted);
 
-        Assert.Equal(PriceConfidence.Contested, result.Price!.Confidence);
+        // The confidence the evidence actually earns, unmodified by the move.
+        Assert.Equal(PriceConfidence.Verified, result.Price!.Confidence);
         Assert.Equal(PriceReviewReason.Drifted, result.ReviewReason);
-        Assert.Contains("overwrites a verified range", result.Rationale);
+        Assert.Contains("moved", result.Rationale);
     }
 
     [Fact]
@@ -559,7 +565,7 @@ public class PriceObservationValidatorTests
     // ---------------------------------------------------------------- drift guard
 
     [Fact]
-    public void ALargeMoveInTheLiveValueIsHeldBackEvenWhenWellSourced()
+    public void ALargeMoveIsReportedEvenWhenWellSourced()
     {
         // This test used to assert the opposite — that three good sources carried the
         // change through to Verified with only a review flag set. That made the drift guard
@@ -573,38 +579,11 @@ public class PriceObservationValidatorTests
              TierB(2450, 4200, "caninebible.com")],
             Strict, current);
 
-        Assert.Equal(PriceConfidence.Contested, result.Price!.Confidence);
+        // Being well sourced is what makes a big move plausible, not what makes it safe: the
+        // range earns Verified on its evidence and still has to wait for approval.
+        Assert.Equal(PriceConfidence.Verified, result.Price!.Confidence);
         Assert.Equal(PriceReviewReason.Drifted, result.ReviewReason);
         Assert.Contains("moved", result.Rationale);
-    }
-
-    [Fact]
-    public void TheDriftHoldLastsOneRunAndThenPromotesItself()
-    {
-        // The guard is a one-run delay, not a gate, and that is the fact that decided the
-        // review queue should be deleted rather than wired up: it downgrades to Contested but
-        // still *publishes* the new figures, so the next run compares them against the row it
-        // just wrote, reads no drift, and promotes to Verified with nobody involved.
-        //
-        // That is the right trade with no admin UI — a real gate would leave the breed
-        // unscreenable until someone POSTed to an API with a secret, so it would degrade to
-        // "silently stale forever" rather than "works without me". But it means the window for
-        // a human to see the move is one run wide, which is why the hold is logged as a warning
-        // at the moment it happens instead of queued for later.
-        var current = new BreedPrice("french-bulldog", 1000, 1400, PriceConfidence.Verified, 3, DateTimeOffset.UtcNow);
-        PriceObservation[] evidence =
-            [Obs(2500, 4000), Obs(2600, 4100, "Rover", "https://www.rover.com/x"),
-             TierB(2450, 4200, "caninebible.com")];
-
-        var held = PriceObservationValidator.Aggregate("french-bulldog", evidence, Strict, current);
-        // Feed the published row back in as the live value, exactly as the job's next run does.
-        var next = PriceObservationValidator.Aggregate("french-bulldog", evidence, Strict, held.Price);
-
-        Assert.Equal(PriceConfidence.Contested, held.Price!.Confidence);
-        Assert.Equal(PriceReviewReason.Drifted, held.ReviewReason);
-
-        Assert.Equal(PriceConfidence.Verified, next.Price!.Confidence);
-        Assert.Null(next.ReviewReason);
     }
 
     [Fact]

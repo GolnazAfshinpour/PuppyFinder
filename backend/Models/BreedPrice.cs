@@ -227,6 +227,55 @@ public record PriceObservation(
     public double Midpoint => (PriceLow + PriceHigh) / 2.0;
 }
 
+public static class HoldDecision
+{
+    /// <summary>Publish the proposed range. The only decision that changes what users see.</summary>
+    public const string Approved = "approved";
+
+    /// <summary>
+    /// Stop asking about this proposal. The previous range stays live, which is also what
+    /// happens while a hold sits open — so dismissing means "I've seen it and I'm keeping what
+    /// we have", not "reject the evidence". An identical proposal won't be raised again.
+    /// </summary>
+    public const string Dismissed = "dismissed";
+
+    /// <summary>
+    /// The evidence moved again and no longer proposes a sharp change, so the question answered
+    /// itself. Closed by the job, not by a person, and recorded so an open hold can't linger
+    /// after it stopped being true.
+    /// </summary>
+    public const string Superseded = "superseded";
+}
+
+/// <summary>
+/// A price change that is waiting on a person, and what it would replace.
+///
+/// <para>
+/// Holds exist because a sharp move in the number the scam check measures against is exactly
+/// the case where being automatic is wrong: it is either the market moving or our evidence
+/// going bad, and those need opposite responses. While a hold is open the <em>old</em> range
+/// stays live, so the app keeps screening quotes against figures it already trusted instead of
+/// going quiet.
+/// </para>
+/// </summary>
+public record PriceHold(
+    string BreedSlug,
+    int ProposedLow,
+    int ProposedHigh,
+    string ProposedConfidence,
+    string ProposedBasis,
+    int ProposedSources,
+    int FromLow,
+    int FromHigh,
+    string FromConfidence,
+    int DriftPercent,
+    string Rationale,
+    DateTimeOffset RaisedAt,
+    long Id = 0,
+    string? Decision = null,
+    DateTimeOffset? DecidedAt = null,
+    string? DecidedReason = null);
+
 /// <summary>One execution of the research job — the audit record for a batch run.</summary>
 public record PriceRun(
     string Id,

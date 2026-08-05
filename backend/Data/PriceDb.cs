@@ -202,5 +202,49 @@ public sealed class PriceDb
         """
         ALTER TABLE breed_price ADD COLUMN basis TEXT NOT NULL DEFAULT 'editorial';
         """,
+
+        // v5 — price changes that are waiting on a person.
+        //
+        // The drift guard used to downgrade a sharply-moved range to 'contested' and publish it
+        // anyway, which made the hold one run long: the next run compared the new figures
+        // against the row it had just written, saw no movement, and promoted them. Nothing was
+        // ever actually waiting, which is why the review queue that read a 'pending' status
+        // always came back empty.
+        //
+        // A real gate needs somewhere durable to put the proposal, because the whole point is
+        // that it must *not* be published. The previous range stays live meanwhile, so the scam
+        // check keeps working off numbers we already trusted rather than going dark.
+        //
+        // One open hold per breed: a second sharp move before anyone looks is the same
+        // conversation, not a new one, so it replaces the proposal rather than queueing behind
+        // it. Decided rows are kept — what we declined, and why, is the audit trail this
+        // database exists for.
+        """
+        CREATE TABLE price_hold (
+            id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+            breed_slug          TEXT    NOT NULL,
+            proposed_low        INTEGER NOT NULL,
+            proposed_high       INTEGER NOT NULL,
+            proposed_confidence TEXT    NOT NULL,
+            proposed_basis      TEXT    NOT NULL,
+            proposed_sources    INTEGER NOT NULL DEFAULT 0,
+            from_low            INTEGER NOT NULL,
+            from_high           INTEGER NOT NULL,
+            from_confidence     TEXT    NOT NULL,
+            drift_percent       INTEGER NOT NULL,
+            rationale           TEXT    NOT NULL,
+            raised_at           TEXT    NOT NULL,
+            decision            TEXT,
+            decided_at          TEXT,
+            decided_reason      TEXT
+        );
+
+        -- Enforces "one open hold per breed" in the schema rather than in code, so a
+        -- concurrent run can't produce two. Partial index: decided rows accumulate freely.
+        CREATE UNIQUE INDEX ux_price_hold_open
+            ON price_hold (breed_slug) WHERE decision IS NULL;
+
+        CREATE INDEX ix_price_hold_breed ON price_hold (breed_slug);
+        """,
     ];
 }

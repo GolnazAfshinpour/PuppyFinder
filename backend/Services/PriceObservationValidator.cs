@@ -261,9 +261,17 @@ public static class PriceObservationValidator
         var (confidence, rationale) = Classify(
             counted.Count, hasTierA, spread, contradicting.Count, thresholds, low, high);
 
-        // A big move in the number the fraud check uses deserves a human look, however
-        // well-sourced the new figure is.
-        var drift = DriftPercent(current, low, high);
+        // A big move in the number the fraud check uses is noted here and *decided* at publish
+        // time, in PriceRefreshJob.ReaggregateBreedAsync. It used to be decided here, by
+        // downgrading to Contested, which was wrong in two ways: the downgrade published the new
+        // figures anyway (so the hold lasted exactly one run, until the next run compared them
+        // against the row it had just written), and it could only see the editorial range — a
+        // sharp move in a listing-derived range, which is the path that actually runs today, was
+        // never gated at all.
+        //
+        // Reported, not enforced: this range may lose precedence to a listing sample, so what
+        // matters is how far the *published* range moves, and only the publish path knows that.
+        var drift = PriceDrift.Percent(current, low, high);
         var drifted = drift is { } d && d > thresholds.DriftReviewPercent;
 
         // Drift wins when both apply: it is the case someone can act on today, and it would
@@ -273,23 +281,7 @@ public static class PriceObservationValidator
             : confidence != PriceConfidence.Verified ? PriceReviewReason.BelowBar : null;
         if (drifted)
         {
-            rationale += $"; midpoint moved {drift}% from the live value, flagged for review";
-
-            // Flagging alone wasn't enough: PriceCheck.CanScreen arms on Verified, so a
-            // large move used to go live before anyone looked at it — the guard named the
-            // problem and then let it through. Hold it at Contested instead.
-            //
-            // Only when the value being replaced was itself Verified. Moving away from the
-            // unsourced legacy seeds is the entire point of this exercise, not a warning
-            // sign: German Shepherd goes from a hardcoded $1,000-$3,000 to a sourced
-            // $2,000-$4,000, a 50% move that is the system working. Drift is evidence of a
-            // problem only when it contradicts something we already trusted.
-            if (confidence == PriceConfidence.Verified
-                && current?.Confidence == PriceConfidence.Verified)
-            {
-                confidence = PriceConfidence.Contested;
-                rationale += "; held at contested until reviewed, since it overwrites a verified range";
-            }
+            rationale += $"; midpoint moved {drift}% from the live value";
         }
 
         return new PriceAggregation(
@@ -423,8 +415,16 @@ public static class PriceObservationValidator
         return sorted.Count % 2 == 1 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2.0;
     }
 
+}
+
+/// <summary>
+/// How far a proposed range moves the midpoint. Shared, because two copies of this arithmetic
+/// would eventually disagree and it decides whether a change needs a person's approval.
+/// </summary>
+public static class PriceDrift
+{
     /// <summary>Percentage the midpoint would move, or null when there's nothing to compare.</summary>
-    private static int? DriftPercent(BreedPrice? current, int low, int high)
+    public static int? Percent(BreedPrice? current, int low, int high)
     {
         if (current is null || current.PriceLow <= 0)
         {

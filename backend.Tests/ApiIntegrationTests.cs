@@ -21,8 +21,16 @@ public sealed class OfflineApiFactory : WebApplicationFactory<Program>
         // The host loads user-secrets, so listing collection is pinned off explicitly:
         // no test may fetch a third-party site.
         builder.UseSetting("Prices:ListingsEnabled", "false");
-        builder.UseSetting("Alerts:StorePath",
-            Path.Combine(Path.GetTempPath(), $"puppyfinder-tests-{Guid.NewGuid():N}", "alerts.json"));
+
+        var scratch = Path.Combine(Path.GetTempPath(), $"puppyfinder-tests-{Guid.NewGuid():N}");
+        builder.UseSetting("Alerts:StorePath", Path.Combine(scratch, "alerts.json"));
+
+        // And the price database, for the same reason the alerts file is redirected. Without
+        // this, Prices:DbPath falls back to ContentRootPath/data/prices.db — the real one, with
+        // 59 published ranges and ~5,000 collected listings in it. A test run would open it,
+        // seed it, and apply any pending schema migration to live data; that is how the v5
+        // migration first ran here, on a database no test should have been able to reach.
+        builder.UseSetting("Prices:DbPath", Path.Combine(scratch, "prices.db"));
         builder.ConfigureServices(services =>
         {
             services.RemoveAll<IHttpClientFactory>();
