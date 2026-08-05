@@ -15,6 +15,7 @@ import AlertSignup from './components/AlertSignup.vue'
 import BreedQuiz from './components/BreedQuiz.vue'
 import SafetyGuide from './components/SafetyGuide.vue'
 import SourcedPrices from './components/SourcedPrices.vue'
+import SavedDogs from './components/SavedDogs.vue'
 import ThemePicker from './components/ThemePicker.vue'
 import PuppyLogo from './components/PuppyLogo.vue'
 
@@ -43,6 +44,7 @@ const openDogId = ref(fromUrl.dog) // '' = no detail view open
 const quizOpen = ref(false)
 const guideOpen = ref(false)
 const pricesOpen = ref(false)
+const savedOpen = ref(false)
 const filtersOpen = ref(false) // mobile-only filter drawer state
 const error = ref('')
 
@@ -531,6 +533,21 @@ onMounted(() => {
         <span class="font-display text-xl font-semibold tracking-tight">PuppyFinder</span>
       </div>
       <div class="flex items-center gap-1">
+        <!--
+          Saving was one click and everywhere; retrieving was a 5,000px scroll and then an
+          accordion. The count belongs where it is always visible.
+        -->
+        <button
+          v-if="favorites.length || recent.length"
+          type="button"
+          class="btn btn-ghost btn-sm"
+          :aria-label="`Your dogs — ${favorites.length} saved`"
+          @click="savedOpen = true"
+        >
+          ❤️
+          <span v-if="favorites.length" class="badge badge-primary badge-sm">{{ favorites.length }}</span>
+          <span class="hidden sm:inline">Your dogs</span>
+        </button>
         <button type="button" class="btn btn-ghost btn-sm" @click="guideOpen = true">
           🛡️ <span class="hidden sm:inline">Buy safely</span>
         </button>
@@ -845,20 +862,6 @@ onMounted(() => {
                   🐶 {{ area.count }} dogs in {{ area.state }}
                 </button>
               </div>
-              <div v-if="recent.length" class="mt-4 w-full text-left">
-                <p class="mb-2 text-sm font-semibold">Dogs you looked at recently:</p>
-                <ul class="space-y-2">
-                  <li v-for="r in recent.slice(0, 4)" :key="r.id" class="flex items-center gap-3 text-sm">
-                    <img v-if="r.imageUrl" :src="r.imageUrl" :alt="r.name" referrerpolicy="no-referrer"
-                      class="h-9 w-9 rounded-lg object-cover" />
-                    <span v-else class="bg-base-300 grid h-9 w-9 place-items-center rounded-lg">🐶</span>
-                    <span class="min-w-0 flex-1 truncate">{{ r.name }} — {{ r.breed }}</span>
-                    <a :href="r.listingUrl" target="_blank" rel="noopener noreferrer" class="link whitespace-nowrap">
-                      Open ↗
-                    </a>
-                  </li>
-                </ul>
-              </div>
             </div>
           </div>
 
@@ -873,27 +876,6 @@ onMounted(() => {
             />
           </div>
 
-          <details v-if="favorites.length" class="collapse-arrow border-base-300 bg-base-100 collapse mt-4 border">
-            <summary class="collapse-title font-semibold">❤️ Your saved dogs ({{ favorites.length }})</summary>
-            <div class="collapse-content">
-              <ul class="space-y-2">
-                <li v-for="f in favorites" :key="f.id" class="flex items-center gap-3 text-sm">
-                  <img v-if="f.imageUrl" :src="f.imageUrl" :alt="f.name" referrerpolicy="no-referrer"
-                    class="h-11 w-11 rounded-lg object-cover" />
-                  <span v-else class="bg-base-300 grid h-11 w-11 place-items-center rounded-lg">🐶</span>
-                  <span class="min-w-0 flex-1 truncate">
-                    <strong>{{ f.name }}</strong> — {{ f.breed }} · {{ f.city }}, {{ f.state }}
-                  </span>
-                  <a :href="f.listingUrl" target="_blank" rel="noopener noreferrer" class="link whitespace-nowrap">
-                    Open ↗
-                  </a>
-                  <button type="button" class="btn btn-ghost btn-xs" title="Remove from saved" @click="onToggleFavorite(f)">
-                    ✕
-                  </button>
-                </li>
-              </ul>
-            </div>
-          </details>
 
           <div v-if="error" class="alert alert-error mt-6">{{ error }}</div>
           <ResultsFallback
@@ -927,6 +909,14 @@ onMounted(() => {
       @profile-saved="applyProfileToFilters"
     />
     <SafetyGuide v-if="guideOpen" @close="guideOpen = false" />
+    <SavedDogs
+      v-if="savedOpen"
+      :favorites="favorites"
+      :recent="recent"
+      @close="savedOpen = false"
+      @open-dog="openDogId = $event"
+      @unsave="onToggleFavorite($event)"
+    />
     <SourcedPrices
       v-if="pricesOpen"
       :breeds="breeds"

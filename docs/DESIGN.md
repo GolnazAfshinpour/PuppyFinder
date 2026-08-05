@@ -107,6 +107,13 @@ special. Never larger than `text-5xl` (3rem) — bigger reads as shouting.
 - **Results page rather than dump.** The grid reveals 24 at a time and the heading always
   states the true total. 53 cards in one scroll measured 10,539px. The honest-coverage rule
   applies to a "show more" button as much as to an empty state.
+- **Saved dogs live behind one nav control, never a buried panel.** Measured before the
+  change: 24 heart buttons invited saving on a single page while the saved list sat at 90% of
+  a 5,625px page, collapsed; "recently viewed" rendered only in the empty-results branch, so it
+  appeared exactly when you had found nothing. Both are now in one dialog opened from the
+  sticky nav, reachable at any scroll position and in either mode. The control is hidden until
+  there is something in it, shows the saved count, and carries the full meaning in its
+  `aria-label` because the text collapses to an icon under `sm:`.
 - **Badges:** `badge-soft` for data (sex, size), `badge-outline` for meta
   (trust chips), `badge-primary badge-soft` for interactive chips (removable
   filters, fit %). Text never wraps inside a badge (`whitespace-nowrap`).

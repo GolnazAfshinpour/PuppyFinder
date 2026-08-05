@@ -278,6 +278,40 @@ const longLines = await page.evaluate(() => {
 if (longLines.length) console.log('  long lines:', longLines.join(' | '))
 console.log('prose blocks over 80 chars:', longLines.length)
 
+// Saving a dog was one click and available everywhere; getting back to one was a 5,000px
+// scroll to a collapsed accordion at 90% of the page, and "recently viewed" rendered only in
+// the empty-results branch — visible exactly when you had found nothing. Both now live behind
+// one control in the sticky nav, so the answer to "where are my dogs?" doesn't depend on scroll
+// position or mode.
+const savedNav = () => page.locator('button:has-text("Your dogs")')
+const navBeforeSaving = await savedNav().count()   // nothing saved yet, so nothing to offer
+const hearts = page.locator('[data-testid="dog-results"] > li button[aria-pressed]')
+for (let i = 0; i < 3; i++) {
+  await hearts.nth(i).click()
+  await page.waitForTimeout(250)
+}
+await page.waitForTimeout(600)
+const navAfterSaving = await savedNav().count()
+const navY = (await savedNav().boundingBox()).y
+await savedNav().click()
+await page.waitForTimeout(800)
+const savedRows = await page.locator('[data-testid="saved-dogs"] > li').count()
+// Removing from the list must actually unsave, not just hide the row.
+await page.locator('[data-testid="saved-dogs"] button:has-text("Remove")').first().click()
+await page.waitForTimeout(600)
+const rowsAfterRemove = await page.locator('[data-testid="saved-dogs"] > li').count()
+// A saved snapshot has to reopen the real dog, since shelters drop adopted dogs from the feed.
+await page.locator('[data-testid="saved-dogs"] > li button').first().click()
+await page.waitForTimeout(2000)
+const savedOpensDetail = (await page.locator('#dog-detail-name').count()) === 1
+await page.keyboard.press('Escape')
+await page.waitForTimeout(700)
+console.log('saved dogs — nav hidden when empty:', navBeforeSaving === 0,
+  '| appears after saving:', navAfterSaving === 1,
+  '| nav y:', Math.round(navY),
+  '| rows:', savedRows, '-> after remove:', rowsAfterRemove,
+  '| reopens the dog:', savedOpensDetail)
+
 // ---------- the in-app dog detail view ----------
 await page.click('[data-testid="dog-results"] > li a:has-text("Meet")')
 await page.waitForTimeout(900)
@@ -401,6 +435,11 @@ const checks = {
   'Back restores the rest of the search, not just the URL': backKeptBreed,
   'Forward redoes it': forwardUrl === afterAdopt,
   'every dialog closes on Escape': Object.values(escapes).every(Boolean),
+  'saved dogs are reachable from the sticky nav, not a buried accordion':
+    navBeforeSaving === 0 && navAfterSaving === 1 && navY < 100,
+  'the saved list shows what was saved': savedRows === 3,
+  'removing from the list actually unsaves': rowsAfterRemove === 2,
+  'a saved dog reopens its detail view': savedOpensDetail,
   'video-call advice names liveness tests, not just "have a call"': namesLivenessTests,
   'a clean reverse-image result is caveated, not treated as proof': cleanImageSearchCaveated,
   'detail view opens in-app': detailOpen === 1 && detailAddressable,
