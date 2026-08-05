@@ -1,6 +1,8 @@
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
+using PuppyFinder.Api.Models;
 using PuppyFinder.Api.Services;
 
 namespace PuppyFinder.Api.Tests;
@@ -59,6 +61,96 @@ public sealed class PriceRefreshJobTests : IDisposable
         var command = connection.CreateCommand();
         command.CommandText = "SELECT COUNT(*) FROM price_run WHERE id LIKE 'run-%';";
         return Convert.ToInt32(await command.ExecuteScalarAsync(Ct));
+    }
+
+    [Fact]
+    public async Task ASharpMoveIsLoggedAsAWarningSinceNothingElseSurfacesIt()
+    {
+        // The review queue that was supposed to surface this is gone: it read an observation
+        // status nothing ever wrote, and the hold it existed to show lasts exactly one run —
+        // the guard downgrades to Contested but still publishes, so the next aggregation sees
+        // no drift and promotes it. That leaves this log line as the only trace, so it is worth
+        // a test: without it the guard is decorative, which is where this started.
+        var logs = new CapturingLoggerProvider();
+        using var factory = new WebApplicationFactory<Program>().WithWebHostBuilder(b => b
+            .UseSetting("Prices:DbPath", DbPath)
+            .UseSetting("Alerts:StorePath", Path.Combine(_dir, "alerts.json"))
+            .UseSetting("Anthropic:ApiKey", "")
+            .UseSetting("Prices:ListingsEnabled", "false")
+            .ConfigureServices(s => s.AddSingleton<ILoggerProvider>(logs)));
+        factory.CreateClient().Dispose();
+
+        var store = factory.Services.GetRequiredService<PriceStore>();
+        var job = factory.Services.GetRequiredService<PriceRefreshJob>();
+
+        // A range we already trusted, then evidence that moves it sharply.
+        await store.UpsertAsync(
+            new BreedPrice("beagle", 1000, 1400, PriceConfidence.Verified, 3, DateTimeOffset.UtcNow), Ct);
+        await store.AddObservationsAsync(
+            [Editorial(2500, 4000, "MetLife Pet Insurance",
+                 "https://www.metlifepetinsurance.com/blog/breed-spotlights/beagle/"),
+             Editorial(2600, 4100, "Rover", "https://www.rover.com/blog/beagle-price/"),
+             Editorial(2450, 4200, "Canine Bible", "https://www.caninebible.com/beagle-price/")],
+            Ct);
+
+        var result = await job.ReaggregateBreedAsync("beagle", new PriceThresholds(), Ct);
+
+        Assert.Equal(PriceConfidence.Contested, result!.Price!.Confidence);
+        var warning = Assert.Single(logs.Entries,
+            e => e.Level == LogLevel.Warning && e.Message.Contains("Held beagle"));
+        // The old numbers have to be in it: "held for review" without them can't be judged
+        // later, and by then the previous range is overwritten and unrecoverable.
+        Assert.Contains("1000-1400", warning.Message);
+    }
+
+    private static PriceObservation Editorial(int low, int high, string publisher, string url) => new(
+        BreedSlug: "beagle",
+        PriceLow: low,
+        PriceHigh: high,
+        Scope: PriceScope.PetStandard,
+        Kind: FigureKind.Range,
+        SourceUrl: url,
+        Publisher: publisher,
+        // Re-derived from the URL at aggregation time, so these must be real entries on the
+        // reviewed source list or the range never reaches the bar and drift never fires.
+        PublisherTier: PublisherTier.A,
+        Quote: $"Expect to pay ${low:N0} to ${high:N0} for a puppy from a reputable breeder.",
+        RetrievedAt: DateTimeOffset.UtcNow,
+        RunId: "run-test",
+        Model: "manual",
+        Status: ObservationStatus.Accepted);
+
+    private sealed record LogEntry(LogLevel Level, string Message);
+
+    /// <summary>Records what was logged, so a log line that is load-bearing can be asserted.</summary>
+    private sealed class CapturingLoggerProvider : ILoggerProvider
+    {
+        private readonly List<LogEntry> _entries = [];
+
+        public IReadOnlyList<LogEntry> Entries
+        {
+            get { lock (_entries) { return _entries.ToList(); } }
+        }
+
+        public ILogger CreateLogger(string categoryName) => new Recorder(_entries);
+
+        public void Dispose() { }
+
+        private sealed class Recorder(List<LogEntry> entries) : ILogger
+        {
+            public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+
+            public bool IsEnabled(LogLevel logLevel) => true;
+
+            public void Log<TState>(LogLevel logLevel, EventId eventId, TState state,
+                Exception? exception, Func<TState, Exception?, string> formatter)
+            {
+                lock (entries)
+                {
+                    entries.Add(new LogEntry(logLevel, formatter(state, exception)));
+                }
+            }
+        }
     }
 
     [Fact]

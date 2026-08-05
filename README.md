@@ -98,8 +98,7 @@ Disabled unless `Prices:AdminSecret` is set; all require an `X-Admin-Secret` hea
 | `POST /api/admin/listing-prices?breed=` | Collect live asking prices for one breed (or every curated breed) and publish the middle half when it clears the floor guard. Requires `Prices:ListingsEnabled=true`; off by default because the source's terms restrict automated collection |
 | `POST /api/admin/price-reaggregate` | Re-derive every breed's confidence from stored observations. Free and idempotent: this is how a threshold change is applied. |
 | `GET /api/admin/price-report` | Confidence distribution plus a what-if column per candidate threshold. Read-only — pick the bar from evidence. |
-| `GET /api/admin/price-review` | Pending observations with the live value beside each. |
-| `POST /api/admin/price-review/{id}?decision=accept\|reject&reason=` | Record a decision; the row is kept either way, and that breed re-aggregates. |
+| `POST /api/admin/price-observation/{id}?decision=accept\|reject&reason=` | Reject a bad source figure, or restore one. The row is kept either way, and that breed re-aggregates. `accept` cannot force a range live — it only undoes a rejection. |
 
 ### Turning the research job on
 

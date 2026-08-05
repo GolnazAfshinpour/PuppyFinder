@@ -476,6 +476,21 @@ public sealed class PriceRefreshJob(
 
         if (aggregation.Price is not null)
         {
+            // A drift hold used to leave no trace anywhere: it downgraded the confidence,
+            // published the new figures, and said nothing. The queue that was supposed to
+            // surface it read a status nothing wrote, and the window is one run wide — so
+            // unless it is logged at the moment it happens, a sharp move in the number the
+            // scam check measures against passes unobserved. Warning, not information: this
+            // is the one price event worth interrupting someone for.
+            if (aggregation.ReviewReason == PriceReviewReason.Drifted)
+            {
+                logger.LogWarning(
+                    "Held {Breed} at {Confidence} for review: {Rationale} (was {WasLow}-{WasHigh}, now {Low}-{High})",
+                    breedSlug, aggregation.Price.Confidence, aggregation.Rationale,
+                    current?.PriceLow, current?.PriceHigh,
+                    aggregation.Price.PriceLow, aggregation.Price.PriceHigh);
+            }
+
             await store.UpsertAsync(aggregation.Price, ct);
 
             // Invalidate here rather than in each caller. Only RunAsync and

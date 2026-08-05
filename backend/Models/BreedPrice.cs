@@ -148,10 +148,15 @@ public record PriceThresholds(
         MaxSinglePriceShare: configuration.GetValue("Prices:MaxSinglePriceShare", 0.35));
 }
 
+/// <summary>
+/// What we currently believe about an observation. There is deliberately no "pending": a
+/// collector either produces a figure that passed <see cref="PriceObservationValidator"/> or one
+/// that did not, and whether the resulting *range* wants a human look is derived at aggregation
+/// time rather than stored here. A pending status existed for a while and nothing ever wrote it.
+/// </summary>
 public static class ObservationStatus
 {
     public const string Accepted = "accepted";
-    public const string Pending = "pending";
     public const string Rejected = "rejected";
 }
 

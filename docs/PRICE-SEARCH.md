@@ -464,10 +464,14 @@ free" operation was quietly throwing away the better data.
   is shared, so for a listing run `accepted` means "breeds published", `pending` means "breeds
   refused" and `rejected` means "crossbreed listings dropped" — different nouns from the
   editorial job's row counts. Legible with the comment, but a `kind` column would be honest.
-- **`ObservationStatus.Pending` is never written.** The review queue at
-  `/api/admin/price-review` reads it, so it returns empty by construction, and
-  `PriceAggregation.NeedsReview` — computed correctly, including the drift case — is consumed
-  by nothing. The *blocking* half of the drift guard works; the surfacing half does not.
+- **The drift guard is a one-run delay, not a gate.** It downgrades a sharply-moved range to
+  `Contested` so nothing screens against it, but it still *publishes* the new figures — so the
+  next run compares them against the row it just wrote, reads no drift, and promotes to
+  `Verified` with nobody involved. That is the right trade with no admin UI (a real gate would
+  leave the breed unscreenable until someone POSTed to an API with a secret, degrading to
+  "silently stale forever" rather than "works without me"), but it means the window to notice a
+  move is one run wide. The hold is logged as a warning at the moment it happens; that log line
+  is the whole surfacing mechanism.
 - **Coverage is capped by inventory, not by effort.** Rare breeds have too few live listings
   to compute a band from (Kerry Blue Terrier 4, Affenpinscher 1, Finnish Lapphund 0), and no
   slug mapping fixes that. Popular breeds have inventory; rare ones don't, and the

@@ -134,10 +134,9 @@ public sealed class PriceStoreTests : IDisposable
     {
         var (_, store) = NewStore();
         await store.AddObservationsAsync(
-            [Sample("beagle", 800, 1300, ObservationStatus.Pending)], Ct);
+            [Sample("beagle", 800, 1300, ObservationStatus.Accepted)], Ct);
 
-        var pending = await store.GetPendingAsync(Ct);
-        var target = Assert.Single(pending);
+        var target = Assert.Single(await store.GetObservationsAsync("beagle", null, Ct));
 
         var slug = await store.SetObservationStatusAsync(
             target.Id, ObservationStatus.Rejected, "publisher is a breeder selling the breed",
@@ -146,7 +145,7 @@ public sealed class PriceStoreTests : IDisposable
         // The slug comes back so the caller can re-aggregate that breed without a
         // second lookup.
         Assert.Equal("beagle", slug);
-        Assert.Empty(await store.GetPendingAsync(Ct));
+        Assert.Empty(await store.GetObservationsAsync("beagle", ObservationStatus.Accepted, Ct));
         var kept = Assert.Single(await store.GetObservationsAsync("beagle", ObservationStatus.Rejected, Ct));
         Assert.Equal("publisher is a breeder selling the breed", kept.RejectReason);
     }

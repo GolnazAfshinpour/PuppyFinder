@@ -627,37 +627,18 @@ app.MapGet("/api/admin/price-report", async (HttpRequest request,
 })
 .WithName("PriceReport");
 
-// Everything waiting on a human decision, with the live value beside it so a change
-// can be judged in context.
-app.MapGet("/api/admin/price-review", async (HttpRequest request,
-    PriceStore prices, CancellationToken ct) =>
-{
-    if (!Authorised(request)) return Forbidden();
-
-    var pending = await prices.GetPendingAsync(ct);
-    var live = await prices.GetAllAsync(ct);
-    return Results.Ok(pending.Select(o => new
-    {
-        o.Id,
-        o.BreedSlug,
-        Proposed = new { o.PriceLow, o.PriceHigh, o.Scope, o.Kind },
-        Live = live.GetValueOrDefault(o.BreedSlug) is { } current
-            ? new { current.PriceLow, current.PriceHigh, current.Confidence, current.SourceCount }
-            : null,
-        o.Publisher,
-        o.PublisherTier,
-        o.SourceUrl,
-        o.Quote,
-        o.PublishedAt,
-        o.RetrievedAt,
-        o.RunId,
-    }));
-})
-.WithName("PriceReviewQueue");
-
-// Accept or reject a pending observation. The row is kept either way — a rejection is
-// evidence about a source, not something to erase.
-app.MapPost("/api/admin/price-review/{id:long}", async (HttpRequest request, long id,
+// Reject an observation, or restore one previously rejected. The row is kept either way — a
+// rejection is evidence about a source, not something to erase.
+//
+// This used to be half of a review queue. The GET half is gone: it read an observation status
+// nothing ever wrote, and the drift event it was meant to surface lasts exactly one run, so
+// there was never anything queued. See docs/PRICE-SEARCH.md.
+//
+// "accept" does not approve a range and cannot force one live — aggregation is a pure function
+// of the evidence, so the only way to change an outcome is to change what evidence counts.
+// Rejecting is the operative decision and accepting is its undo. Ids come from the
+// price_observation table; nothing in the logs prints them.
+app.MapPost("/api/admin/price-observation/{id:long}", async (HttpRequest request, long id,
     string decision, string? reason, PriceStore prices, PriceRefreshJob job,
     IConfiguration config, CancellationToken ct) =>
 {
@@ -685,7 +666,7 @@ app.MapPost("/api/admin/price-review/{id:long}", async (HttpRequest request, lon
 
     return Results.Ok(new { Id = id, Decision = status, Breed = slug, Result = aggregation?.Price, aggregation?.Rationale });
 })
-.WithName("PriceReviewDecide");
+.WithName("PriceObservationDecide");
 
 app.Run();
 

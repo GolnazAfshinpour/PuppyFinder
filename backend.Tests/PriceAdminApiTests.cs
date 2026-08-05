@@ -48,12 +48,10 @@ public sealed class PriceAdminApiTests : IDisposable
 
     // ---------------------------------------------------------------- the guard
 
-    [Theory]
-    [InlineData("/api/admin/price-report")]
-    [InlineData("/api/admin/price-review")]
-    public async Task ReadEndpointsRefuseWithoutTheSecret(string url)
+    [Fact]
+    public async Task ReadEndpointsRefuseWithoutTheSecret()
     {
-        var response = await _client.GetAsync(url, Ct);
+        var response = await _client.GetAsync("/api/admin/price-report", Ct);
 
         Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
     }
@@ -171,20 +169,22 @@ public sealed class PriceAdminApiTests : IDisposable
     }
 
     [Fact]
-    public async Task ReviewQueueIsEmptyBeforeAnyResearchRuns()
+    public async Task TheReviewQueueIsGoneRatherThanEmpty()
     {
+        // It returned an empty array unconditionally: it selected observations with status
+        // "pending" and nothing ever wrote that status. Removed rather than fixed, because the
+        // drift event it existed to surface lasts one run and is now logged instead — a 404
+        // here is the assertion that the false promise is not quietly back.
         var response = await _client.SendAsync(Authorised(HttpMethod.Get, "/api/admin/price-review"), Ct);
-        response.EnsureSuccessStatusCode();
 
-        var body = await response.Content.ReadFromJsonAsync<JsonElement>(Ct);
-        Assert.Empty(body.EnumerateArray());
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
     }
 
     [Fact]
     public async Task ReviewingAnUnknownObservationIs404()
     {
         var response = await _client.SendAsync(
-            Authorised(HttpMethod.Post, "/api/admin/price-review/999999?decision=accept"), Ct);
+            Authorised(HttpMethod.Post, "/api/admin/price-observation/999999?decision=accept"), Ct);
 
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
     }
@@ -193,7 +193,7 @@ public sealed class PriceAdminApiTests : IDisposable
     public async Task ReviewRejectsAnUnknownDecision()
     {
         var response = await _client.SendAsync(
-            Authorised(HttpMethod.Post, "/api/admin/price-review/1?decision=maybe"), Ct);
+            Authorised(HttpMethod.Post, "/api/admin/price-observation/1?decision=maybe"), Ct);
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }

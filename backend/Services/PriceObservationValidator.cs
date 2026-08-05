@@ -6,15 +6,32 @@ namespace PuppyFinder.Api.Services;
 /// <summary>Why an observation was refused. Recorded so a rejection is auditable.</summary>
 public record RejectedObservation(PriceObservation Observation, string Reason);
 
+/// <summary>
+/// Why a range wants attention. Two very different situations used to share one boolean, which
+/// is part of why the review queue built on it was unusable: on the live data 50 of 59 breeds
+/// are verified, but most of the 25 breeds with editorial observations sit under the
+/// three-source bar — so a single "needs review" flag was mostly "we don't have enough sources
+/// yet", a state no human decision resolves. Only <see cref="Drifted"/> is worth surfacing, and
+/// it is logged as a warning when it happens; see docs/PRICE-SEARCH.md.
+/// </summary>
+public static class PriceReviewReason
+{
+    /// <summary>The published midpoint moved sharply. Rare, and worth looking at today.</summary>
+    public const string Drifted = "drifted";
+
+    /// <summary>Short of the verified bar. Waiting on more evidence, not on a decision.</summary>
+    public const string BelowBar = "below-bar";
+}
+
 /// <summary>What aggregation concluded, and enough detail to explain the conclusion.</summary>
 public record PriceAggregation(
     BreedPrice? Price,
     /// <summary>Observations that fed the range, after scope filtering and independence collapse.</summary>
     IReadOnlyList<PriceObservation> Counted,
-    /// <summary>Human-readable reason for the confidence level — shown in the review queue.</summary>
+    /// <summary>Human-readable reason for the confidence level, carried into the logs.</summary>
     string Rationale,
-    /// <summary>True when the change needs a human look before it goes live.</summary>
-    bool NeedsReview = false);
+    /// <summary>A <see cref="PriceReviewReason"/>, or null when nothing wants attention.</summary>
+    string? ReviewReason = null);
 
 /// <summary>
 /// The trust rules for researched prices: what may be recorded, what may be counted,
@@ -35,8 +52,8 @@ public static class PriceObservationValidator
     private const double MaxSourceAgeDays = MaxSourceAgeMonths * 30.44;
 
     /// <summary>
-    /// Hard rejects. These never reach the review queue — they're malformed rather
-    /// than debatable, and queueing them would just train whoever reviews to skim.
+    /// Hard rejects: malformed rather than debatable, so they are refused outright instead of
+    /// being recorded as something anyone needs to weigh.
     /// </summary>
     public static string? Reject(PriceObservation o)
     {
@@ -248,7 +265,12 @@ public static class PriceObservationValidator
         // well-sourced the new figure is.
         var drift = DriftPercent(current, low, high);
         var drifted = drift is { } d && d > thresholds.DriftReviewPercent;
-        var needsReview = confidence != PriceConfidence.Verified || drifted;
+
+        // Drift wins when both apply: it is the case someone can act on today, and it would
+        // otherwise be buried under every under-sourced breed.
+        var reviewReason = drifted
+            ? PriceReviewReason.Drifted
+            : confidence != PriceConfidence.Verified ? PriceReviewReason.BelowBar : null;
         if (drifted)
         {
             rationale += $"; midpoint moved {drift}% from the live value, flagged for review";
@@ -274,7 +296,7 @@ public static class PriceObservationValidator
             new BreedPrice(breedSlug, low, high, confidence, counted.Count, timestamp, spread),
             counted,
             rationale,
-            needsReview);
+            reviewReason);
     }
 
     private static (string Confidence, string Rationale) Classify(

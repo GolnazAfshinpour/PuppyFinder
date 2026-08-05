@@ -269,30 +269,6 @@ public sealed class PriceStore(PriceDb db, ILogger<PriceStore> logger)
         return results;
     }
 
-    /// <summary>Everything waiting on a human decision, newest first.</summary>
-    public async Task<IReadOnlyList<PriceObservation>> GetPendingAsync(CancellationToken ct)
-    {
-        await using var connection = await db.OpenAsync(ct);
-        await using var command = connection.CreateCommand();
-        command.CommandText = """
-            SELECT id, breed_slug, price_low, price_high, scope, kind, source_url, publisher, publisher_tier,
-                   quote, published_at, red_flag_quote, retrieved_at, run_id, model, status, reject_reason
-            FROM price_observation
-            WHERE status = $pending
-            ORDER BY retrieved_at DESC, id DESC;
-            """;
-        command.Parameters.AddWithValue("$pending", ObservationStatus.Pending);
-
-        var results = new List<PriceObservation>();
-        await using var reader = await command.ExecuteReaderAsync(ct);
-        while (await reader.ReadAsync(ct))
-        {
-            results.Add(ReadObservation(reader));
-        }
-
-        return results;
-    }
-
     /// <summary>
     /// Records a human decision on a pending observation. The row is kept either way — a
     /// rejection is evidence about a source, not something to erase.

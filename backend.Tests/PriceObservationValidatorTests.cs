@@ -297,7 +297,7 @@ public class PriceObservationValidatorTests
             "german-shepherd", ThreeAgreeingSources, Strict, trusted);
 
         Assert.Equal(PriceConfidence.Contested, result.Price!.Confidence);
-        Assert.True(result.NeedsReview);
+        Assert.Equal(PriceReviewReason.Drifted, result.ReviewReason);
         Assert.Contains("overwrites a verified range", result.Rationale);
     }
 
@@ -312,7 +312,7 @@ public class PriceObservationValidatorTests
             "german-shepherd", ThreeAgreeingSources, Strict, trusted);
 
         Assert.Equal(PriceConfidence.Verified, result.Price!.Confidence);
-        Assert.False(result.NeedsReview);
+        Assert.Null(result.ReviewReason);
     }
 
     // ---------------------------------------------------------------- freshness
@@ -520,7 +520,7 @@ public class PriceObservationValidatorTests
             Strict);
 
         Assert.Equal(PriceConfidence.Verified, result.Price!.Confidence);
-        Assert.False(result.NeedsReview);
+        Assert.Null(result.ReviewReason);
     }
 
     [Fact]
@@ -546,13 +546,14 @@ public class PriceObservationValidatorTests
     }
 
     [Fact]
-    public void AnythingShortOfVerifiedIsFlaggedForReview()
+    public void AnythingShortOfVerifiedIsFlaggedAsWaitingOnEvidence()
     {
         var result = PriceObservationValidator.Aggregate("french-bulldog",
             [Obs(2500, 4000), TierB(2450, 4200, "caninebible.com")], Strict);
 
-        // Screening stays off, and a human is asked to look.
-        Assert.True(result.NeedsReview);
+        // Screening stays off. Named as short of the bar rather than as a change to
+        // review: no decision fixes it, only more sources do.
+        Assert.Equal(PriceReviewReason.BelowBar, result.ReviewReason);
     }
 
     // ---------------------------------------------------------------- drift guard
@@ -573,8 +574,55 @@ public class PriceObservationValidatorTests
             Strict, current);
 
         Assert.Equal(PriceConfidence.Contested, result.Price!.Confidence);
-        Assert.True(result.NeedsReview);
+        Assert.Equal(PriceReviewReason.Drifted, result.ReviewReason);
         Assert.Contains("moved", result.Rationale);
+    }
+
+    [Fact]
+    public void TheDriftHoldLastsOneRunAndThenPromotesItself()
+    {
+        // The guard is a one-run delay, not a gate, and that is the fact that decided the
+        // review queue should be deleted rather than wired up: it downgrades to Contested but
+        // still *publishes* the new figures, so the next run compares them against the row it
+        // just wrote, reads no drift, and promotes to Verified with nobody involved.
+        //
+        // That is the right trade with no admin UI — a real gate would leave the breed
+        // unscreenable until someone POSTed to an API with a secret, so it would degrade to
+        // "silently stale forever" rather than "works without me". But it means the window for
+        // a human to see the move is one run wide, which is why the hold is logged as a warning
+        // at the moment it happens instead of queued for later.
+        var current = new BreedPrice("french-bulldog", 1000, 1400, PriceConfidence.Verified, 3, DateTimeOffset.UtcNow);
+        PriceObservation[] evidence =
+            [Obs(2500, 4000), Obs(2600, 4100, "Rover", "https://www.rover.com/x"),
+             TierB(2450, 4200, "caninebible.com")];
+
+        var held = PriceObservationValidator.Aggregate("french-bulldog", evidence, Strict, current);
+        // Feed the published row back in as the live value, exactly as the job's next run does.
+        var next = PriceObservationValidator.Aggregate("french-bulldog", evidence, Strict, held.Price);
+
+        Assert.Equal(PriceConfidence.Contested, held.Price!.Confidence);
+        Assert.Equal(PriceReviewReason.Drifted, held.ReviewReason);
+
+        Assert.Equal(PriceConfidence.Verified, next.Price!.Confidence);
+        Assert.Null(next.ReviewReason);
+    }
+
+    [Fact]
+    public void DriftOutranksBeingUnderSourced()
+    {
+        // One boolean used to cover both, which is what made the queue unusable: on the live
+        // data most breeds with editorial observations sit under the three-source bar, so a
+        // combined flag was mostly "not enough sources yet" — a state no decision resolves.
+        // When both apply, the actionable reason has to win or it is buried.
+        var current = new BreedPrice("french-bulldog", 1000, 1400, PriceConfidence.Verified, 3, DateTimeOffset.UtcNow);
+
+        var underSourced = PriceObservationValidator.Aggregate("french-bulldog",
+            [Obs(2500, 4000), TierB(2450, 4200, "caninebible.com")], Strict);
+        var both = PriceObservationValidator.Aggregate("french-bulldog",
+            [Obs(2500, 4000), TierB(2450, 4200, "caninebible.com")], Strict, current);
+
+        Assert.Equal(PriceReviewReason.BelowBar, underSourced.ReviewReason);
+        Assert.Equal(PriceReviewReason.Drifted, both.ReviewReason);
     }
 
     // ---------------------------------------------------------------- thresholds are config
