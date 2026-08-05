@@ -22,3 +22,7 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Screenshot scripts write to $SCRATCH; unset, node creates a literal "undefined/" dir.
+# Ignored because this has now leaked into three commits.
+undefined/
