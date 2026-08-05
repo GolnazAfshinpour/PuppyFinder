@@ -8,6 +8,85 @@ const emit = defineEmits(['close'])
 // it — worse than never supporting it.
 useModal(() => emit('close'))
 
+// What you can get back, by method. Three states, each always paired with a word — colour
+// never carries the meaning alone.
+//
+// The mechanism, because it is the opposite of most people's intuition: credit-card rights
+// (Reg Z) turn on *what you bought*, and cover goods "not delivered as agreed". Bank-transfer
+// and app rights (Reg E) turn on *who initiated the payment* — if you sent it yourself, you
+// authorised it, and the protection largely does not reach you however thoroughly you were
+// deceived.
+const PAYMENTS = [
+  {
+    method: 'Credit card',
+    state: 'good',
+    verdict: 'Usually recoverable',
+    detail: 'A puppy that never arrives is "goods not delivered as agreed", which US law treats as a '
+      + 'billing error. Dispute it in writing to the billing-inquiries address on your statement '
+      + 'within 60 days of the first statement showing the charge. While it is disputed you need not '
+      + 'pay that amount, and they cannot report it delinquent.',
+  },
+  {
+    method: 'Debit card',
+    state: 'warning',
+    verdict: 'Much weaker than credit',
+    detail: 'Same piece of plastic, different rules. Debit falls under the bank-transfer regime, which '
+      + 'protects you when someone else moves your money — not when you were persuaded to move it '
+      + 'yourself. Report it anyway and immediately; some banks go beyond the legal minimum.',
+  },
+  {
+    method: 'Zelle, Cash App, Venmo',
+    state: 'critical',
+    verdict: 'Rarely recoverable',
+    detail: 'This is the trap. People refuse a wire because it feels risky, then pay by app believing '
+      + 'it is protected. If you knowingly sent the money, it counts as authorised and the protection '
+      + 'for "unauthorised" transfers does not apply. It is different if someone took over your '
+      + 'account or stole your login — that is unauthorised, and you should dispute it.',
+  },
+  {
+    method: 'PayPal',
+    state: 'warning',
+    verdict: 'Only if you pay for Goods and Services',
+    detail: 'PayPal\'s own buyer protection covers Goods and Services payments, not "Friends and '
+      + 'Family" — which is exactly what a scammer will ask for, framed as saving you the fee. '
+      + 'Paying by card through PayPal keeps your card rights as well.',
+  },
+  {
+    method: 'Wire transfer',
+    state: 'critical',
+    verdict: 'Minutes, then gone',
+    detail: 'A wire can sometimes be recalled if you call the bank before it settles. After that it '
+      + 'has been collected in cash and there is nothing to claw back. Speed is the entire reason '
+      + 'scammers ask for it.',
+  },
+  {
+    method: 'Gift cards',
+    state: 'critical',
+    verdict: 'Almost never',
+    detail: 'Still worth calling the card issuer straight away and reading them the numbers — very '
+      + 'occasionally an unspent balance can be frozen. No legitimate breeder has ever been paid in '
+      + 'gift cards.',
+  },
+  {
+    method: 'Crypto',
+    state: 'critical',
+    verdict: 'Irreversible',
+    detail: 'There is no dispute process and no one to appeal to. A transfer cannot be undone by '
+      + 'anybody, including the exchange you sent it from.',
+  },
+]
+
+// Measured, not chosen by eye: at 12px the soft error badge came out at 4.01:1 against the
+// light surface, under the 4.5 WCAG 1.4.3 asks for normal-size text — and it was carrying the
+// four rows that matter most. Solid error measures 4.80 light / 5.15 dark; solid success fails
+// the other way at 2.91 light. So soft, soft, solid, which also gives the irreversible methods
+// the most visual weight.
+const PAYMENT_STYLE = {
+  good: 'badge-soft badge-success',
+  warning: 'badge-soft badge-warning',
+  critical: 'badge-error',
+}
+
 const SECTIONS = [
   {
     title: '🚩 Red flags that mean walk away',
@@ -105,8 +184,56 @@ const SECTIONS = [
       </div>
 
       <div class="flex flex-col gap-2">
+        <!-- Red flags first and open, because "walk away" outranks everything else here. -->
         <details
-          v-for="s in SECTIONS"
+          v-for="s in SECTIONS.slice(0, 1)"
+          :key="s.title"
+          class="collapse-arrow bg-base-200 collapse"
+          :open="s.open"
+        >
+          <summary class="collapse-title font-semibold">{{ s.title }}</summary>
+          <div class="collapse-content">
+            <ul class="list-inside list-disc space-y-2 text-sm">
+              <li v-for="item in s.items" :key="item" class="max-w-prose">{{ item }}</li>
+            </ul>
+          </div>
+        </details>
+        <!--
+          Second, after the red flags: the guide reads in the order the decision happens —
+          spot the scam, understand what your payment method can and can't recover, then vet,
+          then paperwork, then recover. The app already said which methods to avoid; it never
+          said what you can get back, and BBB documents a victim who refused a wire as too risky
+          and then paid by Zelle believing it was protected.
+        -->
+        <details class="collapse-arrow bg-base-200 collapse">
+          <summary class="collapse-title font-semibold">💳 What you can actually get back</summary>
+          <div class="collapse-content">
+            <p class="mb-3 max-w-prose text-sm opacity-70">
+              The rule is the opposite of most people's intuition. Credit-card protection depends on
+              <strong>what you bought</strong>, so a puppy that never arrives is covered. Bank
+              transfers and payment apps depend on <strong>who moved the money</strong> — and if you
+              sent it yourself, you authorised it, however thoroughly you were deceived.
+            </p>
+            <ul data-testid="payment-recourse" class="space-y-3 text-sm">
+              <li v-for="pay in PAYMENTS" :key="pay.method">
+                <div class="flex flex-wrap items-baseline gap-2">
+                  <strong>{{ pay.method }}</strong>
+                  <!-- Word and colour together: the badge never carries the meaning alone. -->
+                  <span class="badge badge-sm" :class="PAYMENT_STYLE[pay.state]">
+                    {{ pay.verdict }}
+                  </span>
+                </div>
+                <p class="max-w-prose opacity-80">{{ pay.detail }}</p>
+              </li>
+            </ul>
+            <p class="mt-3 max-w-prose text-xs opacity-60">
+              General information, not legal advice, and it describes US rules. Whatever you paid
+              with, report it — the FTC and IC3 links are in the last section.
+            </p>
+          </div>
+        </details>
+        <details
+          v-for="s in SECTIONS.slice(1)"
           :key="s.title"
           class="collapse-arrow bg-base-200 collapse"
           :open="s.open"

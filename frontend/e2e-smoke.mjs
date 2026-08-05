@@ -253,10 +253,29 @@ await page.waitForTimeout(500)
 const guideText = await page.locator('.modal-box').innerText()
 const namesLivenessTests = /on the spot|name the test|continuous pan/i.test(guideText)
 const cleanImageSearchCaveated = /appears nowhere else|no longer clears/i.test(guideText)
+
+// The one fact people get wrong about payments, asserted so a copy edit can't flatten it into
+// "use a card". Credit and debit behave differently for the identical fraud: credit-card rights
+// turn on what you bought, card-network-independent bank-transfer rights turn on who moved the
+// money. BBB documents a victim who refused a wire as too risky and then paid by Zelle
+// believing it was protected — the misunderstanding was itself the cause of the loss.
+await page.click('summary:has-text("What you can actually get back")')
+await page.waitForTimeout(500)
+const payText = await page.locator('.modal-box').innerText()
+const separatesCreditFromDebit = /Usually recoverable/.test(payText)
+  && /Much weaker than credit/.test(payText)
+const p2pNotProtected = /Rarely recoverable/.test(payText) && /Zelle/.test(payText)
+// Every verdict is a word, not just a badge colour — colour alone never carries the meaning.
+const everyMethodHasAWord = (await page
+  .locator('[data-testid="payment-recourse"] .badge').allInnerTexts())
+  .filter((t) => t.trim().length > 0).length >= 7
 await page.keyboard.press('Escape')
 await page.waitForTimeout(600)
 console.log('advice — liveness tests named:', namesLivenessTests,
-  '| clean image search caveated:', cleanImageSearchCaveated)
+  '| clean image search caveated:', cleanImageSearchCaveated,
+  '| credit vs debit separated:', separatesCreditFromDebit,
+  '| P2P not protected:', p2pNotProtected,
+  '| verdicts worded:', everyMethodHasAWord)
 
 // Line length, asserted rather than eyeballed. Measured at 91-117 chars across 13 of 13 prose
 // blocks before this rule existed — past the 80 of WCAG 1.4.8, which Baymard finds readers
@@ -442,6 +461,9 @@ const checks = {
   'a saved dog reopens its detail view': savedOpensDetail,
   'video-call advice names liveness tests, not just "have a call"': namesLivenessTests,
   'a clean reverse-image result is caveated, not treated as proof': cleanImageSearchCaveated,
+  'credit and debit are told apart, not lumped into "use a card"': separatesCreditFromDebit,
+  'payment apps are not presented as protected': p2pNotProtected,
+  'every payment verdict is a word, not a badge colour alone': everyMethodHasAWord,
   'detail view opens in-app': detailOpen === 1 && detailAddressable,
   'detail view closes on Escape': detailClosed,
   'shared dog link resolves': sharedResolves,
