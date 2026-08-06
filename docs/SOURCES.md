@@ -266,6 +266,21 @@ from live asking prices on Puppies.com rather than from published articles. This
 the product owner's direction and on their risk; the terms conflict is real and set out in
 the next section, which is retained unedited.
 
+> **Collection paused, 6 August 2026, when this repository was made public.**
+> `Prices:ListingsEnabled` is now `false`, so nothing is fetched from Puppies.com any more. The
+> 49 ranges already derived from collected listings stay published and the app keeps screening
+> against them — aggregation is a pure function over stored rows, so it needs no network.
+>
+> The reason for pausing is the combination rather than the collection alone. The HTTP client
+> identifies itself with this repository's URL (`PuppyFinder/1.0 (+https://github.com/...)`),
+> which was a deliberate choice so the operator could block us if they wanted. Once the
+> repository is public, that URL — already in their server logs — leads to this page stating
+> that we collected knowing their terms forbid it. Running the collector while publishing that
+> account is a different proposition from doing either one on its own.
+>
+> Re-enabling is one setting. It should not be re-enabled without a fresh decision, and the two
+> limits below still apply if it ever is.
+
 Two limits are deliberate and should not be relaxed:
 
 - **Structured data only.** We read the schema.org `ld+json` block the site publishes for
