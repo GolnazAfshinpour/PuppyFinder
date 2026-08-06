@@ -94,11 +94,31 @@ const SECTIONS = [
     items: [
       'A price far below the typical range for the breed (our breed cards show typical ranges) — bargain purebreds are the classic scam bait.',
       'Payment by wire transfer, gift cards, Zelle, Venmo, or crypto to someone you have never met. No legitimate breeder asks for these.',
-      'Any surprise fee after you pay — "shipping insurance", "climate-controlled crate", "vaccine deposit". This is the standard scam script; the puppy does not exist.',
+      'Any surprise fee after you pay — "shipping insurance", "climate-controlled crate", "vaccine deposit". This is the standard scam script; the puppy does not exist. If this is happening to you now, read the next section first.',
       'Seller refuses a live video call, or will only send pre-recorded clips. A refusal is still damning — but a call happening is no longer proof by itself (see below).',
       'Photos that look professional or stock-like. Reverse-image-search them: a hit is damning. A clean result no longer clears anyone, because an AI-generated photo appears nowhere else.',
       'Pressure and urgency: "three other families are coming today", "price goes up tomorrow".',
       'Many breeds always available from one seller, or puppies always "ready to ship today" — responsible breeders have waitlists, not inventory.',
+    ],
+  },
+  {
+    // Added August 2026, and the first thing in this guide aimed at someone who has already
+    // lost money rather than someone deciding whether to. BBB's finding is that the scam is
+    // profitable because of a "multi-tiered setup" that lets them "go back to a consumer several
+    // times to ask for money" — so the loss accumulates across payments the app never saw.
+    // Every fee, threat and figure below is from their published case material.
+    title: '💸 They are asking for more money',
+    // The rest of this section exists to explain why this one line is true, so it does not
+    // belong in the same list at the same weight.
+    lead: 'Stop paying. Once a second payment is requested after your deposit, there is no puppy — the requests continue until you stop, and nothing you send next arrives as a dog.',
+    items: [
+      'Recognise your fee here: a temperature-controlled or "special" crate, shipping insurance, a city or import permit, customs, microchipping, a vaccine, or a sudden emergency vet bill. These are the same inventions in report after report.',
+      '"Refundable" is the tell, and crate deposits are the usual version. One reported sequence ran $350 refundable crate rental, then $299 shipping insurance, then a $499 city permit, then an $800 emergency vet bill.',
+      'Official-looking documents prove nothing — airline emails and cargo paperwork in these cases are forged. One victim was shown a fake Delta Air Cargo notice to justify the crate.',
+      'The threats are part of the script. People are told the dog will die and it will be their fault, or that they will be charged with animal abandonment for refusing. Neither happens. It is pressure to produce one more payment.',
+      'Being invested is the trap, not a reason to continue. BBB puts it plainly: people feel bad and are invested in the pet in the photo, so they keep sending money. What you have already paid is gone whether or not you pay again.',
+      'Before you go quiet, save everything: screenshots of the conversation, receipts, and every document and email they sent. The forgeries are evidence, and a bank dispute or police report needs them.',
+      'Then work out what you can recover — the next section covers which payment methods can be reversed, and the last one covers where to report it.',
     ],
   },
   {
@@ -184,15 +204,27 @@ const SECTIONS = [
       </div>
 
       <div class="flex flex-col gap-2">
-        <!-- Red flags first and open, because "walk away" outranks everything else here. -->
+        <!--
+          Red flags first and open, because "walk away" outranks everything else. Then the
+          escalating-fee section, for someone already paying: whether to send the next
+          payment is more urgent than which method to have used, so it precedes recourse.
+        -->
         <details
-          v-for="s in SECTIONS.slice(0, 1)"
+          v-for="s in SECTIONS.slice(0, 2)"
           :key="s.title"
           class="collapse-arrow bg-base-200 collapse"
           :open="s.open"
         >
           <summary class="collapse-title font-semibold">{{ s.title }}</summary>
           <div class="collapse-content">
+            <!-- Same callout style as the standing rule at the top of the guide. -->
+            <div
+              v-if="s.lead"
+              role="alert"
+              class="alert alert-warning alert-soft mb-3 py-2 text-sm"
+            >
+              <span class="max-w-prose">{{ s.lead }}</span>
+            </div>
             <ul class="list-inside list-disc space-y-2 text-sm">
               <li v-for="item in s.items" :key="item" class="max-w-prose">{{ item }}</li>
             </ul>
@@ -233,13 +265,21 @@ const SECTIONS = [
           </div>
         </details>
         <details
-          v-for="s in SECTIONS.slice(1)"
+          v-for="s in SECTIONS.slice(2)"
           :key="s.title"
           class="collapse-arrow bg-base-200 collapse"
           :open="s.open"
         >
           <summary class="collapse-title font-semibold">{{ s.title }}</summary>
           <div class="collapse-content">
+            <!-- Same callout style as the standing rule at the top of the guide. -->
+            <div
+              v-if="s.lead"
+              role="alert"
+              class="alert alert-warning alert-soft mb-3 py-2 text-sm"
+            >
+              <span class="max-w-prose">{{ s.lead }}</span>
+            </div>
             <ul class="list-inside list-disc space-y-2 text-sm">
               <li v-for="item in s.items" :key="item" class="max-w-prose">{{ item }}</li>
             </ul>

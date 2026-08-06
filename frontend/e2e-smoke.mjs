@@ -269,10 +269,32 @@ const p2pNotProtected = /Rarely recoverable/.test(payText) && /Zelle/.test(payTe
 const everyMethodHasAWord = (await page
   .locator('[data-testid="payment-recourse"] .badge').allInnerTexts())
   .filter((t) => t.trim().length > 0).length >= 7
+// Everything else in this guide fires before the first payment. BBB's finding is that the scam
+// is profitable because its "multi-tiered setup" lets them come back for money several times, so
+// the loss accumulates on payments the app never saw. The advice that matters to someone already
+// in it is "stop paying" — anything softer is not an intervention.
+await page.click('summary:has-text("They are asking for more money")')
+await page.waitForTimeout(500)
+const feeText = await page.locator('.modal-box').innerText()
+const saysStopPaying = /Stop paying/i.test(feeText)
+const namesTheInventedFees = /temperature-controlled|shipping insurance/i.test(feeText)
+  && /refundable/i.test(feeText)
+// Victims are threatened with animal-abandonment charges and told the dog's death is their
+// fault. Naming the threats as scripted is what defuses them.
+const defusesTheThreats = /animal abandonment/i.test(feeText)
+// Order: recognise it, stop, then recover. Assert it rather than trusting the array index.
+const sectionOrder = await page.locator('.modal-box summary').allInnerTexts()
+const feesBeforeRecourse = sectionOrder.findIndex((t) => /asking for more money/i.test(t))
+  < sectionOrder.findIndex((t) => /actually get back/i.test(t))
+
 await page.keyboard.press('Escape')
 await page.waitForTimeout(600)
 console.log('advice — liveness tests named:', namesLivenessTests,
   '| clean image search caveated:', cleanImageSearchCaveated,
+  '| says stop paying:', saysStopPaying,
+  '| names the fees:', namesTheInventedFees,
+  '| defuses the threats:', defusesTheThreats,
+  '| fees before recourse:', feesBeforeRecourse,
   '| credit vs debit separated:', separatesCreditFromDebit,
   '| P2P not protected:', p2pNotProtected,
   '| verdicts worded:', everyMethodHasAWord)
@@ -462,6 +484,10 @@ const checks = {
   'video-call advice names liveness tests, not just "have a call"': namesLivenessTests,
   'a clean reverse-image result is caveated, not treated as proof': cleanImageSearchCaveated,
   'credit and debit are told apart, not lumped into "use a card"': separatesCreditFromDebit,
+  'someone already paying is told to stop, not merely to be careful': saysStopPaying,
+  'the invented fees are named so a victim recognises theirs': namesTheInventedFees,
+  'the scripted threats are named as scripted': defusesTheThreats,
+  'the fee section comes before the recourse section': feesBeforeRecourse,
   'payment apps are not presented as protected': p2pNotProtected,
   'every payment verdict is a word, not a badge colour alone': everyMethodHasAWord,
   'detail view opens in-app': detailOpen === 1 && detailAddressable,

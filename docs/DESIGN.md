@@ -144,6 +144,17 @@ Honesty beats marketing — cautions and coverage limits are stated plainly.
   doesn't mean a blank panel: the buy path shows the five checks that need no price at
   all (three quotes, live video, health testing on paper, never wire/gift-card/crypto,
   walk away from post-commitment fees).
+- **Advice has to reach the person who already paid.** Every check in the app fired before the
+  first payment — the price screen, the red flags, the video call, the paperwork. BBB's finding
+  is that the scam is profitable because a "multi-tiered setup" lets the seller come back for
+  money several times, so most of the loss lands on payments two, three and four, which nothing
+  in the app addressed. The safety guide's second section is written for someone mid-scam, and
+  its one instruction ("stop paying") is lifted out of the bullet list into a callout, because
+  the other seven bullets exist only to explain why that one is true. Ordered before the
+  payment-recourse section: whether to send the next payment outranks which method to have used.
+  Every fee name, threat and figure in it comes from BBB's published case material rather than
+  from reasoning about what a scam would plausibly look like — an invented fee name would make a
+  victim conclude their situation is different.
 - **A safety check must not read as an all-clear.** The price check says out loud that
   a believable price proves nothing, because scammers price realistically. Warnings
   use `alert-error`; everything else stays calm, since a page that alarms at every
