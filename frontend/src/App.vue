@@ -203,8 +203,9 @@ watch([rankedListings, () => sort.value], () => {
   shownCount.value = PAGE
 })
 
-const SORTS = [
+const ALL_SORTS = [
   { value: '', label: 'Best match' },
+  { value: 'nearest', label: 'Nearest first', needsOrigin: true },
   { value: 'youngest', label: 'Youngest first' },
   { value: 'oldest', label: 'Oldest first' },
 ]
@@ -260,8 +261,62 @@ function runSmartSearch() {
   if (appliedAny) smartQuery.value = ''
 }
 
-// "Near me": browser geolocation reverse-geocoded to state + city (keyless
-// bigdatacloud endpoint), with a manual fallback message on denial.
+// Where the visitor is searching from. Held separately from the ZIP text because the text is what
+// they typed and these are what it resolved to — a half-typed ZIP must not move the origin.
+const zip = ref(fromUrl.zip ?? '')
+const radius = ref(fromUrl.radius ?? '')
+const originLat = ref(null)
+const originLon = ref(null)
+const zipError = ref('')
+const zipResolved = computed(() => originLat.value !== null && originLon.value !== null)
+
+// Offered only when there is somewhere to measure from: a "nearest" option that silently does
+// nothing is the failure the backend comment warned about, one layer up.
+const SORTS = computed(() => ALL_SORTS.filter((s) => !s.needsOrigin || zipResolved.value))
+
+// ZIP to coordinates via zippopotam.us — keyless, US-wide. Debounced because this fires per
+// keystroke, and only attempted on a complete five-digit ZIP.
+let zipTimer
+watch(zip, (value) => {
+  clearTimeout(zipTimer)
+  const clean = value.trim()
+  zipError.value = ''
+  if (clean.length === 0) {
+    originLat.value = null
+    originLon.value = null
+    if (sort.value === 'nearest') sort.value = ''
+    return
+  }
+
+  if (!/^\d{5}$/.test(clean)) {
+    originLat.value = null
+    originLon.value = null
+    return
+  }
+
+  zipTimer = setTimeout(async () => {
+    try {
+      const res = await fetch(`https://api.zippopotam.us/us/${clean}`)
+      if (!res.ok) throw new Error('not found')
+      const place = (await res.json()).places?.[0]
+      const lat = Number(place?.latitude)
+      const lon = Number(place?.longitude)
+      if (!Number.isFinite(lat) || !Number.isFinite(lon)) throw new Error('no coordinates')
+      originLat.value = lat
+      originLon.value = lon
+      // Nearest is the reason someone typed a ZIP, so offer it by default rather than making them
+      // find it in the sort menu.
+      if (!sort.value) sort.value = 'nearest'
+    } catch {
+      originLat.value = null
+      originLon.value = null
+      zipError.value = `We couldn't find ZIP ${clean} — check it, or pick a state instead.`
+    }
+  }, 450)
+})
+
+// "Near me": browser geolocation. Keeps the coordinates for distance and still reverse-geocodes
+// (keyless bigdatacloud endpoint) to fill in the state, with a manual fallback on denial.
 const locating = ref(false)
 function locateMe() {
   smartHint.value = ''
@@ -272,6 +327,13 @@ function locateMe() {
   locating.value = true
   navigator.geolocation.getCurrentPosition(
     async (pos) => {
+      // Keep these first. The reverse-geocode below may fail or land outside the US, and the
+      // coordinates are useful regardless — this is exactly what the old version threw away.
+      originLat.value = pos.coords.latitude
+      originLon.value = pos.coords.longitude
+      zipError.value = ''
+      zip.value = ''
+      if (!sort.value) sort.value = 'nearest'
       try {
         const res = await fetch(
           `https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${pos.coords.latitude}&longitude=${pos.coords.longitude}&localityLanguage=en`,
@@ -355,6 +417,11 @@ function listingParams(overrides = {}) {
     age: selectedAge.value,
     sort: sort.value,
     includeUnlisted: strictMatch.value ? 'false' : '',
+    // Only ever sent together: a radius with no origin cannot mean anything, and the backend
+    // ignores it anyway.
+    lat: zipResolved.value ? String(originLat.value) : '',
+    lon: zipResolved.value ? String(originLon.value) : '',
+    radius: zipResolved.value ? radius.value : '',
     ...overrides,
   }
   const params = new URLSearchParams()
@@ -440,7 +507,7 @@ function pickQuizBreed(slug) {
 }
 
 watch([selectedBreed, selectedState], loadSites)
-watch([selectedBreed, selectedState, selectedSize, selectedAge, sort, strictMatch], loadListings)
+watch([selectedBreed, selectedState, selectedSize, selectedAge, sort, strictMatch, originLat, radius], loadListings)
 
 // Keep the address bar in sync, and make Back/Forward actually work.
 //
@@ -459,6 +526,8 @@ const currentQuery = () => buildSearchQuery({
   traits: traits.value,
   goal: goal.value,
   sort: sort.value,
+  zip: zip.value.trim(),
+  radius: radius.value,
   dog: openDogId.value,
 })
 
@@ -466,7 +535,7 @@ const currentQuery = () => buildSearchQuery({
 // entry for a change that *came from* history — the classic popstate feedback loop.
 let applyingHistory = false
 
-watch([selectedBreed, selectedState, selectedCity, selectedSize, selectedAge, traits, goal, sort, openDogId], () => {
+watch([selectedBreed, selectedState, selectedCity, selectedSize, selectedAge, traits, goal, sort, zip, radius, openDogId], () => {
   if (applyingHistory) return
 
   const query = currentQuery()
@@ -490,6 +559,9 @@ window.addEventListener('popstate', () => {
   traits.value = from.traits
   goal.value = from.goal
   sort.value = from.sort
+  // Restored so Back and Forward return to the same circle, not a silently wider search.
+  zip.value = from.zip
+  radius.value = from.radius
   openDogId.value = from.dog
   // Release after Vue has flushed, or the watcher fires with the flag already cleared and
   // pushes the state we just arrived at back onto the stack.
@@ -653,6 +725,10 @@ onMounted(() => {
           :us-states="US_STATES"
           :coverage="coverage"
           :locating="locating"
+          v-model:zip="zip"
+          v-model:radius="radius"
+          :zip-resolved="zipResolved"
+          :zip-error="zipError"
           @open-quiz="quizOpen = true"
           @clear="resetSearch"
           @near-me="locateMe"

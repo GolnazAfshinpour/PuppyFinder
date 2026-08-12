@@ -24,7 +24,12 @@ public record SocrataDataset(
     string FallbackListingUrl,
     string? SizeField = null,   // e.g. Montgomery's "petsize" (SMALL/MED/LARGE)
     string? MemoField = null,   // free-text bio; also mined for weight when SizeField is absent
-    string? ContactInfo = null); // shelter phone/address shown on every card from this feed
+    string? ContactInfo = null, // shelter phone/address shown on every card from this feed
+    // Each of these feeds publishes from one building, so its coordinates are a constant rather
+    // than something to look up. Geocoding a fixed address at runtime would add a network
+    // dependency to answer a question that cannot change.
+    double? Latitude = null,
+    double? Longitude = null);
 
 /// <summary>
 /// Pulls adoptable-dog listings from a government open-data (Socrata) feed.
@@ -92,6 +97,8 @@ public sealed class SocrataProvider(
                 ListingUrl: PetHarborDetailUrl(image) ?? link ?? dataset.FallbackListingUrl,
                 Source: dataset.SourceName,
                 SourceUrl: dataset.SourceUrl,
+                Latitude: dataset.Latitude,
+                Longitude: dataset.Longitude,
                 Size: NormalizeSize(dataset.SizeField is null ? null : Get(row, dataset.SizeField))
                       ?? SizeFromWeightText(memo),
                 ContactInfo: dataset.ContactInfo,

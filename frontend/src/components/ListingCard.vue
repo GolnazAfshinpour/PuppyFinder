@@ -24,7 +24,12 @@ const imageFailed = ref(false)
 const metaLine = computed(() => {
   const sex = props.listing.sex?.replace(/\s*\(.*\)\s*$/, '')
   const qualifier = props.listing.sex?.match(/\((.+)\)/)?.[1]
-  return [sex, qualifier && qualifier[0].toUpperCase() + qualifier.slice(1), props.listing.age, props.listing.size]
+  // Distance joins the same line rather than becoming a badge: DESIGN.md caps cards at one muted
+  // metadata line, and it is only present when the visitor gave somewhere to measure from.
+  const away = props.listing.distanceMiles === null || props.listing.distanceMiles === undefined
+    ? null
+    : `${Math.round(props.listing.distanceMiles)} mi away`
+  return [sex, qualifier && qualifier[0].toUpperCase() + qualifier.slice(1), props.listing.age, props.listing.size, away]
     .filter(Boolean)
     .join(' · ')
 })

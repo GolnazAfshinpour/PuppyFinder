@@ -144,6 +144,17 @@ Honesty beats marketing — cautions and coverage limits are stated plainly.
   doesn't mean a blank panel: the buy path shows the five checks that need no price at
   all (three quotes, live video, health testing on paper, never wire/gift-card/crypto,
   walk away from post-commitment fees).
+- **Distance leads the location group, because location leads everything.** The filter order below
+  puts Breed first, which contradicted the research already cited here — Adopt-a-Pet's 6.5M searches
+  put distance ahead of breed, and Petfinder *opens* on a 50-mile radius rather than offering
+  distance as a refinement. A ZIP + radius control now sits above State, with State kept underneath
+  because "anywhere in Texas" is a real request that a circle cannot express. "Use my location"
+  moved onto it from the State label: geolocation's actual product is coordinates, and attaching it
+  to a state dropdown threw away the precision it had just obtained.
+- **Distance reports before it filters.** An origin alone adds a mileage to every card and unlocks
+  the nearest sort; only a radius removes anything. Both are useful separately, and a radius that
+  silently discarded dogs would be the worse default. A dog whose rescue recorded no location stays
+  in the results — the same "unknown is not no" rule size and age already follow.
 - **Advice has to reach the person who already paid.** Every check in the app fired before the
   first payment — the price screen, the red flags, the video call, the paperwork. BBB's finding
   is that the scam is profitable because a "multi-tiered setup" lets the seller come back for

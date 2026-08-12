@@ -15,18 +15,35 @@ const props = defineProps({
   goal: { type: String, default: 'both' },
   coverage: { type: Array, default: () => [] }, // [{ state, count, cities }] — live dogs right now
   locating: { type: Boolean, default: false }, // geolocation lookup in flight
+  zip: { type: String, default: '' },
+  radius: { type: String, default: '' },
+  // Resolved: the ZIP was turned into coordinates, so distance actually applies. A ZIP that
+  // resolved to nothing must not look like a working filter.
+  zipResolved: { type: Boolean, default: false },
+  zipError: { type: String, default: '' },
 })
+
+// Petfinder's default is 50 miles, which is a reasonable "my area" for most of the US. "Any
+// distance" stays available because rescues transport dogs, and someone willing to drive four
+// hours for the right dog should not be told there are none.
+const RADIUS_OPTIONS = [
+  { value: '', label: 'Any distance' },
+  { value: '25', label: 'Within 25 miles' },
+  { value: '50', label: 'Within 50 miles' },
+  { value: '100', label: 'Within 100 miles' },
+  { value: '250', label: 'Within 250 miles' },
+]
 
 const emit = defineEmits([
   'update:breed', 'update:state', 'update:city', 'update:size', 'update:age', 'update:traits',
-  'update:goal',
+  'update:goal', 'update:zip', 'update:radius',
   'open-quiz', 'clear', 'near-me',
 ])
 
 const anyFilterActive = computed(
   () =>
     props.breed || props.state || props.city.trim() || props.size || props.age ||
-    props.traits.length > 0 || props.goal !== 'both',
+    props.traits.length > 0 || props.goal !== 'both' || props.zip.trim(),
 )
 
 // Goal leads the panel because it isn't a refiner — it decides whether the page
@@ -140,12 +157,51 @@ function toggleTrait(key) {
         <p v-if="age" class="mt-1 text-xs opacity-60">{{ AGE_HINTS[age] }}</p>
       </div>
 
-      <label class="form-control">
+      <!--
+        Distance leads the location group. "Near me" lives here rather than on State because
+        geolocation's actual product is coordinates — attaching it to a state dropdown threw away
+        the precision it had just obtained.
+      -->
+      <div class="form-control">
         <span class="label-text mb-1 flex items-baseline justify-between text-xs font-bold tracking-wide uppercase opacity-60">
-          State
+          Near you
           <button type="button" class="link font-normal normal-case" @click.prevent="emit('near-me')">
-            {{ locating ? 'Locating…' : '📍 Near me' }}
+            {{ locating ? 'Locating…' : 'Use my location' }}
           </button>
+        </span>
+        <div class="flex gap-2">
+          <input
+            :value="zip"
+            type="text"
+            inputmode="numeric"
+            maxlength="5"
+            placeholder="ZIP code"
+            aria-label="ZIP code to measure distance from"
+            class="input input-bordered w-28"
+            @input="emit('update:zip', $event.target.value)"
+          />
+          <select
+            class="select select-bordered flex-1"
+            :value="radius"
+            aria-label="How far you will travel"
+            @change="emit('update:radius', $event.target.value)"
+          >
+            <option v-for="r in RADIUS_OPTIONS" :key="r.value" :value="r.value">{{ r.label }}</option>
+          </select>
+        </div>
+        <!-- A ZIP that resolved to nothing must not look like a working filter. -->
+        <p v-if="zipError" class="mt-1 text-xs text-warning">{{ zipError }}</p>
+        <p v-else-if="zipResolved && !radius" class="mt-1 max-w-prose text-xs opacity-60">
+          Showing every dog, nearest first. Pick a distance to narrow it.
+        </p>
+        <p v-else-if="!zip.trim()" class="mt-1 max-w-prose text-xs opacity-60">
+          A ZIP lets us sort by how far each dog is from you.
+        </p>
+      </div>
+
+      <label class="form-control">
+        <span class="label-text mb-1 text-xs font-bold tracking-wide uppercase opacity-60">
+          State
         </span>
         <select
           class="select select-bordered w-full"

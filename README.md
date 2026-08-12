@@ -15,6 +15,7 @@ The remaining 116 return `Unavailable` rather than screen against a number we ca
 - **Ranges from real asking prices** — the middle half of the live listings for a breed, not a journalist's estimate. Crossbreeds are excluded (up to 15 in 50 results), and a range is refused when its middle half falls far below what publishers report — a classifieds site's cheap tail is what the check exists to flag, so it must not become the benchmark. Every range records which kind of evidence produced it (`basis`), and the UI says "the middle half of 49 puppies listed for sale" rather than crediting an article that didn't produce the number. See [docs/SOURCES.md](docs/SOURCES.md) for the terms caveat
 - **Honest marketplace guide** — 7 breeder sites rated on vetting, price, delivery and documented cautions; no breeder marketplace publishes a data feed, and the UI says so rather than faking listings
 - **Dogs first (adoption path)** — searching returns actual listings (photo, age, size, shelter phone number), filtered by breed / age / state / city / size and sortable by age. Currently ~345 dogs across 34 states, from two county open-data feeds plus RescueGroups
+- **Distance search** — a ZIP and a radius, or one tap of "Use my location". Every card shows how far away the dog is, and `sort=nearest` orders by it. Distance is the filter adopters use most, so it leads the location group; a dog whose rescue recorded no location stays in the results rather than vanishing over a blank field
 - **Age filter** — Puppy (under 1 yr) / Young / Adult / Senior, parsed out of the free-text ages the feeds publish (`AgeParser`)
 - **In-app dog detail view** — full bio, shelter phone number and the animal ID to quote, with one outbound "start the adoption" link. Addressable as `?dog=<id>`, so a single dog is shareable; a dog that has since been adopted says so rather than erroring
 - **Honest coverage** — the UI states where our feeds do and don't reach instead of showing an empty grid, and recommends **one** national site that carries your filters rather than opening fourteen tabs
@@ -78,7 +79,7 @@ into a log or a shared terminal. Use `dotnet user-secrets list --json | jq 'keys
 
 | Endpoint | Description |
 |---|---|
-| `GET /api/listings?breed=&state=&city=&size=&age=&sort=&includeUnlisted=` | Aggregated real dog listings, filtered and sorted. Each result carries derived `ageMonths` / `ageGroup` and an `unconfirmed` flag (matched only because a field was blank). |
+| `GET /api/listings?breed=&state=&city=&size=&age=&sort=&includeUnlisted=&lat=&lon=&radius=` | Aggregated real dog listings, filtered and sorted. Each result carries derived `ageMonths` / `ageGroup` and an `unconfirmed` flag (matched only because a field was blank). Supplying `lat`/`lon` adds `distanceMiles` to every result and enables `sort=nearest`; adding `radius` (miles) also filters. |
 | `GET /api/listings/{id}` | One dog, so a shared `?dog=` link opens regardless of the visitor's filters. 404 = adopted or pulled from the feed. |
 | `GET /api/coverage` | Where live dogs exist right now: `[{ state, count, cities }]` |
 | `GET /api/sources` | Per-source status: enabled, count, last error |

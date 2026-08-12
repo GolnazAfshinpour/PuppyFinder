@@ -128,6 +128,7 @@ public sealed class RescueGroupsProvider(
             }
 
             string? city = null, state = null, imageUrl = null, orgUrl = null, orgPhone = null;
+            double? orgLat = null, orgLon = null;
             if (animal.TryGetProperty("relationships", out var rels))
             {
                 if (FirstRelated(rels, "locations") is { } locId &&
@@ -152,6 +153,10 @@ public sealed class RescueGroupsProvider(
                     }
 
                     orgUrl = GetString(orgAttrs, "url");
+                    // The organisation's location, which is as precise as this data gets — a dog
+                    // in foster care is wherever its foster is, and no feed publishes that.
+                    orgLat = GetDouble(orgAttrs, "lat");
+                    orgLon = GetDouble(orgAttrs, "lon");
                     // The county feeds put a shelter number on every card; this one had none,
                     // while the phone sat in a relationship we were already fetching.
                     orgPhone = CleanText(GetString(orgAttrs, "phone"));
@@ -192,7 +197,9 @@ public sealed class RescueGroupsProvider(
                 // was invisible to the size filter. Normalised through the shared bucket map so
                 // "X-Large" lands somewhere rather than being dropped.
                 Size: SocrataProvider.NormalizeSize(GetString(attrs, "sizeGroup")),
-                ContactInfo: orgPhone));
+                ContactInfo: orgPhone,
+                Latitude: orgLat,
+                Longitude: orgLon));
         }
 
         return seen;
@@ -314,6 +321,29 @@ public sealed class RescueGroupsProvider(
         decoded = System.Text.RegularExpressions.Regex.Replace(decoded, @"[ \t]{2,}", " ");
         var trimmed = decoded.Trim();
         return trimmed.Length == 0 ? null : trimmed;
+    }
+
+    /// <summary>
+    /// A JSON number, tolerating the string form. Feeds are inconsistent about whether coordinates
+    /// are quoted, and a silently-dropped latitude would just look like a rescue with no location.
+    /// </summary>
+    private static double? GetDouble(JsonElement element, string property)
+    {
+        if (!element.TryGetProperty(property, out var value))
+        {
+            return null;
+        }
+
+        return value.ValueKind switch
+        {
+            JsonValueKind.Number when value.TryGetDouble(out var d) => d,
+            JsonValueKind.String when double.TryParse(
+                value.GetString(),
+                System.Globalization.NumberStyles.Float,
+                System.Globalization.CultureInfo.InvariantCulture,
+                out var parsed) => parsed,
+            _ => null,
+        };
     }
 
     private static string? GetString(JsonElement element, string property) =>

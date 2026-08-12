@@ -18,7 +18,20 @@ public record ListingFilter(
     string? City = null,
     string? Size = null,
     string? AgeGroup = null,
-    bool IncludeUnlisted = true);
+    bool IncludeUnlisted = true,
+    // Where the visitor is searching from, and how far they will travel. All three are needed
+    // for the filter to apply at all — a radius with no origin is meaningless.
+    double? Latitude = null,
+    double? Longitude = null,
+    int? RadiusMiles = null)
+{
+    /// <summary>True when this filter can actually measure distance.</summary>
+    public bool HasOrigin =>
+        Latitude is { } lat && Longitude is { } lon && GeoDistance.IsPlausible(lat, lon);
+
+    /// <summary>True when distance should narrow the results, not merely be reported.</summary>
+    public bool HasRadius => HasOrigin && RadiusMiles is > 0;
+}
 
 /// <summary>
 /// The one place listing filters are defined — shared by /api/listings and the
@@ -26,6 +39,10 @@ public record ListingFilter(
 /// </summary>
 public static class ListingQuery
 {
+    /// <summary>Miles from the filter's origin to this listing, or null if either lacks coords.</summary>
+    public static double? DistanceFor(Listing listing, ListingFilter filter) =>
+        GeoDistance.Miles(filter.Latitude, filter.Longitude, listing.Latitude, listing.Longitude);
+
     /// <remarks>
     /// Size and age treat missing data as "unknown", not "no": industry-wide only a
     /// fraction of shelter listings have complete profiles, so dropping every blank
@@ -60,6 +77,17 @@ public static class ListingQuery
                 : filter.Size.Equals(l.Size, StringComparison.OrdinalIgnoreCase));
         }
 
+        // Same rule as size and age: a dog whose rescue recorded no location is "unknown", not
+        // "far away". Dropping those would silently hide real dogs over a blank field, and most
+        // of them are within range of somebody.
+        if (filter.HasRadius)
+        {
+            listings = listings.Where(l =>
+                DistanceFor(l, filter) is { } miles
+                    ? miles <= filter.RadiusMiles!.Value
+                    : filter.IncludeUnlisted);
+        }
+
         if (AgeParser.IsGroup(filter.AgeGroup) && filter.AgeGroup is { } wantedAge)
         {
             listings = listings.Where(l => l.AgeGroup is null
@@ -76,13 +104,16 @@ public static class ListingQuery
     /// </summary>
     public static IEnumerable<Listing> Sort(IEnumerable<Listing> listings, string? sort, ListingFilter filter)
     {
-        // "nearest" is deliberately absent until listings carry coordinates (arrives
-        // with RescueGroups) — a distance sort that silently isn't one is worse than
-        // not offering one.
+        // "nearest" waited until listings carried coordinates, on the grounds that a distance
+        // sort which silently isn't one is worse than not offering it. RescueGroups supplies
+        // them, so it exists now — but only when the request gave somewhere to measure from.
+        // Without an origin it falls through to the default rather than pretending to order.
         var ordered = sort?.ToLowerInvariant() switch
         {
             "youngest" => listings.OrderBy(l => l.AgeMonths ?? int.MaxValue),
             "oldest" => listings.OrderByDescending(l => l.AgeMonths ?? -1),
+            "nearest" when filter.HasOrigin =>
+                listings.OrderBy(l => DistanceFor(l, filter) ?? double.MaxValue),
             _ => listings.OrderBy(l => 0),
         };
 

@@ -91,6 +91,20 @@ real responses, and each has a matching guard in `RescueGroupsProvider`:
   filter is labelled "Anywhere in the US". Left as-is — an Ontario dog is a real adoptable dog —
   but the copy and the data disagree, and that is a product decision rather than a bug.
 
+### Geocoding
+
+Two keyless services, both only ever asked about the *visitor's* location — never about an animal.
+
+| Use | Service | Notes |
+|---|---|---|
+| ZIP → coordinates | `api.zippopotam.us` | Verified returning 38.9202,-77.0375 for 20009. A failure surfaces as "we couldn't find that ZIP" rather than a filter that looks applied |
+| Coordinates → state/city | `api.bigdatacloud.net` reverse-geocode-client | Pre-existing, used by "Use my location" to fill the State box |
+
+Animal coordinates are not geocoded at all. RescueGroups publishes `lat`/`lon` on the organisation,
+which is the honest granularity — a dog in foster care is wherever its foster lives, and no feed
+publishes that. The two county feeds each operate from one building, so those coordinates are
+constants in `Program.cs` rather than a runtime lookup of an address that cannot change.
+
 ## Tier 2 — Restricted / partner-only APIs
 
 | Site | Access path | Verdict |

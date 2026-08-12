@@ -342,6 +342,42 @@ const saysWhyNotAMarketplace = /nobody pays to be listed|not a marketplace/i.tes
 const admitsUnevenCoverage = /uneven by state|rather than complete/i.test(provenance)
 const admitsMissingFields = /no photo or no size/i.test(provenance)
 
+// Distance search. The filter adopters use most, per the Adopt-a-Pet research DESIGN.md cites, and
+// the one whose failure is invisible — a mile count that is quietly wrong still looks like a mile
+// count, and a "nearest" option that sorts nothing looks like a working control.
+const zipBox = 'input[aria-label="ZIP code to measure distance from"]'
+const totalBeforeZip = await page.locator('[data-testid="dog-results"] > li').count()
+await page.fill(zipBox, '20009')          // Washington DC
+await page.waitForTimeout(2600)           // debounced lookup, then a refetch
+const nearestOffered = (await page.locator('option:has-text("Nearest first")').count()) > 0
+await page.selectOption('select[aria-label="How far you will travel"]', '50')
+await page.waitForTimeout(2600)
+
+const nearHeading = await page.locator('[data-testid="results-heading"], h2').first().innerText()
+const withinFifty = await page.locator('[data-testid="dog-results"] > li').count()
+// Mileages as rendered, in the order the page lists them.
+const shownMiles = (await page.locator('[data-testid="dog-results"] > li').allInnerTexts())
+  .map((t) => t.match(/(\d+)\s*mi away/))
+  .filter(Boolean)
+  .map((m) => Number(m[1]))
+const everyDogHasAMileage = shownMiles.length === withinFifty
+const ascending = shownMiles.every((m, i) => i === 0 || m >= shownMiles[i - 1])
+const withinTheRadius = shownMiles.every((m) => m <= 50)
+const zipInUrl = new URL(page.url()).searchParams.get('zip') === '20009'
+  && new URL(page.url()).searchParams.get('radius') === '50'
+
+// A ZIP that resolves to nothing must say so rather than leaving a filter that looks applied.
+await page.fill(zipBox, '00000')
+await page.waitForTimeout(2600)
+const badZipWarns = (await page.locator('p.text-warning').count()) > 0
+await page.fill(zipBox, '')
+await page.waitForTimeout(2000)
+
+console.log('distance — nearest offered:', nearestOffered,
+  '| dogs:', totalBeforeZip, '->', withinFifty,
+  '| mileages:', shownMiles.slice(0, 5).join(','),
+  '| ascending:', ascending, '| within 50:', withinTheRadius, '| bad zip warns:', badZipWarns)
+
 // Line length, asserted rather than eyeballed. Measured at 91-117 chars across 13 of 13 prose
 // blocks before this rule existed — past the 80 of WCAG 1.4.8, which Baymard finds readers
 // experience as "intimidating and overwhelming". This is the check that stops it drifting back
@@ -515,6 +551,13 @@ const checks = {
   'the heading states the true total, not the page': pagedTotal > pagedShown,
   'no prose block exceeds 80 characters per line': longLines.length === 0,
   'no source\'s HTML entity markup reaches the reader': entityMarkup.length === 0,
+  'a ZIP offers a nearest-first sort': nearestOffered,
+  'a radius narrows the results': withinFifty > 0 && withinFifty < totalBeforeZip,
+  'every dog in a radius search shows its distance': everyDogHasAMileage,
+  'nearest really is ascending by distance': ascending,
+  'nothing outside the radius survives it': withinTheRadius,
+  'the distance search is shareable': zipInUrl,
+  'a ZIP that resolves to nothing says so': badZipWarns,
   'the adopt path says what RescueGroups is': namesTheNonProfit,
   'and why a non-profit feed beats a marketplace': saysWhyNotAMarketplace,
   'while admitting coverage is uneven': admitsUnevenCoverage,

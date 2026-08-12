@@ -23,7 +23,12 @@ public record Listing(
     // Shelter contact info shown on the card itself — the PetHarbor detail pages bury
     // it badly enough that visitors report "no contact info" after clicking through.
     string? ContactInfo = null,
-    string? AnimalRef = null) // shelter's own ID ("A545419") — what to mention when calling
+    string? AnimalRef = null, // shelter's own ID ("A545419") — what to mention when calling
+    // Where the animal is, for distance search. Usually the listing organisation's location
+    // rather than the animal's own — a fostered dog is wherever its foster is, which no feed
+    // publishes. Null when the source records none, which is common.
+    double? Latitude = null,
+    double? Longitude = null)
 {
     /// <summary>Derived from the free-text <see cref="Age"/> so the UI can filter and
     /// sort on it. Serialized to JSON automatically — the frontend never re-parses ages.</summary>
@@ -39,4 +44,11 @@ public record Listing(
     /// why it's an init-property stamped on the way out rather than derived here.
     /// </summary>
     public bool Unconfirmed { get; init; }
+
+    /// <summary>
+    /// Miles from the point the visitor searched from. Stamped per request like
+    /// <see cref="Unconfirmed"/>, because it is a property of the question rather than of the dog.
+    /// Null when either end has no coordinates.
+    /// </summary>
+    public double? DistanceMiles { get; init; }
 }

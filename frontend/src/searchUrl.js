@@ -7,7 +7,14 @@ const GOALS = ['adopt', 'buy', 'both']
 const DEFAULT_GOAL = 'buy'
 const SIZES = ['Teacup', 'Small', 'Medium', 'Large']
 export const AGES = ['Puppy', 'Young', 'Adult', 'Senior']
-const SORTS = ['youngest', 'oldest']
+// 'nearest' is only offered when a ZIP or geolocation supplied an origin, but it is accepted
+// here regardless: a shared URL carries the zip alongside it, and App.vue drops the sort if
+// the origin fails to resolve.
+const SORTS = ['nearest', 'youngest', 'oldest']
+
+// Radii the UI offers. Anything else in a URL is ignored rather than trusted — this value
+// goes straight into a distance comparison.
+const RADII = ['25', '50', '100', '250']
 
 // `tab` used to select between the site directory and the listings. Results are
 // now one list, so a shared pre-July-2026 URL simply loses the parameter.
@@ -25,13 +32,17 @@ export function parseSearchUrl(search, usStates) {
     traits: (params.get('traits') ?? '').split(',').filter(Boolean),
     goal: GOALS.includes(goal) ? goal : DEFAULT_GOAL,
     sort: match(SORTS, params.get('sort')) ?? '',
+    // Five digits or nothing. A malformed ZIP would fail the lookup anyway, but rejecting it
+    // here keeps a junk value out of the input box on load.
+    zip: /^\d{5}$/.test(params.get('zip') ?? '') ? params.get('zip') : '',
+    radius: RADII.includes(params.get('radius') ?? '') ? params.get('radius') : '',
     // Which dog's detail view is open. Ids are server-generated slugs, so anything
     // unexpected here just fails the lookup and shows the "no longer listed" state.
     dog: params.get('dog') ?? '',
   }
 }
 
-export function buildSearchQuery({ breed, state, city, size, age, traits, goal, sort, dog }) {
+export function buildSearchQuery({ breed, state, city, size, age, traits, goal, sort, dog, zip, radius }) {
   const params = new URLSearchParams()
   if (breed) params.set('breed', breed)
   if (state) params.set('state', state)
@@ -41,6 +52,9 @@ export function buildSearchQuery({ breed, state, city, size, age, traits, goal, 
   if (traits.length) params.set('traits', traits.join(','))
   if (goal !== DEFAULT_GOAL) params.set('goal', goal)
   if (sort) params.set('sort', sort)
+  if (zip) params.set('zip', zip)
+  // Only meaningful with a ZIP: a bare radius on a shared link would look applied and do nothing.
+  if (radius && zip) params.set('radius', radius)
   if (dog) params.set('dog', dog)
   return params.toString()
 }

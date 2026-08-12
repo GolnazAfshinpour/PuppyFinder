@@ -68,7 +68,10 @@ var montgomeryCounty = new SocrataDataset(
     // Verified July 2026 against their PetHarbor pages.
     // No emoji and no city: the card renders a Heroicon, and the city already appears on
     // its own line directly above — "Derwood, MD" was printed twice, two lines apart.
-    ContactInfo: "(240) 773-5900");
+    ContactInfo: "(240) 773-5900",
+    // 7315 Muncaster Mill Rd, Derwood MD — the shelter these listings are all held at.
+    Latitude: 39.1013,
+    Longitude: -77.1500);
 
 var kingCounty = new SocrataDataset(
     SourceName: "King County Pet Adoption",
@@ -82,7 +85,10 @@ var kingCounty = new SocrataDataset(
     MemoField: "memo",
     // Verified July 2026 against their PetHarbor pages (visit hours: noon-5 weekdays, noon-4 weekends).
     // Street kept (it is genuinely extra), city dropped as duplicated by the line above.
-    ContactInfo: "(206) 296-3936 · 21615 64th Ave S");
+    ContactInfo: "(206) 296-3936 · 21615 64th Ave S",
+    // 21615 64th Ave S, Kent WA — the regional shelter this feed publishes from.
+    Latitude: 47.3931,
+    Longitude: -122.2589);
 
 builder.Services.AddSingleton<IListingProvider>(sp => new SocrataProvider(
     montgomeryCounty, sp.GetRequiredService<IHttpClientFactory>(), sp.GetRequiredService<ILogger<SocrataProvider>>()));
@@ -119,8 +125,12 @@ app.UseCors(FrontendCors);
 // working but stop claiming a provenance they never had.
 await app.Services.GetRequiredService<PriceStore>().SeedFromCatalogAsync(CancellationToken.None);
 
+// lat/lon/radius: distance is *reported* whenever an origin is supplied and only *filters* when a
+// radius comes with it. Both are useful separately — "nearest first across the state" is a real
+// request, and a radius that quietly dropped dogs would be the worse default.
 app.MapGet("/api/listings", async (string? breed, string? state, string? city, string? size,
     string? age, string? sort, bool? includeUnlisted,
+    double? lat, double? lon, int? radius,
     ListingAggregator aggregator, BreedCatalogService catalog, CancellationToken ct) =>
 {
     var listings = (await aggregator.GetListingsAsync(ct)).AsEnumerable();
@@ -131,10 +141,21 @@ app.MapGet("/api/listings", async (string? breed, string? state, string? city, s
         City: city,
         Size: size,
         AgeGroup: age,
-        IncludeUnlisted: includeUnlisted ?? true);
+        IncludeUnlisted: includeUnlisted ?? true,
+        Latitude: lat,
+        Longitude: lon,
+        RadiusMiles: radius);
 
     var matches = ListingQuery.Filter(listings, filter)
-        .Select(l => l with { Unconfirmed = ListingQuery.Unconfirmed(l, filter) });
+        .Select(l => l with
+        {
+            Unconfirmed = ListingQuery.Unconfirmed(l, filter),
+            // Rounded to a whole mile: the coordinates are the rescue's office, so a decimal
+            // place would imply precision this data does not have.
+            DistanceMiles = ListingQuery.DistanceFor(l, filter) is { } miles
+                ? Math.Round(miles)
+                : null,
+        });
 
     return Results.Ok(ListingQuery.Sort(matches, sort, filter));
 })
