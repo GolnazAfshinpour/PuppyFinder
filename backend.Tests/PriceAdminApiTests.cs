@@ -35,6 +35,10 @@ public sealed class PriceAdminApiTests : IDisposable
             // like any Development run, so with Prices:ListingsEnabled set locally the suite
             // began fetching a third-party site for real — one test took 1m40s and made live
             // requests. A unit test must never depend on, or touch, someone else's server.
+            // Same reason ListingsEnabled is pinned: the test host loads user-secrets, so a
+            // real RescueGroups key on the developer machine would let these tests fetch a
+            // third-party API for real. Explicit beats hoping it is unset.
+            .UseSetting("RescueGroups:ApiKey", "")
             .UseSetting("Prices:ListingsEnabled", "false"));
         _client = _factory.CreateClient();
     }

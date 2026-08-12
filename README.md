@@ -6,15 +6,15 @@ that catch a scam before money moves. Adoption is a real secondary path, backed 
 shelter feeds.
 
 Price-based scam screening switches on **per breed, as each range gets sourced**. Today that
-is 53 of 175 breeds — 52 derived from live marketplace asking prices, one from published
-sources. The rest return `Unavailable` rather than screen against a number we can't
-attribute.
+is 50 of 175 breeds — 49 derived from live marketplace asking prices, one from published
+sources. A further 9 breeds carry an unsourced legacy range, shown but never screened against.
+The remaining 116 return `Unavailable` rather than screen against a number we can't attribute.
 
 - **Price ranges that label their own reliability** — every range carries a `confidence` derived from its sources, so the UI never claims more than the data supports. Ranges live in SQLite with provenance (source URL, verbatim quote, retrieval date); the original hardcoded numbers are imported as `unverified` because no source was ever recorded for them. See [docs/SOURCES.md](docs/SOURCES.md)
-- **Price scam check — on for sourced breeds only** (`GET /api/price-check`). Returns `Unavailable` for any breed whose range isn't `verified`. Owner decision: don't run fraud detection on numbers we can't attribute. It enables per breed automatically as each range gets sourced — there is no flag to flip. Live for 53 breeds
+- **Price scam check — on for sourced breeds only** (`GET /api/price-check`). Returns `Unavailable` for any breed whose range isn't `verified`. Owner decision: don't run fraud detection on numbers we can't attribute. It enables per breed automatically as each range gets sourced — there is no flag to flip. Live for 50 breeds
 - **Ranges from real asking prices** — the middle half of the live listings for a breed, not a journalist's estimate. Crossbreeds are excluded (up to 15 in 50 results), and a range is refused when its middle half falls far below what publishers report — a classifieds site's cheap tail is what the check exists to flag, so it must not become the benchmark. Every range records which kind of evidence produced it (`basis`), and the UI says "the middle half of 49 puppies listed for sale" rather than crediting an article that didn't produce the number. See [docs/SOURCES.md](docs/SOURCES.md) for the terms caveat
 - **Honest marketplace guide** — 7 breeder sites rated on vetting, price, delivery and documented cautions; no breeder marketplace publishes a data feed, and the UI says so rather than faking listings
-- **Dogs first (adoption path)** — searching returns actual listings (photo, age, size, shelter phone number), filtered by breed / age / state / city / size and sortable by age
+- **Dogs first (adoption path)** — searching returns actual listings (photo, age, size, shelter phone number), filtered by breed / age / state / city / size and sortable by age. Currently ~345 dogs across 34 states, from two county open-data feeds plus RescueGroups
 - **Age filter** — Puppy (under 1 yr) / Young / Adult / Senior, parsed out of the free-text ages the feeds publish (`AgeParser`)
 - **In-app dog detail view** — full bio, shelter phone number and the animal ID to quote, with one outbound "start the adoption" link. Addressable as `?dog=<id>`, so a single dog is shareable; a dog that has since been adopted says so rather than erroring
 - **Honest coverage** — the UI states where our feeds do and don't reach instead of showing an empty grid, and recommends **one** national site that carries your filters rather than opening fourteen tabs
@@ -29,7 +29,8 @@ dog results fill the right, with the site directory below them as the fallback t
 ## Where the listings come from
 
 - **Government open data (always on):** Montgomery County MD Animal Services and King County WA pet adoption feeds — public Socrata JSON endpoints, refreshed continuously.
-- **RescueGroups.org (optional):** request a free key at https://rescuegroups.org/services/adoptable-pet-data-api/, then `cd backend && dotnet user-secrets set "RescueGroups:ApiKey" "..."` for nationwide rescue coverage.
+- **RescueGroups.org:** request a free key at https://rescuegroups.org/services/adoptable-pet-data-api/, then `cd backend && dotnet user-secrets set "RescueGroups:ApiKey" "..."`. This is what takes coverage from 2 states to 34 — without it the app has only the two county feeds. Name the project and give a real URL on the form: they publish organisation name, site URL and key status to their member rescues, so a request with no identifiable service tends to sit unanswered.
+  - **Before hosting this publicly**, two obligations in their [API terms](https://rescuegroups.org/api-terms-of-service/) fall due: every pet detail page must carry their Pet Adoption Tracker image, and the key status must change from `Private` to `Public`. Neither applies while it runs on localhost. Details in `docs/SOURCES.md`.
 - ~~Petfinder~~ — their public API was discontinued Dec 2, 2025; Petfinder remains available via the deep-link footer chips.
 
 How the price search is designed: [docs/PRICE-SEARCH.md](docs/PRICE-SEARCH.md)

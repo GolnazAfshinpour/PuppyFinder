@@ -242,13 +242,18 @@ public sealed class SocrataProvider(
             : string.Join(' ', breed.Split(' ', StringSplitOptions.RemoveEmptyEntries)
                 .Select(word => BreedWordFixes.GetValueOrDefault(word, word)));
 
-    // Buckets match the app's Size filter. Values verified against the live feeds
-    // (Montgomery petsize: SMALL/MED/LARGE; KITTE is cats and never reaches dogs).
+    // Buckets match the app's Size filter. Shared with RescueGroupsProvider, since the
+    // buckets are app semantics rather than one feed's vocabulary. Values verified against the
+    // live feeds (Montgomery petsize: SMALL/MED/LARGE, KITTE is cats and never reaches dogs;
+    // RescueGroups sizeGroup: Small/Medium/Large/X-Large).
     public static string? NormalizeSize(string? raw) => raw?.Trim().ToUpperInvariant() switch
     {
         "TOY" or "SM" or "SMALL" => "Small",
         "MED" or "MEDIUM" => "Medium",
-        "LG" or "LARGE" or "X-LRG" or "XLRG" => "Large",
+        // X-Large collapses into Large: the app offers four buckets and a separate
+        // extra-large one would filter to almost nothing. RescueGroups sends "X-Large".
+        "LG" or "LARGE" or "X-LRG" or "XLRG" or "X-LARGE" or "XLARGE" or "XL"
+            or "EXTRA LARGE" => "Large",
         _ => null,
     };
 

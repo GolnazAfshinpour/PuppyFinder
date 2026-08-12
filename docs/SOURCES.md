@@ -43,6 +43,54 @@ Public Socrata JSON — no auth, generous anonymous limits. More city/county fee
 - Docs: https://userguide.rescuegroups.org/display/APIDG/API+Developers+Guide+Home
 - API ToS: https://rescuegroups.org/api-terms-of-service/
 
+#### Live since 6 August 2026
+
+A public API key was issued after two unanswered requests; the third named the project and linked
+this repository, which is what their reviewers ask for — they publish organisation name, site URL
+and key status to their member rescues, so a request with no identifiable service has nothing to
+approve. Coverage went from **48 dogs in 2 states to 345 in 34**, which was the largest single
+gap in the product.
+
+**These terms are permissive, and worth contrasting with the Puppies.com section below.**
+Caching is allowed, commercial use is allowed, and attribution is explicitly *not* required.
+What they do require:
+
+| Obligation | Status |
+|---|---|
+| Refresh cached data at least weekly, daily preferred | ✅ `ListingAggregator.CacheTtl` is 10 minutes |
+| Remove an organisation's data within 1 business day on request | ✅ nothing is persisted; cache is in-memory |
+| Delete all copies, including backups, if access ends | ✅ same — there is no copy to delete |
+| Don't flood the API; 429 is a documented response | ✅ 100 per page, 3 pages max, behind a 10-minute cache |
+| Don't share the data with another service, or reuse the key for one | ⚠️ one key, one app — a second app needs its own |
+| **Pet Adoption Tracker image on every pet detail page** | ❌ **not implemented — required only for public-facing use** |
+| Key status must be `Public` if the service shows data publicly | ⚠️ currently `Private`, which is accurate: localhost only |
+
+The last two fall due **on deployment, not now**. Hosting this publicly without them would breach
+the terms, so they are listed as blocking that step rather than as a nice-to-have.
+
+**What the live data needed, none of which the docs mention.** The provider was written against
+the documentation and had never run with a key; every item below was found by measuring the first
+real responses, and each has a matching guard in `RescueGroupsProvider`:
+
+- **Application placeholders are mixed in with the animals.** `1Dog Not Listed`,
+  `-A Dog Not Yet Posted-` and `Foster - Apply to be a Foster Home` all arrived in one fetch, some
+  carrying the rescue's logo as the photo. There is no flag distinguishing them, and the wording
+  differs per rescue, so both the name and the description are checked.
+- **Location is on the organisation, not the animal.** 9 of the first 25 dogs had no `locations`
+  relationship at all — the API omits null relationships rather than returning them empty. Adding
+  `orgs` as the fallback took city/state from 16/25 to 297/297. A dog with no state cannot be
+  reached by the state filter, which is one of the primary controls.
+- **`sizeGroup` was unmapped**, so every dog from this source was invisible to the size filter.
+  Its `X-Large` collapses into the app's `Large` bucket.
+- **Shelter IDs appear as names** (`A030173`), which rendered as "Meet A030173". Treated as a
+  missing name.
+- **State casing is inconsistent** — `CA`/`Ca`, `TX`/`Tx`, `OK`/`ok`, `ON`/`On` in one response.
+  Harmless so far, since the filter compares case-insensitively and the state count already
+  dedupes that way, but normalised at the source.
+- **Canadian provinces appear** (`ON` is Ontario). RescueGroups covers North America, while the
+  filter is labelled "Anywhere in the US". Left as-is — an Ontario dog is a real adoptable dog —
+  but the copy and the data disagree, and that is a product decision rather than a bug.
+
 ## Tier 2 — Restricted / partner-only APIs
 
 | Site | Access path | Verdict |

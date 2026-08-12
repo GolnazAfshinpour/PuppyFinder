@@ -43,6 +43,10 @@ public sealed class PriceRefreshJobTests : IDisposable
             // user-secrets, so this is set explicitly rather than by hoping it wasn't enabled
             // locally. Tests that need it on set it deliberately and cap the work.
             .UseSetting("Prices:ListingsEnabled", listingsEnabled ? "true" : "false")
+            // Same reason ListingsEnabled is pinned: the test host loads user-secrets, so a
+            // real RescueGroups key on the developer machine would let these tests fetch a
+            // third-party API for real. Explicit beats hoping it is unset.
+            .UseSetting("RescueGroups:ApiKey", "")
             .UseSetting("Prices:ListingPages", "1"));
 
         // CreateClient boots the host, which is what starts the BackgroundService.
@@ -80,6 +84,7 @@ public sealed class PriceRefreshJobTests : IDisposable
             .UseSetting("Alerts:StorePath", Path.Combine(_dir, "alerts.json"))
             .UseSetting("Anthropic:ApiKey", "")
             .UseSetting("Prices:ListingsEnabled", "false")
+            .UseSetting("RescueGroups:ApiKey", "")
             .ConfigureServices(s => s.AddSingleton<ILoggerProvider>(logs)));
         factory.CreateClient().Dispose();
         return new Fixture(

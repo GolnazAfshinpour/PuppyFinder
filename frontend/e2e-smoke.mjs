@@ -9,7 +9,7 @@ const apiCalls = []
 page.on('request', (r) => {
   const url = r.url()
   if (url.includes('/api/listings') || url.includes('/api/price-check')) {
-    apiCalls.push(url.replace('http://localhost:5173', ''))
+    apiCalls.push(url.replace(BASE, ''))
   }
 })
 page.on('console', (m) => {
@@ -27,13 +27,34 @@ const resultTotal = async () => {
   const heading = await page.locator('h2:has-text("adoptable"), h2:has-text("Showing")').first().innerText()
   return Number(heading.match(/\d+/)?.[0] ?? 0)
 }
+// Where the app under test is. Overridable because the port is not ours to assume: a different
+// project's Vite server was on 5173 once, and the suite silently pointed at it — `/` returned 200,
+// `/api/breeds` 404'd, and the first sign of trouble was a JSON parse error 40 lines later. A
+// suite that can be aimed at the wrong app should at least say so.
+const BASE = (process.env.BASE_URL ?? 'http://localhost:5173').replace(/\/$/, '')
+
 const settle = () => page.waitForTimeout(2500)
 const breedSelect = 'select:below(:text("BREED"))'
 
 // ---------- buying: the default path ----------
-await page.goto('http://localhost:5173')
+await page.goto(BASE)
 await page.waitForSelector('h1', { timeout: 15000 })
 await settle()
+
+// Confirm this is the app we think it is, and that its API is reachable through the same origin.
+// Everything below asserts against selectors and JSON shapes; being pointed at some other app
+// produces confusing failures at best and meaningless passes at worst.
+const identity = await page.evaluate(async () => {
+  const res = await fetch('/api/breeds')
+  return { ok: res.ok, status: res.status, title: document.title }
+})
+if (!identity.ok) {
+  console.error(`FATAL: ${BASE} does not serve PuppyFinder's API `
+    + `(/api/breeds -> ${identity.status}, page title "${identity.title}").`)
+  console.error('Start this app\'s dev server, or set BASE_URL to where it is running.')
+  await browser.close()
+  process.exit(1)
+}
 
 // Pick the sourced/unsourced example breeds from live data rather than naming them.
 // Hardcoding french-bulldog as "the unsourced one" broke four checks the moment its range
@@ -367,12 +388,12 @@ const detailClosed = (await page.locator('[role="dialog"]').count()) === 0
   && !new URL(page.url()).searchParams.has('dog')
 console.log('Escape closes it and clears the param:', detailClosed)
 
-await page.goto(`http://localhost:5173/?dog=${sharedId}`)
+await page.goto(`${BASE}/?dog=${sharedId}`)
 await page.waitForTimeout(3000)
 const sharedResolves = (await page.locator('#dog-detail-name').count()) === 1
 console.log('shared ?dog= link resolves:', sharedResolves)
 
-await page.goto('http://localhost:5173/?dog=montgomery-county-animal-services-a000000')
+await page.goto(`${BASE}/?dog=montgomery-county-animal-services-a000000`)
 await page.waitForTimeout(2500)
 const goneHandled = (await page.locator('text=no longer listed').count()) === 1
 console.log('adopted dog handled gracefully:', goneHandled)
@@ -383,7 +404,7 @@ console.log('adopted dog handled gracefully:', goneHandled)
 // have silently disagreed with its own URL. A shareable URL that isn't navigable is half a
 // feature.
 await page.goto('about:blank')                 // give Back somewhere real to go
-await page.goto('http://localhost:5173')
+await page.goto(BASE)
 await page.waitForSelector('h1', { timeout: 15000 })
 await settle()
 await page.selectOption(breedSelect, 'beagle')
@@ -400,7 +421,7 @@ const backKeptBreed = (await page.locator(breedSelect).first().inputValue()) ===
 await page.goForward()
 await settle()
 const forwardUrl = page.url()
-const stillOnApp = page.url().includes('localhost:5173')
+const stillOnApp = page.url().startsWith(BASE)
 console.log('history — after pick:', afterPick.includes('beagle'),
   '| adopt:', afterAdopt.includes('goal=adopt'),
   '| Back undid it:', backUrl === afterPick,

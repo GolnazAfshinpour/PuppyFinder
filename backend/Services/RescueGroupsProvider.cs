@@ -18,13 +18,45 @@ public sealed class RescueGroupsProvider(
     public bool IsEnabled =>
         !string.IsNullOrWhiteSpace(configuration["RescueGroups:ApiKey"]);
 
+    /// <summary>
+    /// Results per request. 25 was an arbitrary starter value and coverage is the whole point of
+    /// this source, but the API terms ask callers to avoid flooding it and document 429 as a
+    /// response, so this stays modest rather than maximal.
+    /// </summary>
+    private const int PageSize = 100;
+
+    /// <summary>How many pages to walk at most, so a paging bug cannot loop indefinitely.</summary>
+    private const int MaxPages = 3;
+
     public async Task<IReadOnlyList<Listing>> FetchListingsAsync(CancellationToken cancellationToken)
+    {
+        var listings = new List<Listing>();
+        for (var page = 1; page <= MaxPages; page++)
+        {
+            var fetched = await FetchPageAsync(page, listings, cancellationToken);
+            if (fetched < PageSize)
+            {
+                break;  // short page means there is nothing after it
+            }
+        }
+
+        logger.LogInformation("RescueGroups returned {Count} listings", listings.Count);
+        return listings;
+    }
+
+    /// <returns>How many records the page contained, before filtering.</returns>
+    private async Task<int> FetchPageAsync(
+        int page, List<Listing> listings, CancellationToken cancellationToken)
     {
         var client = httpClientFactory.CreateClient("rescuegroups");
 
+        // orgs is included for its city/state: RescueGroups' own examples put location on the
+        // org, an animal's own `locations` relationship is frequently absent, and the API omits
+        // null relationships rather than returning them empty.
         using var request = new HttpRequestMessage(
             HttpMethod.Get,
-            "https://api.rescuegroups.org/v5/public/animals/search/available/dogs?limit=25&include=pictures,locations");
+            "https://api.rescuegroups.org/v5/public/animals/search/available/dogs"
+                + $"?limit={PageSize}&page={page}&include=pictures,locations,orgs");
         request.Headers.TryAddWithoutValidation("Authorization", configuration["RescueGroups:ApiKey"]);
 
         using var response = await client.SendAsync(request, cancellationToken);
@@ -43,16 +75,40 @@ public sealed class RescueGroupsProvider(
             }
         }
 
-        var listings = new List<Listing>();
-        if (!root.TryGetProperty("data", out var data))
+        if (!root.TryGetProperty("data", out var data) || data.ValueKind != JsonValueKind.Array)
         {
-            return listings;
+            return 0;
         }
 
+        var seen = 0;
         foreach (var animal in data.EnumerateArray())
         {
+            seen++;
             var id = animal.GetProperty("id").GetString()!;
             var attrs = animal.GetProperty("attributes");
+
+            // Already going to a home. Listing it as available wastes the reader's time and the
+            // rescue's, which is the opposite of what this integration is for.
+            if (attrs.TryGetProperty("isAdoptionPending", out var pending)
+                && pending.ValueKind == JsonValueKind.True)
+            {
+                continue;
+            }
+
+            var name = GetString(attrs, "name") ?? "Unnamed";
+            var description = GetString(attrs, "descriptionText") ?? "";
+            if (IsPlaceholder(name, description))
+            {
+                continue;
+            }
+
+            // A shelter ID is a missing name that happens to be a non-empty string. Cards read
+            // "Meet A030173" otherwise, which tells an adopter nothing; the breed, age, size and
+            // location beside it carry the actual information.
+            if (LooksLikeAnIdCode(name))
+            {
+                name = "Unnamed";
+            }
 
             string? city = null, state = null, imageUrl = null;
             if (animal.TryGetProperty("relationships", out var rels))
@@ -63,6 +119,26 @@ public sealed class RescueGroupsProvider(
                     var locAttrs = location.GetProperty("attributes");
                     city = GetString(locAttrs, "city");
                     state = GetString(locAttrs, "state");
+                }
+
+                // Fall back to the organisation's own address. Measured: 9 of the first 25 dogs
+                // had no locations relationship at all, and a dog with no state cannot be
+                // reached by the state filter, which is one of the primary controls.
+                if (string.IsNullOrWhiteSpace(state)
+                    && FirstRelated(rels, "orgs") is { } orgId
+                    && included.TryGetValue(("orgs", orgId), out var org))
+                {
+                    var orgAttrs = org.GetProperty("attributes");
+                    city ??= GetString(orgAttrs, "city");
+                    state = GetString(orgAttrs, "state");
+                }
+
+                // Casing varies by rescue — CA and Ca, TX and Tx, OK and ok all appear in one
+                // response. Harmless today, because the filter compares case-insensitively, but
+                // only until something groups on the raw value.
+                if (state?.Length == 2)
+                {
+                    state = state.ToUpperInvariant();
                 }
 
                 if (FirstRelated(rels, "pictures") is { } picId &&
@@ -77,22 +153,52 @@ public sealed class RescueGroupsProvider(
 
             listings.Add(new Listing(
                 Id: $"rescuegroups-{id}",
-                Name: GetString(attrs, "name") ?? "Unnamed",
+                Name: name,
                 Breed: GetString(attrs, "breedPrimary") ?? "Mixed Breed",
                 Age: GetString(attrs, "ageGroup"),
                 Sex: GetString(attrs, "sex"),
-                Description: GetString(attrs, "descriptionText") ?? "",
+                Description: description,
                 City: city ?? "",
                 State: state ?? "",
                 ImageUrl: imageUrl,
                 ListingUrl: GetString(attrs, "url") ?? "https://rescuegroups.org",
                 Source: SourceName,
-                SourceUrl: "https://rescuegroups.org"));
+                SourceUrl: "https://rescuegroups.org",
+                // A documented, filterable animal field. Unmapped, every dog from this source
+                // was invisible to the size filter. Normalised through the shared bucket map so
+                // "X-Large" lands somewhere rather than being dropped.
+                Size: SocrataProvider.NormalizeSize(GetString(attrs, "sizeGroup"))));
         }
 
-        logger.LogInformation("RescueGroups returned {Count} listings", listings.Count);
-        return listings;
+        return seen;
     }
+
+    /// <summary>
+    /// Whether a record is an application placeholder rather than an animal. Several rescues
+    /// publish one — no photo, or the rescue's logo, and a name that says what it is.
+    ///
+    /// <para>
+    /// There is no flag for this, so it is matched on wording, and the wording varies: the live
+    /// API returned "1Dog Not Listed", "-A Dog Not Yet Posted-" and
+    /// "Foster - Apply to be a Foster Home" in the same fetch. A first version of this check
+    /// matched only "not listed" and let the other two through, so the description is consulted
+    /// as well — that is where these entries explain themselves.
+    /// </para>
+    /// </summary>
+    private static bool IsPlaceholder(string name, string description) =>
+        PlaceholderName.IsMatch(name)
+        || name.Contains("apply", StringComparison.OrdinalIgnoreCase)
+        || description.Contains("trying to apply for a dog", StringComparison.OrdinalIgnoreCase)
+        || description.Contains("dog that is not listed", StringComparison.OrdinalIgnoreCase);
+
+    private static readonly System.Text.RegularExpressions.Regex PlaceholderName = new(
+        @"not\s+(yet\s+)?(listed|posted|available)|unlisted\s+dog",
+        System.Text.RegularExpressions.RegexOptions.IgnoreCase
+            | System.Text.RegularExpressions.RegexOptions.Compiled);
+
+    /// <summary>A bare shelter reference such as "A030173" — an identifier, not a name.</summary>
+    private static bool LooksLikeAnIdCode(string name) =>
+        System.Text.RegularExpressions.Regex.IsMatch(name.Trim(), @"^[A-Za-z]{0,2}[-\s]?\d{4,}$");
 
     private static string? FirstRelated(JsonElement relationships, string name) =>
         relationships.TryGetProperty(name, out var rel) &&
