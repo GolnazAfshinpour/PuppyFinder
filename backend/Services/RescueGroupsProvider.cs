@@ -95,8 +95,8 @@ public sealed class RescueGroupsProvider(
                 continue;
             }
 
-            var name = GetString(attrs, "name") ?? "Unnamed";
-            var description = GetString(attrs, "descriptionText") ?? "";
+            var name = CleanText(GetString(attrs, "name")) ?? "Unnamed";
+            var description = CleanText(GetString(attrs, "descriptionText")) ?? "";
             if (IsPlaceholder(name, description))
             {
                 continue;
@@ -207,6 +207,50 @@ public sealed class RescueGroupsProvider(
         relData.GetArrayLength() > 0
             ? relData[0].GetProperty("id").GetString()
             : null;
+
+    /// <summary>
+    /// Turns a RescueGroups text field into the plain text the rest of the app assumes.
+    ///
+    /// <para>
+    /// Their editors store HTML source, so bios arrive with entities intact — 193 of the first
+    /// 297 did, and the page showed "I&amp;rsquo;ve been at the Orangeburg SPCA" verbatim. Also
+    /// normalises the non-breaking spaces that come with them, collapses the runs of blank lines
+    /// their editor leaves behind, and trims: 64 descriptions had leading or trailing whitespace.
+    /// </para>
+    /// </summary>
+    private static string? CleanText(string? raw)
+    {
+        if (string.IsNullOrWhiteSpace(raw))
+        {
+            return null;
+        }
+
+        // Decoded up to twice, because some rescues' text is double-encoded: one bio arrived
+        // as "&amp;#39;" and a single pass left a literal "&#39;" on the card. Bounded at two
+        // so a pathological value cannot loop, and safe only because these fields render as
+        // escaped text — if anything ever renders them as HTML this needs sanitising instead.
+        var decoded = raw;
+        for (var pass = 0; pass < 2; pass++)
+        {
+            var next = System.Net.WebUtility.HtmlDecode(decoded);
+            if (next == decoded)
+            {
+                break;
+            }
+
+            decoded = next;
+        }
+
+        decoded = decoded
+            .Replace('\u00a0', ' ')   // &nbsp; decodes to this, and it wraps badly
+            .Replace("\r\n", "\n");
+        // Three or more newlines become two: a paragraph break, not a gap.
+        decoded = System.Text.RegularExpressions.Regex.Replace(decoded, @"\n{3,}", "\n\n");
+        // Runs of spaces and tabs collapse, without touching the line breaks.
+        decoded = System.Text.RegularExpressions.Regex.Replace(decoded, @"[ \t]{2,}", " ");
+        var trimmed = decoded.Trim();
+        return trimmed.Length == 0 ? null : trimmed;
+    }
 
     private static string? GetString(JsonElement element, string property) =>
         element.TryGetProperty(property, out var value) && value.ValueKind == JsonValueKind.String

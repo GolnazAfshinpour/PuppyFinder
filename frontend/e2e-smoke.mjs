@@ -320,6 +320,16 @@ console.log('advice — liveness tests named:', namesLivenessTests,
   '| P2P not protected:', p2pNotProtected,
   '| verdicts worded:', everyMethodHasAWord)
 
+// No source's markup may reach the reader. RescueGroups stores bios as HTML source, so 193 of
+// 297 arrived with entities intact and the page showed "I&rsquo;ve been at the Orangeburg SPCA"
+// verbatim. Checked across the whole rendered page rather than one field, because the next
+// occurrence will be in whichever field a future source maps carelessly.
+const entityMarkup = await page.evaluate(() => {
+  const text = document.body.innerText
+  return [...new Set([...text.matchAll(/&[a-z]{2,8};|&#\d+;/gi)].map((m) => m[0]))]
+})
+console.log('undecoded entity markup on the page:', entityMarkup.join(' ') || 'none')
+
 // Line length, asserted rather than eyeballed. Measured at 91-117 chars across 13 of 13 prose
 // blocks before this rule existed — past the 80 of WCAG 1.4.8, which Baymard finds readers
 // experience as "intimidating and overwhelming". This is the check that stops it drifting back
@@ -492,6 +502,7 @@ const checks = {
   'revealing more shows more': afterReveal > pagedShown,
   'the heading states the true total, not the page': pagedTotal > pagedShown,
   'no prose block exceeds 80 characters per line': longLines.length === 0,
+  'no source\'s HTML entity markup reaches the reader': entityMarkup.length === 0,
   'Back undoes a filter change instead of leaving the site':
     stillOnApp && backUrl === afterPick,
   'Back restores the rest of the search, not just the URL': backKeptBreed,
