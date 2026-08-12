@@ -12,7 +12,11 @@ builder.Services.ConfigureHttpJsonOptions(options =>
 
 builder.Services.AddHttpClient("rescuegroups", client =>
 {
-    client.Timeout = TimeSpan.FromSeconds(15);
+    // 40s, not 15: this provider walks three pages of 100 animals with pictures, locations and
+    // orgs included, and 15s was set when it made a single request. Exceeding it used to drop
+    // every dog from this source for a full cache period. It is a background fetch behind a
+    // 10-minute cache, so a slow response costs latency nobody waits on.
+    client.Timeout = TimeSpan.FromSeconds(40);
     client.DefaultRequestHeaders.UserAgent.ParseAdd("PuppyFinder/1.0");
     client.DefaultRequestHeaders.Accept.ParseAdd("application/vnd.api+json");
 });

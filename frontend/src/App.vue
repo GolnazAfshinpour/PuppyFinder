@@ -765,10 +765,52 @@ onMounted(() => {
               </select>
             </label>
           </div>
-          <p class="mb-5 max-w-prose text-sm text-base-content/60">
+          <p class="mb-2 max-w-prose text-sm text-base-content/60">
             Live from public shelter feeds{{ activeSources.length ? ` (${activeSources.join(', ')})` : '' }}
             — refreshed every few minutes.
           </p>
+
+          <!--
+            Collapsed on purpose. The line above answers "who"; this answers "why", which matters
+            because RescueGroups is the name a reader is least likely to know while supplying most
+            of the dogs. Kept honest about what the source cannot do, since coverage gaps and blank
+            fields are the two things a reader will actually notice.
+          -->
+          <details class="collapse-arrow bg-base-200 collapse mb-5">
+            <summary class="collapse-title py-2 text-sm font-semibold">
+              Where these dogs come from
+            </summary>
+            <div class="collapse-content space-y-3 text-sm">
+              <p class="max-w-prose">
+                Two of the feeds are government open data, published directly by
+                Montgomery County (MD) and King County (WA) animal services.
+              </p>
+              <p class="max-w-prose">
+                The rest come from <strong>RescueGroups.org</strong>, a 501(c)(3) non-profit that
+                has given animal rescues free and low-cost adoption software since 2002 —
+                listing management, online forms, and the websites many small rescues run on.
+                The rescue caring for the dog writes the listing themselves, and RescueGroups
+                passes it on to over 200 adoption sites. That is also why some links here open a
+                <em>rescuename</em>.rescuegroups.org page: RescueGroups hosts it for them.
+              </p>
+              <p class="max-w-prose">
+                <strong>Why we use them.</strong> These are the rescues' own words about their own
+                dogs, not a marketplace — nobody pays to be listed and nobody profits from the
+                adoption, which is the opposite of the breeder classifieds this site warns you
+                about. It is also the only route still open: Petfinder closed its public API in
+                December 2025, Adopt-a-Pet's full feed is paid partners only, and just two county
+                open-data feeds publish adoptable dogs nationwide.
+              </p>
+              <p class="max-w-prose">
+                <strong>What that means for you.</strong> Coverage follows the rescues that happen
+                to use RescueGroups, so it is uneven by state rather than complete. And because
+                each rescue fills in its own listing, some dogs arrive with no photo or no size
+                recorded — we show those anyway, marked as unknown, instead of hiding a real dog
+                over a blank field. Adoption fees, hours and requirements are always the rescue's,
+                not ours.
+              </p>
+            </div>
+          </details>
 
           <div
             v-if="!listings.length && broadened"

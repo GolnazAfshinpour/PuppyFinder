@@ -17,6 +17,13 @@ public sealed class ListingAggregator(
     private readonly SemaphoreSlim _refreshLock = new(1, 1);
     private readonly Dictionary<string, string?> _lastErrors = [];
     private readonly Dictionary<string, int> _lastCounts = [];
+
+    /// <summary>
+    /// The last successful result per provider, so a failed fetch degrades to stale data rather
+    /// than to nothing. A 15-second timeout on one provider used to remove 297 of 345 dogs for a
+    /// full cache period, and the page gave no sign of it.
+    /// </summary>
+    private readonly Dictionary<string, IReadOnlyList<Listing>> _lastGood = [];
     private IReadOnlyList<Listing> _cached = [];
     private DateTimeOffset _cachedAt = DateTimeOffset.MinValue;
 
@@ -44,12 +51,25 @@ public sealed class ListingAggregator(
                     merged.AddRange(listings);
                     _lastCounts[provider.SourceName] = listings.Count;
                     _lastErrors[provider.SourceName] = null;
+                    if (listings.Count > 0)
+                    {
+                        _lastGood[provider.SourceName] = listings;
+                    }
                 }
                 catch (Exception ex)
                 {
-                    logger.LogWarning("Provider {Source} failed: {Message}", provider.SourceName, ex.Message);
-                    _lastCounts[provider.SourceName] = 0;
-                    _lastErrors[provider.SourceName] = ex.Message;
+                    // Reuse what this provider last returned. Stale by minutes beats absent: the
+                    // detail view already handles a dog that has since gone, whereas an empty
+                    // source just looks like the app has fewer dogs than it does.
+                    var stale = _lastGood.GetValueOrDefault(provider.SourceName, []);
+                    merged.AddRange(stale);
+                    _lastCounts[provider.SourceName] = stale.Count;
+                    _lastErrors[provider.SourceName] = stale.Count > 0
+                        ? $"{ex.Message} — serving {stale.Count} listings from the previous fetch"
+                        : ex.Message;
+                    logger.LogWarning(
+                        "Provider {Source} failed: {Message}. Serving {Count} listings from the "
+                        + "previous fetch", provider.SourceName, ex.Message, stale.Count);
                 }
             }
 

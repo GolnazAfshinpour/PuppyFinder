@@ -34,7 +34,23 @@ public sealed class RescueGroupsProvider(
         var listings = new List<Listing>();
         for (var page = 1; page <= MaxPages; page++)
         {
-            var fetched = await FetchPageAsync(page, listings, cancellationToken);
+            int fetched;
+            try
+            {
+                fetched = await FetchPageAsync(page, listings, cancellationToken);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException
+                                       || cancellationToken.IsCancellationRequested)
+            {
+                // Keep the pages that did arrive. Letting this propagate discarded every dog
+                // already collected, so one slow page cost the whole source — and the aggregator
+                // then cached the shortfall for ten minutes.
+                logger.LogWarning(
+                    "RescueGroups page {Page} failed ({Message}); keeping {Count} listings from "
+                    + "earlier pages", page, ex.Message, listings.Count);
+                break;
+            }
+
             if (fetched < PageSize)
             {
                 break;  // short page means there is nothing after it

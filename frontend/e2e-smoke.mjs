@@ -330,6 +330,18 @@ const entityMarkup = await page.evaluate(() => {
 })
 console.log('undecoded entity markup on the page:', entityMarkup.join(' ') || 'none')
 
+// The adopt path names its sources and explains the main one. RescueGroups supplies most of the
+// dogs and is the name a reader is least likely to know, so "who" without "why" is a gap — and
+// the caveats are the part most likely to be dropped in a tidy-up, since they are the only
+// paragraph that makes the product sound worse.
+await page.click('summary:has-text("Where these dogs come from")')
+await page.waitForTimeout(400)
+const provenance = await page.locator('main').innerText()
+const namesTheNonProfit = /501\(c\)\(3\)/.test(provenance) && /RescueGroups/.test(provenance)
+const saysWhyNotAMarketplace = /nobody pays to be listed|not a marketplace/i.test(provenance)
+const admitsUnevenCoverage = /uneven by state|rather than complete/i.test(provenance)
+const admitsMissingFields = /no photo or no size/i.test(provenance)
+
 // Line length, asserted rather than eyeballed. Measured at 91-117 chars across 13 of 13 prose
 // blocks before this rule existed — past the 80 of WCAG 1.4.8, which Baymard finds readers
 // experience as "intimidating and overwhelming". This is the check that stops it drifting back
@@ -503,6 +515,10 @@ const checks = {
   'the heading states the true total, not the page': pagedTotal > pagedShown,
   'no prose block exceeds 80 characters per line': longLines.length === 0,
   'no source\'s HTML entity markup reaches the reader': entityMarkup.length === 0,
+  'the adopt path says what RescueGroups is': namesTheNonProfit,
+  'and why a non-profit feed beats a marketplace': saysWhyNotAMarketplace,
+  'while admitting coverage is uneven': admitsUnevenCoverage,
+  'and that some listings are incomplete': admitsMissingFields,
   'Back undoes a filter change instead of leaving the site':
     stillOnApp && backUrl === afterPick,
   'Back restores the rest of the search, not just the URL': backKeptBreed,
