@@ -1,3 +1,4 @@
+using System.Linq;
 using System.Text.Json;
 using PuppyFinder.Api.Models;
 
@@ -110,7 +111,7 @@ public sealed class RescueGroupsProvider(
                 name = "Unnamed";
             }
 
-            string? city = null, state = null, imageUrl = null;
+            string? city = null, state = null, imageUrl = null, orgUrl = null, orgPhone = null;
             if (animal.TryGetProperty("relationships", out var rels))
             {
                 if (FirstRelated(rels, "locations") is { } locId &&
@@ -124,13 +125,20 @@ public sealed class RescueGroupsProvider(
                 // Fall back to the organisation's own address. Measured: 9 of the first 25 dogs
                 // had no locations relationship at all, and a dog with no state cannot be
                 // reached by the state filter, which is one of the primary controls.
-                if (string.IsNullOrWhiteSpace(state)
-                    && FirstRelated(rels, "orgs") is { } orgId
+                if (FirstRelated(rels, "orgs") is { } orgId
                     && included.TryGetValue(("orgs", orgId), out var org))
                 {
                     var orgAttrs = org.GetProperty("attributes");
-                    city ??= GetString(orgAttrs, "city");
-                    state = GetString(orgAttrs, "state");
+                    if (string.IsNullOrWhiteSpace(state))
+                    {
+                        city ??= GetString(orgAttrs, "city");
+                        state = GetString(orgAttrs, "state");
+                    }
+
+                    orgUrl = GetString(orgAttrs, "url");
+                    // The county feeds put a shelter number on every card; this one had none,
+                    // while the phone sat in a relationship we were already fetching.
+                    orgPhone = CleanText(GetString(orgAttrs, "phone"));
                 }
 
                 // Casing varies by rescue — CA and Ca, TX and Tx, OK and ok all appear in one
@@ -161,13 +169,14 @@ public sealed class RescueGroupsProvider(
                 City: city ?? "",
                 State: state ?? "",
                 ImageUrl: imageUrl,
-                ListingUrl: GetString(attrs, "url") ?? "https://rescuegroups.org",
+                ListingUrl: DetailUrl(GetString(attrs, "url"), orgUrl, id),
                 Source: SourceName,
                 SourceUrl: "https://rescuegroups.org",
                 // A documented, filterable animal field. Unmapped, every dog from this source
                 // was invisible to the size filter. Normalised through the shared bucket map so
                 // "X-Large" lands somewhere rather than being dropped.
-                Size: SocrataProvider.NormalizeSize(GetString(attrs, "sizeGroup"))));
+                Size: SocrataProvider.NormalizeSize(GetString(attrs, "sizeGroup")),
+                ContactInfo: orgPhone));
         }
 
         return seen;
@@ -195,6 +204,45 @@ public sealed class RescueGroupsProvider(
         @"not\s+(yet\s+)?(listed|posted|available)|unlisted\s+dog",
         System.Text.RegularExpressions.RegexOptions.IgnoreCase
             | System.Text.RegularExpressions.RegexOptions.Compiled);
+
+    /// <summary>
+    /// The best available link for one animal, degrading in steps rather than collapsing to the
+    /// site root.
+    ///
+    /// <para>
+    /// The animal's own <c>url</c> is absent for most records — 207 of 297 — and falling back to
+    /// rescuegroups.org meant "Meet Ace" opened a corporate homepage with no way to reach Ace.
+    /// There is no canonical per-animal URL to use instead: <c>/animals/detail?AnimalID=</c> at
+    /// the site root 404s, the animal's <c>slug</c> 404s there too, and the host in
+    /// <c>trackerimageUrl</c> does not resolve. So the rescue's own site does the work, and when
+    /// that site is RescueGroups-hosted the same detail path the populated links use still
+    /// reaches the individual dog.
+    /// </para>
+    /// </summary>
+    public static string DetailUrl(string? animalUrl, string? orgUrl, string animalId)
+    {
+        if (!string.IsNullOrWhiteSpace(animalUrl))
+        {
+            return Https(animalUrl);
+        }
+
+        if (!string.IsNullOrWhiteSpace(orgUrl)
+            && Uri.TryCreate(Https(orgUrl), UriKind.Absolute, out var org))
+        {
+            return org.Host.EndsWith(".rescuegroups.org", StringComparison.OrdinalIgnoreCase)
+                ? $"{org.GetLeftPart(UriPartial.Authority)}/animals/detail?AnimalID={animalId}"
+                : org.ToString();
+        }
+
+        // Nothing better exists for this record, rather than a default nobody checked.
+        return "https://rescuegroups.org";
+    }
+
+    /// <summary>Org URLs come back as http; the app is served over https.</summary>
+    private static string Https(string url) =>
+        url.StartsWith("http://", StringComparison.OrdinalIgnoreCase)
+            ? string.Concat("https://", url.AsSpan("http://".Length))
+            : url;
 
     /// <summary>A bare shelter reference such as "A030173" — an identifier, not a name.</summary>
     private static bool LooksLikeAnIdCode(string name) =>
