@@ -191,6 +191,46 @@ Honesty beats marketing — cautions and coverage limits are stated plainly.
   permanent once shared. Canonical tags and `sitemap.xml` are emitted only when `SITE_URL` is
   set: a canonical pointing at the wrong origin is worse than none, which is the same rule the
   price ranges follow.
+- **Advice has to reach the person who has already paid — including as a check, not just prose.**
+  The safety guide's escalating-fee section was written for someone mid-scam; the fee check is
+  that section as something you can use. Every other check in the app fires before payment one
+  (price, red flags, video call, paperwork), while BBB's finding is that a "multi-tiered setup"
+  puts most of the loss on payments two, three and four. It takes what the seller is asking for
+  plus one question — *have you already sent this seller money?* — and the second input is what
+  decides the verdict, because "don't send it" and "stop paying" are different instructions to
+  different people. Unanswered by default rather than defaulted to "not yet": guessing there
+  would hand the calmer advice to the reader who least needs it.
+- **The fee check needs no price range, which is the point.** Price screening is live for 50 of
+  175 breeds; an invented crate fee is the same invented crate fee whatever the breed. It is a
+  separate endpoint rather than a branch of `/api/price-check` for exactly that reason.
+- **A fee catalog has to hold the real costs too.** A tool that only knew scam fees would answer
+  "that's a scam" to a legitimate deposit — and being wrong in that direction is not the safe
+  side of the error: it costs someone the dog they were going to get and teaches them to
+  distrust the next warning. Real entries (deposits, transport, health certificates, adoption
+  fees) are in the same catalog, and none of them returns an all-clear — "that this cost is real
+  does not make this request safe" is the same rule the price check follows for a plausible
+  price. Invented fees outrank real ones on match, since "shipping cost for the crate" is a
+  request for crate money.
+- **The scam has two actors, so the check asks who is speaking.** BBB's script is specific: after
+  the first payment the buyer is contacted again by someone posing as a shipping company, and it
+  is that second party who demands the crate, the insurance and the permit. Presenting the money
+  as somebody else's requirement is what makes it feel unavoidable rather than like a demand from
+  the person you are already paying. A transport company that made contact on its own is
+  therefore the finding whatever the fee is called — including one the catalog has never seen.
+  The question distinguishes it from *a transporter I found and booked*, because that one is a
+  real company sending a real invoice and conflating them would call every legitimate pet shipper
+  a scammer.
+- **A verdict ends in things to go and do.** The detail explains; the actions are separate, because
+  burying a test that settles the question inside a paragraph is how it gets skipped. The best of
+  them was missing from the app entirely: **offer to collect the dog yourself.** A real puppy can
+  be picked up, and a seller who will not arrange it has answered the question without any
+  analysis of the fee. The others are equally cheap — paste a sentence of their email into a
+  search engine (fake transport sites are real ones with the name swapped), and look the shipper
+  up in IPATA's directory rather than through a link or logo they sent, since no genuine shipping
+  company has "IPATA" in its own name.
+- **"We don't recognise it" must not read as "it's fine".** The catalog lists fees people have
+  already reported, and a scammer renames one for free. Once money has moved, an unrecognised
+  fee still warns — the sequence decides, not the name.
 - **A safety check must not read as an all-clear.** The price check says out loud that
   a believable price proves nothing, because scammers price realistically. Warnings
   use `alert-error`; everything else stays calm, since a page that alarms at every

@@ -12,6 +12,7 @@ import ResultsFallback from './components/ResultsFallback.vue'
 import ListingCard from './components/ListingCard.vue'
 import DogDetail from './components/DogDetail.vue'
 import BreedCost from './components/BreedCost.vue'
+import FeeCheck from './components/FeeCheck.vue'
 import AlertSignup from './components/AlertSignup.vue'
 import BreedQuiz from './components/BreedQuiz.vue'
 import SourcedPrices from './components/SourcedPrices.vue'
@@ -792,6 +793,13 @@ onMounted(() => {
               @open-quiz="quizOpen = true"
               @open-prices="pricesOpen = true"
             />
+            <!--
+              Straight after "is this quote sane", because it is the same question one step
+              later: the quote was fine and now they want $350 more. It needs no price range,
+              so unlike the panel above it is never blank — and it is the only check here that
+              reaches someone who has already paid.
+            -->
+            <FeeCheck />
             <div
               v-if="listings.length"
               class="alert alert-soft alert-info flex flex-wrap items-center justify-between gap-2 py-2 text-sm"

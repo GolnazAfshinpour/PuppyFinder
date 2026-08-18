@@ -331,6 +331,81 @@ await guide.goto(BASE + '/safe/payments')
 await guide.waitForSelector('article#payments')
 const oldUrlRedirects = guide.url().endsWith('/safe#payments')
 await guide.close()
+
+// The fee check: the other half of "is this a scam", and the half that needs no price range.
+// Price screening is live for a minority of breeds and silent for the rest; an invented crate
+// fee is the same invented crate fee whatever the breed, and this is the only check in the app
+// aimed at someone who has already paid.
+const fees = await browser.newPage()
+const checkFee = async (text, paid, asker) => {
+  const card = fees.locator('[data-testid="fee-check"]').first()
+  await card.locator('input[aria-label="What the seller is asking money for"]').fill(text)
+  await card.locator(`button:has-text("${paid ? "Yes, I've paid" : 'Not yet'}")`).click()
+  if (asker) await card.locator(`button:has-text("${asker}")`).click()
+  await card.locator('button:has-text("Check this fee")').click()
+  await fees.waitForSelector('[data-testid="fee-verdict"]')
+  const verdict = card.locator('[data-testid="fee-verdict"]')
+  return {
+    text: await verdict.innerText(),
+    warning: ((await verdict.getAttribute('class')) ?? '').includes('alert-error'),
+    actions: await card.locator('[data-testid="fee-actions"] > li').allInnerTexts(),
+  }
+}
+const CONTACTED_ME = 'A transport company that contacted me'
+const I_BOOKED = 'A transporter I found and booked'
+
+// It lives on the buying path, where someone is deciding...
+await fees.goto(BASE)
+await fees.waitForSelector('[data-testid="fee-check"]', { timeout: 15000 })
+const feeCheckOnBuyPath = await fees.locator('[data-testid="fee-check"]').count()
+const feeBeforePaying = await checkFee('a $350 refundable crate deposit', false)
+// ...and the instruction changes with the sequence, because "don't send it" and "stop" are
+// different sentences to different people.
+const feeAfterPaying = await checkFee('a $350 refundable crate deposit', true)
+// A legitimate deposit must not come back as a scam. Being wrong in that direction costs
+// someone a real dog and teaches them to ignore the next warning.
+const legitimateDeposit = await checkFee('a deposit to hold a puppy from the next litter', false)
+// The catalog is a list of fees people have already reported; a scammer renames one for free.
+// "We don't recognise it" must not read as "it's fine" once money has moved.
+const unknownFeeAfterPaying = await checkFee('a $600 lineage verification charge', true)
+// The scam's second actor. BBB's script is that after the deposit a "shipping company" appears
+// and every fee from there comes from them — so a transporter who contacted you is the finding
+// whatever the fee is called, including one the catalog has never seen.
+const handoffUnknownFee = await checkFee('a $240 lineage verification charge', false, CONTACTED_ME)
+// ...and the distinction that keeps it from calling every real pet shipper a scammer.
+const bookedTransporter = await checkFee('ground transport', false, I_BOOKED)
+// The test that settles it without any analysis of the fee, and which the app did not have
+// anywhere before: a real puppy can be collected.
+const offersThePickupTest = handoffUnknownFee.actions.some((a) => /collect the dog yourself/i.test(a))
+const namesTheDirectory = handoffUnknownFee.actions.some((a) => /IPATA/.test(a))
+// Western Union and MoneyGram are the two rails the reports name most often, and neither
+// appeared anywhere in the app.
+const namesAllTheRails = handoffUnknownFee.actions.some((a) => /Western Union/.test(a) && /MoneyGram/.test(a))
+
+// And on the guide, which is where someone mid-scam actually lands from a search.
+await fees.goto(BASE + '/safe#escalating-fees')
+await fees.waitForSelector('[data-testid="fee-check"]')
+const feeCheckOnGuide = await fees.locator('#escalating-fees [data-testid="fee-check"]').count()
+
+// The point of a separate endpoint: it answers for every breed, including the ones price
+// screening is switched off for.
+const feeApiNeedsNoBreed = await fees.evaluate(async () => {
+  const res = await fetch('/api/fee-check?fee=shipping%20insurance&paid=true')
+  const body = await res.json()
+  return res.ok && body.level === 'StopPaying'
+})
+await fees.close()
+console.log('fee check — handoff:', JSON.stringify(handoffUnknownFee.text.split('\n')[0]),
+  '| booked transporter warns:', bookedTransporter.warning,
+  '| pickup test offered:', offersThePickupTest,
+  '| directory named:', namesTheDirectory,
+  '| all rails named:', namesAllTheRails)
+console.log('fee check — on buy path:', feeCheckOnBuyPath, '| on guide:', feeCheckOnGuide,
+  '| before paying:', JSON.stringify(feeBeforePaying.text.split('\n')[0]),
+  '| after paying:', JSON.stringify(feeAfterPaying.text.split('\n')[0]),
+  '| legitimate deposit warns:', legitimateDeposit.warning,
+  '| unknown fee after paying warns:', unknownFeeAfterPaying.warning,
+  '| API needs no breed:', feeApiNeedsNoBreed)
 console.log('advice — liveness tests named:', namesLivenessTests,
   '| clean image search caveated:', cleanImageSearchCaveated,
   '| says stop paying:', saysStopPaying,
@@ -611,6 +686,24 @@ const checks = {
   'the app footer links every section of the guide': footerGuideLinks === SECTION_COUNT + 1,
   'every footer anchor lands on a real section': everyFooterLinkHasASection,
   'the older per-section URLs still resolve, to one canonical URL': oldUrlRedirects,
+  // The fee check. Every other check in this app fires before the first payment; BBB's finding
+  // is that the loss accumulates on payments two, three and four.
+  'the fee check is on the buying path and on the guide': feeCheckOnBuyPath === 1 && feeCheckOnGuide === 1,
+  'an invented fee is refused before any money moves': feeBeforePaying.warning
+    && !/stop paying/i.test(feeBeforePaying.text),
+  'someone who already paid is told to stop, not merely warned': feeAfterPaying.warning
+    && /stop paying/i.test(feeAfterPaying.text),
+  'a legitimate deposit is not called a scam': !legitimateDeposit.warning,
+  'a legitimate cost is still not an all-clear': /does not make this request safe/i.test(legitimateDeposit.text),
+  'an unrecognised fee after payment still warns': unknownFeeAfterPaying.warning,
+  'the fee check answers without a breed, for every breed': feeApiNeedsNoBreed,
+  // Who is asking is often the decisive input: the transport company is the scam's second act.
+  'a transporter that made contact is flagged whatever the fee is called': handoffUnknownFee.warning
+    && /second act/i.test(handoffUnknownFee.text),
+  'a transporter the buyer booked is not swept up with it': !bookedTransporter.warning,
+  'the pickup test is offered — a real puppy can be collected': offersThePickupTest,
+  'the shipper directory is named rather than their own paperwork': namesTheDirectory,
+  'Western Union and MoneyGram are named among the unrecoverable rails': namesAllTheRails,
   'detail view opens in-app': detailOpen === 1 && detailAddressable,
   'detail view closes on Escape': detailClosed,
   'shared dog link resolves': sharedResolves,

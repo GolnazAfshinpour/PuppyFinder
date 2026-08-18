@@ -1,5 +1,6 @@
 <script setup>
 import { onMounted } from 'vue'
+import FeeCheck from './FeeCheck.vue'
 import PuppyLogo from './PuppyLogo.vue'
 import {
   DISCLAIMER,
@@ -126,6 +127,14 @@ function setMeta(attr, key, content) {
       <ul v-else class="list-inside list-disc space-y-2 text-sm">
         <li v-for="item in s.items" :key="item" class="max-w-prose">{{ item }}</li>
       </ul>
+
+      <!--
+        The one interactive thing on this page, and it belongs here rather than only in the
+        buying path: this is the section someone lands on from a search, mid-scam, holding a
+        message that says "refundable crate deposit". Reading that their fee is invented is
+        good; typing it in and being told is better.
+      -->
+      <FeeCheck v-if="s.slug === 'escalating-fees'" class="mt-5" />
     </article>
 
     <p class="mx-auto mt-8 max-w-prose text-center text-xs opacity-60">{{ DISCLAIMER }}</p>

@@ -62,6 +62,16 @@ export const PAYMENTS = [
       + 'Paying by card through PayPal keeps your card rights as well.',
   },
   {
+    method: 'Western Union, MoneyGram',
+    state: 'critical',
+    verdict: 'Gone on collection',
+    detail: 'These are the two named most often in pet-scam reports, and for a reason: the money can '
+      + 'be collected in cash, anywhere, minutes after you send it, by someone showing a reference '
+      + 'number. There is no account to trace and no transaction to reverse. Call the company '
+      + 'immediately anyway — on the rare occasion a transfer has not been picked up yet, it can be '
+      + 'stopped.',
+  },
+  {
     method: 'Wire transfer',
     state: 'critical',
     verdict: 'Minutes, then gone',
@@ -126,7 +136,7 @@ export const SAFETY_SECTIONS = [
     open: true,
     items: [
       'A price far below the typical range for the breed (our breed cards show typical ranges) — bargain purebreds are the classic scam bait.',
-      'Payment by wire transfer, gift cards, Zelle, Venmo, or crypto to someone you have never met. No legitimate breeder asks for these.',
+      'Payment by wire transfer, Western Union, MoneyGram, gift cards, Zelle, Venmo, or crypto to someone you have never met. No legitimate breeder asks for these.',
       'Any surprise fee after you pay — "shipping insurance", "climate-controlled crate", "vaccine deposit". This is the standard scam script; the puppy does not exist. If this is happening to you now, read the next section first.',
       'Seller refuses a live video call, or will only send pre-recorded clips. A refusal is still damning — but a call happening is no longer proof by itself (see below).',
       'Photos that look professional or stock-like. Reverse-image-search them: a hit is damning. A clean result no longer clears anyone, because an AI-generated photo appears nowhere else.',
@@ -150,7 +160,8 @@ export const SAFETY_SECTIONS = [
     // belong in the same list at the same weight.
     lead: 'Stop paying. Once a second payment is requested after your deposit, there is no puppy — the requests continue until you stop, and nothing you send next arrives as a dog.',
     items: [
-      'Recognise your fee here: a temperature-controlled or "special" crate, shipping insurance, a city or import permit, customs, microchipping, a vaccine, or a sudden emergency vet bill. These are the same inventions in report after report.',
+      'Recognise your fee here: a temperature-controlled or "special" crate, shipping insurance, a city or import permit, customs, microchipping, a vaccine, a quarantine or "release" fee once the dog is supposedly stuck at the airport, or a sudden emergency vet bill. These are the same inventions in report after report.',
+      'Notice who is asking. After the deposit a second party usually appears — a "shipping company" that contacted you, with a website, a logo and paperwork. Presenting the money as somebody else\'s requirement is what makes it feel unavoidable rather than like a demand from the person you are already paying. In the documented cases they are the same people, and the transport company exists only as a website. Real pet shippers are listed in IPATA\'s member directory, which you look up yourself rather than through any link they send; no genuine shipping company has "IPATA" in its own name.',
       '"Refundable" is the tell, and crate deposits are the usual version. One reported sequence ran $350 refundable crate rental, then $299 shipping insurance, then a $499 city permit, then an $800 emergency vet bill.',
       'Official-looking documents prove nothing — airline emails and cargo paperwork in these cases are forged. One victim was shown a fake Delta Air Cargo notice to justify the crate.',
       'The threats are part of the script. People are told the dog will die and it will be their fault, or that they will be charged with animal abandonment for refusing. Neither happens. It is pressure to produce one more payment.',
@@ -196,6 +207,7 @@ export const SAFETY_SECTIONS = [
       'Ask for one continuous pan from the puppy to the mother to the room, without cutting. Scam footage is short, tightly cropped, and never shows the surroundings.',
       'Watch for the tells of a replayed clip: no response to what you just asked, audio that does not match the mouth, a loop, or a "bad connection" the moment you make a specific request.',
       'Do it twice, days apart, and ask for something different each time. One good call can be staged or borrowed; two on your terms is much harder.',
+      'Offer to collect the dog yourself — say you will fly or drive to them this week and take it home in your own car. This is the test a video call is only a substitute for, and it needs no analysis of anything: a real puppy can be picked up, and a seller who will not arrange it has answered the question.',
       'Best of all, still visit in person. Everything above exists because that is not always possible — it is a substitute, not an equal.',
     ],
   },

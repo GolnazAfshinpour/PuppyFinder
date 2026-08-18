@@ -204,6 +204,21 @@ app.MapGet("/api/price-check", async (string? breed, int price,
 })
 .WithName("CheckPrice");
 
+// The other half of that question, and the half nothing covered: not "is this quote plausible"
+// but "they are asking me for $350, should I send it".
+//
+// It needs no price range, which is why it exists as its own endpoint rather than a branch of
+// the one above. Price screening is live for 50 of 175 breeds and silent for the rest; an
+// invented crate fee is the same invented crate fee whatever the breed. It is also the only
+// check here aimed at someone who has already paid — BBB's "multi-tiered setup" means most of
+// the loss lands on payments two, three and four, and every other check in this app fires
+// before payment one.
+// `asker` is the third input and often the decisive one: a transport company that contacted the
+// buyer on its own is the scam's second act, whatever the fee is called.
+app.MapGet("/api/fee-check", (string? fee, bool? paid, string? asker) =>
+    Results.Ok(FeeCheck.Evaluate(fee, paid ?? false, FeeCheck.ParseAsker(asker))))
+.WithName("CheckFee");
+
 // The sources behind a breed's range — what the UI cites instead of asserting
 // "verified" on its own.
 app.MapGet("/api/price-sources", async (string breed, PriceStore prices, IConfiguration config, CancellationToken ct) =>
