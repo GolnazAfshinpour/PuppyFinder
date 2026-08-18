@@ -10,7 +10,7 @@ const props = defineProps({
   photo: { type: String, default: null }, // already fetched in App.vue for the adopt path
 })
 
-const emit = defineEmits(['pick-breed', 'open-quiz', 'open-guide', 'open-prices'])
+const emit = defineEmits(['pick-breed', 'open-quiz', 'open-prices'])
 
 // ---- the quote checker, absorbed from PriceCheck.vue
 //
@@ -263,9 +263,11 @@ const ONGOING_COSTS = [
           <span class="max-w-prose">
             <strong class="block">{{ verdict.isWarning ? '🚩 ' : '' }}{{ verdict.headline }}</strong>
             <span class="mt-1 block">{{ verdict.detail }}</span>
-            <button type="button" class="link mt-1 font-semibold" @click="emit('open-guide')">
+            <!-- The verdict is about a price, so it lands on the page whose first line is
+                 "a price far below the typical range for the breed". -->
+            <a href="/safe#red-flags" class="link mt-1 block font-semibold">
               Full safety checklist →
-            </button>
+            </a>
           </span>
         </div>
 
@@ -361,9 +363,9 @@ const ONGOING_COSTS = [
         </div>
 
         <div class="flex flex-wrap gap-2">
-          <button type="button" class="btn btn-primary btn-sm" @click="emit('open-guide')">
+          <a href="/safe" class="btn btn-primary btn-sm">
             🛡️ Full scam-safety checklist
-          </button>
+          </a>
           <button v-if="!breed" type="button" class="btn btn-outline btn-sm" @click="emit('open-quiz')">
             🐾 Not sure which breed? Take the quiz
           </button>

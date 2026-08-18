@@ -23,6 +23,7 @@ The remaining 116 return `Unavailable` rather than screen against a number we ca
 - **Breed finder quiz** — six lifestyle questions score against a breed-traits table and recommend your top 3 breeds (`POST /api/quiz`)
 - **Site guide** — for breeder searches (where no legitimate feed exists) each site card shows what actually differs: vetting level, typical prices, delivery, and documented cautions
 - **Saved-search alerts** — email when new matching dogs appear (`POST /api/alerts`)
+- **Safety guide at a real URL** — the eight scam sections are one page at `/safe`, each with its own anchor (`/safe#payments`), so the advice can be linked, shared, cited and indexed. The modal they used to live in is gone: a dialog has no URL, and the search state it was protecting is in the query string anyway, so Back restores it. Every safety button in the app is a link that scrolls to the section answering its question, and a footer links all eight. `npm run build` prerenders the page to static HTML with its title and description, so a crawler (or a reader with JavaScript off) gets the text. Set `SITE_URL` before building to also emit `sitemap.xml` and canonical tags; without it both are skipped rather than guessed. Content lives in `frontend/src/content/safety.js`
 
 Layout: filters live in a left sidebar (sticky on desktop, collapsed on mobile);
 dog results fill the right, with the site directory below them as the fallback tier.

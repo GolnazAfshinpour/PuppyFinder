@@ -6,8 +6,6 @@ defineProps({
   wanted: { type: Array, default: () => [] },
 })
 
-defineEmits(['open-guide'])
-
 const FILTER_LABELS = { breed: 'Breed', state: 'State', city: 'City' }
 
 // Heroicons (MIT) outline paths — a real icon language instead of emoji.
@@ -56,9 +54,11 @@ const FIELD_ROWS = [
       <div v-if="site.caution" role="alert" class="alert alert-warning alert-soft py-2 text-xs">
         <span>
           ⚠️ {{ site.caution }}
-          <button type="button" class="link font-semibold" @click="$emit('open-guide')">
+          <!-- The caution is that this site does not vet, so the useful page is the one
+               that says how to vet the breeder yourself. -->
+          <a href="/safe#vet-a-breeder" class="link font-semibold">
             Safety guide →
-          </button>
+          </a>
         </span>
       </div>
       <div v-if="wanted.length" class="flex flex-wrap items-center gap-1">

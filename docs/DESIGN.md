@@ -166,6 +166,31 @@ Honesty beats marketing — cautions and coverage limits are stated plainly.
   Every fee name, threat and figure in it comes from BBB's published case material rather than
   from reasoning about what a scam would plausibly look like — an invented fee name would make a
   victim conclude their situation is different.
+- **Advice that can't be linked can't be found.** The safety guide's eight sections lived only
+  inside a modal, which has no URL: they could not be shared, bookmarked, cited by a rescue, or
+  indexed — and the person who needs the escalating-fee section is searching *"refundable crate
+  deposit puppy"* at 11pm with $350 already gone, not browsing an adoption app. The guide is now
+  **one page at `/safe`**, every section on it with an `id`, linked as `/safe#<slug>` and
+  prerendered to real HTML at build time so a crawler sees the text rather than an empty `#app`.
+  **The modal is deleted, not kept alongside it.** Its one advantage was reading the guide
+  without losing your search, and that was worth nothing here: the search lives entirely in the
+  query string, so Back restores it exactly — while keeping both would have left two homes for
+  one body of writing and made every safety CTA in the app a dead end instead of a URL.
+- **One page, not eight.** The sections were briefly eight separate pages, which is the better
+  SEO answer — each ranks for its own search. One page won anyway, because the guide reads as a
+  sequence (spot it → stop paying → recover) and eight pages fragmented it into eight arrivals
+  that each had to re-establish where the reader was. The cost is real and was taken knowingly.
+  The old `/safe/<slug>` URLs still resolve and rewrite themselves to `/safe#<slug>`, so nothing
+  already shared breaks and nine URLs never serve the same content. Every safety button is a
+  plain `<a href>` aimed at the section that answers the question it was asked from: a price
+  verdict goes to `#red-flags`, a site's weak-vetting caution to `#vet-a-breeder`, the rest to
+  the top. A footer on the app links all eight anchors, because a page nothing links to is an
+  orphan however good it is — and the e2e suite asserts every footer anchor names a section that
+  exists, since the link and the `id` live in different files. Content lives in
+  `frontend/src/content/safety.js` — one copy, two renderers (page, prerender). Slugs are
+  permanent once shared. Canonical tags and `sitemap.xml` are emitted only when `SITE_URL` is
+  set: a canonical pointing at the wrong origin is worse than none, which is the same rule the
+  price ranges follow.
 - **A safety check must not read as an all-clear.** The price check says out loud that
   a believable price proves nothing, because scammers price realistically. Warnings
   use `alert-error`; everything else stays calm, since a page that alarms at every

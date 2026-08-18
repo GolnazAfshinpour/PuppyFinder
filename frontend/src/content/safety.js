@@ -1,22 +1,32 @@
-<script setup>
-import PuppyLogo from './PuppyLogo.vue'
-import { useModal } from '../useModal.js'
-
-const emit = defineEmits(['close'])
-
-// Escape closed the dog detail and did nothing here, which teaches the key and then ignores
-// it — worse than never supporting it.
-useModal(() => emit('close'))
-
-// What you can get back, by method. Three states, each always paired with a word — colour
-// never carries the meaning alone.
+// The safety guide's content, as data.
 //
-// The mechanism, because it is the opposite of most people's intuition: credit-card rights
-// (Reg Z) turn on *what you bought*, and cover goods "not delivered as agreed". Bank-transfer
-// and app rights (Reg E) turn on *who initiated the payment* — if you sent it yourself, you
-// authorised it, and the protection largely does not reach you however thoroughly you were
-// deceived.
-const PAYMENTS = [
+// It used to live inside a modal, which meant the most valuable writing in the app had no
+// URL: it could not be linked, shared, bookmarked, cited by a rescue, or indexed. The person
+// who needs the escalating-fee section is searching "refundable crate deposit puppy" at 11pm
+// with $350 already gone, and there was no page for them to land on.
+//
+// The modal is gone rather than kept alongside the page. Its one advantage was reading the
+// guide without losing your search, and that turned out to be worth nothing: the search lives
+// entirely in the query string, so Back restores it exactly.
+//
+// It is ONE page, /safe, with every section on it and an id per section; links point at
+// /safe#<slug>. The eight-separate-pages version ranked each section for its own search, which
+// is the better SEO answer, but it fragmented a guide that reads as a sequence — spot it, stop
+// paying, recover — into eight pages that each had to re-explain where the reader was. The old
+// /safe/<slug> URLs still resolve: they redirect to the anchor, so nothing already shared
+// breaks and there is still exactly one canonical URL.
+
+/**
+ * What you can get back, by method. Three states, each always paired with a word — colour
+ * never carries the meaning alone.
+ *
+ * The mechanism, because it is the opposite of most people's intuition: credit-card rights
+ * (Reg Z) turn on *what you bought*, and cover goods "not delivered as agreed". Bank-transfer
+ * and app rights (Reg E) turn on *who initiated the payment* — if you sent it yourself, you
+ * authorised it, and the protection largely does not reach you however thoroughly you were
+ * deceived.
+ */
+export const PAYMENTS = [
   {
     method: 'Credit card',
     state: 'good',
@@ -81,15 +91,38 @@ const PAYMENTS = [
 // four rows that matter most. Solid error measures 4.80 light / 5.15 dark; solid success fails
 // the other way at 2.91 light. So soft, soft, solid, which also gives the irreversible methods
 // the most visual weight.
-const PAYMENT_STYLE = {
+export const PAYMENT_STYLE = {
   good: 'badge-soft badge-success',
   warning: 'badge-soft badge-warning',
   critical: 'badge-error',
 }
 
-const SECTIONS = [
+// Split rather than one sentence because both renderers bold the first half, and doing that
+// with a string split in two components is how the two quietly stop matching.
+export const STANDING_RULE = {
+  label: 'The one rule that beats every scam:',
+  body: 'never send money for a puppy you (or someone you trust) haven\'t seen in person. '
+    + 'Video calls are the minimum; in person is the standard.',
+}
+
+export const DISCLAIMER = 'PuppyFinder links to third-party sites and can\'t vet individual sellers '
+  + '— these checks are yours to run.'
+
+/**
+ * The guide, in the order the decision actually happens: spot the scam → stop paying →
+ * understand what your payment method can recover → vet → paperwork → fees → report.
+ *
+ * `slug` is the section's anchor (/safe#<slug>) and must not be renamed once shared. `summary`
+ * is the one-line lede under its heading, so it has to state what the section decides, not
+ * what it is "about" — on a page this long it is what someone skimming reads instead.
+ */
+export const SAFETY_SECTIONS = [
   {
-    title: '🚩 Red flags that mean walk away',
+    slug: 'red-flags',
+    emoji: '🚩',
+    title: 'Red flags that mean walk away',
+    summary: 'The seven signs that a puppy listing is a scam — bargain pricing, untraceable payment '
+      + 'methods, surprise fees after a deposit, refused video calls, and stock photography.',
     open: true,
     items: [
       'A price far below the typical range for the breed (our breed cards show typical ranges) — bargain purebreds are the classic scam bait.',
@@ -107,7 +140,12 @@ const SECTIONS = [
     // profitable because of a "multi-tiered setup" that lets them "go back to a consumer several
     // times to ask for money" — so the loss accumulates across payments the app never saw.
     // Every fee, threat and figure below is from their published case material.
-    title: '💸 They are asking for more money',
+    slug: 'escalating-fees',
+    emoji: '💸',
+    title: 'They are asking for more money',
+    summary: 'A breeder asking for a refundable crate deposit, shipping insurance, a permit or an '
+      + 'emergency vet bill after your deposit means there is no puppy. Stop paying — here is why, '
+      + 'and what to save before you go quiet.',
     // The rest of this section exists to explain why this one line is true, so it does not
     // belong in the same list at the same weight.
     lead: 'Stop paying. Once a second payment is requested after your deposit, there is no puppy — the requests continue until you stop, and nothing you send next arrives as a dog.',
@@ -122,11 +160,36 @@ const SECTIONS = [
     ],
   },
   {
+    // Second, after the red flags: the guide reads in the order the decision happens — spot the
+    // scam, understand what your payment method can and can't recover, then vet, then paperwork,
+    // then recover. The app already said which methods to avoid; it never said what you can get
+    // back, and BBB documents a victim who refused a wire as too risky and then paid by Zelle
+    // believing it was protected.
+    slug: 'payments',
+    emoji: '💳',
+    title: 'What you can actually get back',
+    summary: 'Which payment methods can be reversed after a puppy scam, and why credit cards are '
+      + 'covered when Zelle, Venmo, wires and gift cards are not — the rule is the opposite of most '
+      + 'people\'s intuition.',
+    kind: 'payments',
+    intro: 'The rule is the opposite of most people\'s intuition. Credit-card protection depends on '
+      + 'what you bought, so a puppy that never arrives is covered. Bank transfers and payment apps '
+      + 'depend on who moved the money — and if you sent it yourself, you authorised it, however '
+      + 'thoroughly you were deceived.',
+    note: 'General information, not legal advice, and it describes US rules. Whatever you paid '
+      + 'with, report it — the FTC and IC3 links are in the last section.',
+    items: [],
+  },
+  {
     // Added August 2026. "Have a video call" was this guide's central recommendation and BBB
     // now warns that advice "may be going away" because generated video can satisfy it. The
     // answer isn't to drop the call — it's to make it interactive on the buyer's terms, which
     // a pre-rendered or replayed video cannot survive.
-    title: '📹 Make the video call prove something',
+    slug: 'video-call',
+    emoji: '📹',
+    title: 'Make the video call prove something',
+    summary: 'AI-generated video can pass an ordinary video call. Six tests a scammer\'s footage '
+      + 'cannot survive, because they have to be given as instructions during the call.',
     items: [
       'Name the test yourself, during the call: ask them to pick the puppy up, turn it over, and show its belly and paws. Generated and recycled footage cannot take instructions.',
       'Ask them to hold up something you choose on the spot — today\'s date on a handwritten note, a specific number of fingers, a spoon.',
@@ -137,7 +200,11 @@ const SECTIONS = [
     ],
   },
   {
-    title: '✅ How to vet a breeder',
+    slug: 'vet-a-breeder',
+    emoji: '✅',
+    title: 'How to vet a breeder',
+    summary: 'Six checks that separate a responsible breeder from a puppy mill or a broker: meeting '
+      + 'the mother, health-test results, being interviewed yourself, and a take-back clause in writing.',
     items: [
       'Visit in person. See where the puppies actually live, and meet the mother — her temperament and condition tell you more than any listing.',
       'Ask for the parents\' health-test results (OFA, PennHIP, Embark), not just "vet checked". Reputable breeders volunteer these.',
@@ -148,7 +215,11 @@ const SECTIONS = [
     ],
   },
   {
-    title: '📋 What real paperwork looks like',
+    slug: 'paperwork',
+    emoji: '📋',
+    title: 'What real paperwork looks like',
+    summary: 'What genuine vaccination records, microchip details and age documentation look like — '
+      + 'and the eight-week minimum that is law in most US states.',
     items: [
       'Vaccination and deworming records on a veterinary clinic\'s letterhead with dates, product names, and the vet\'s signature — not a handwritten list.',
       'Puppies must be at least 8 weeks old before going home (this is the law in most US states).',
@@ -157,7 +228,11 @@ const SECTIONS = [
     ],
   },
   {
-    title: '🤝 Adoption & rehoming fees',
+    slug: 'adoption-fees',
+    emoji: '🤝',
+    title: 'Adoption & rehoming fees',
+    summary: 'What a legitimate shelter adoption fee covers, why a small rehoming fee on classifieds '
+      + 'protects the animal, and why a four-figure "rehoming fee" is a sale wearing a costume.',
     items: [
       'Legitimate shelter and rescue adoption fees run roughly $50–$500 and include vaccinations, microchip, and usually spay/neuter — that is not "buying a dog", it is covering care costs.',
       'On classifieds (especially Craigslist), a small rehoming fee ($50–$200) is normal and actually protects the animal from being taken for free by bad actors.',
@@ -165,7 +240,11 @@ const SECTIONS = [
     ],
   },
   {
-    title: '🆘 If you were scammed',
+    slug: 'report',
+    emoji: '🆘',
+    title: 'If you were scammed',
+    summary: 'Where to report a puppy scam — the FTC, the FBI\'s IC3, the site that carried the '
+      + 'listing, and petscams.com — and what to do about the payment.',
     items: [
       'Report it to the FTC at reportfraud.ftc.gov and the FBI\'s IC3 at ic3.gov.',
       'Report the listing to the site it appeared on, and to petscams.com, which tracks fraudulent pet sellers.',
@@ -173,123 +252,23 @@ const SECTIONS = [
     ],
   },
 ]
-</script>
 
-<template>
-  <div class="modal modal-open" @click.self="$emit('close')">
-    <div class="modal-box max-w-2xl">
-      <button
-        type="button"
-        class="btn btn-sm btn-circle btn-ghost absolute top-3 right-3"
-        @click="$emit('close')"
-      >
-        ✕
-      </button>
+/** The section with this slug, or null. An unknown slug scrolls nowhere rather than erroring. */
+export function findSection(slug) {
+  return SAFETY_SECTIONS.find((s) => s.slug === slug) ?? null
+}
 
-      <div class="mb-4 flex items-center gap-3">
-        <PuppyLogo class="h-14 w-14 shrink-0 drop-shadow-sm" />
-        <div>
-          <h2 class="font-display text-3xl leading-none font-semibold tracking-wide">Buy &amp; adopt safely</h2>
-          <p class="max-w-prose text-sm opacity-60">
-            The rules that keep you from funding a scammer or a puppy mill.
-          </p>
-        </div>
-      </div>
+const GUIDE_TITLE = 'Buy & adopt a puppy safely'
 
-      <div role="alert" class="alert alert-warning alert-soft mb-3 py-2 text-sm">
-        <span class="max-w-prose">
-          <strong>The one rule that beats every scam:</strong> never send money for a puppy you
-          (or someone you trust) haven't seen in person. Video calls are the minimum; in person is the standard.
-        </span>
-      </div>
+/** The page's title and description. One page, so one of each. */
+export const GUIDE_META = {
+  heading: GUIDE_TITLE,
+  title: `${GUIDE_TITLE} — PuppyFinder`,
+  description: 'How to tell a real breeder from a scam, what to do when they ask for more '
+    + 'money after your deposit, and which payment methods you can actually get money back from.',
+}
 
-      <div class="flex flex-col gap-2">
-        <!--
-          Red flags first and open, because "walk away" outranks everything else. Then the
-          escalating-fee section, for someone already paying: whether to send the next
-          payment is more urgent than which method to have used, so it precedes recourse.
-        -->
-        <details
-          v-for="s in SECTIONS.slice(0, 2)"
-          :key="s.title"
-          class="collapse-arrow bg-base-200 collapse"
-          :open="s.open"
-        >
-          <summary class="collapse-title font-semibold">{{ s.title }}</summary>
-          <div class="collapse-content">
-            <!-- Same callout style as the standing rule at the top of the guide. -->
-            <div
-              v-if="s.lead"
-              role="alert"
-              class="alert alert-warning alert-soft mb-3 py-2 text-sm"
-            >
-              <span class="max-w-prose">{{ s.lead }}</span>
-            </div>
-            <ul class="list-inside list-disc space-y-2 text-sm">
-              <li v-for="item in s.items" :key="item" class="max-w-prose">{{ item }}</li>
-            </ul>
-          </div>
-        </details>
-        <!--
-          Second, after the red flags: the guide reads in the order the decision happens —
-          spot the scam, understand what your payment method can and can't recover, then vet,
-          then paperwork, then recover. The app already said which methods to avoid; it never
-          said what you can get back, and BBB documents a victim who refused a wire as too risky
-          and then paid by Zelle believing it was protected.
-        -->
-        <details class="collapse-arrow bg-base-200 collapse">
-          <summary class="collapse-title font-semibold">💳 What you can actually get back</summary>
-          <div class="collapse-content">
-            <p class="mb-3 max-w-prose text-sm opacity-70">
-              The rule is the opposite of most people's intuition. Credit-card protection depends on
-              <strong>what you bought</strong>, so a puppy that never arrives is covered. Bank
-              transfers and payment apps depend on <strong>who moved the money</strong> — and if you
-              sent it yourself, you authorised it, however thoroughly you were deceived.
-            </p>
-            <ul data-testid="payment-recourse" class="space-y-3 text-sm">
-              <li v-for="pay in PAYMENTS" :key="pay.method">
-                <div class="flex flex-wrap items-baseline gap-2">
-                  <strong>{{ pay.method }}</strong>
-                  <!-- Word and colour together: the badge never carries the meaning alone. -->
-                  <span class="badge badge-sm" :class="PAYMENT_STYLE[pay.state]">
-                    {{ pay.verdict }}
-                  </span>
-                </div>
-                <p class="max-w-prose opacity-80">{{ pay.detail }}</p>
-              </li>
-            </ul>
-            <p class="mt-3 max-w-prose text-xs opacity-60">
-              General information, not legal advice, and it describes US rules. Whatever you paid
-              with, report it — the FTC and IC3 links are in the last section.
-            </p>
-          </div>
-        </details>
-        <details
-          v-for="s in SECTIONS.slice(2)"
-          :key="s.title"
-          class="collapse-arrow bg-base-200 collapse"
-          :open="s.open"
-        >
-          <summary class="collapse-title font-semibold">{{ s.title }}</summary>
-          <div class="collapse-content">
-            <!-- Same callout style as the standing rule at the top of the guide. -->
-            <div
-              v-if="s.lead"
-              role="alert"
-              class="alert alert-warning alert-soft mb-3 py-2 text-sm"
-            >
-              <span class="max-w-prose">{{ s.lead }}</span>
-            </div>
-            <ul class="list-inside list-disc space-y-2 text-sm">
-              <li v-for="item in s.items" :key="item" class="max-w-prose">{{ item }}</li>
-            </ul>
-          </div>
-        </details>
-      </div>
-
-      <p class="mx-auto mt-4 max-w-prose text-center text-xs opacity-60">
-        PuppyFinder links to third-party sites and can't vet individual sellers — these checks are yours to run.
-      </p>
-    </div>
-  </div>
-</template>
+/** Where a section lives: the one page, at its own anchor. */
+export function safetyPath(slug) {
+  return slug ? `/safe#${slug}` : '/safe'
+}

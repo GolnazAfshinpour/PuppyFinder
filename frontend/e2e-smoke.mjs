@@ -178,7 +178,9 @@ const seeAllFromCard = await priceCard.locator('button:has-text("See all")').cou
 await page.selectOption(breedSelect, examples.sourced)
 await settle()
 const compareFromCard = await priceCard.locator('button:has-text("Compare")').count()
-const clickableChipsMarked = await page.locator('div.mt-4 > button.underline').count()
+// Anchors count too: the scam-safety chip became a link to /safe when the guide stopped being
+// a dialog, and the rule is about what looks clickable, not which tag produces the click.
+const clickableChipsMarked = await page.locator('div.mt-4 > :is(button, a).underline').count()
 const staticChipsMarked = await page.locator('div.mt-4 > span.underline').count()
 console.log('routes to the list — card "See all":', seeAllFromCard,
   '| card "Compare":', compareFromCard,
@@ -265,38 +267,39 @@ console.log('paging — total:', pagedTotal, '| first page:', pagedShown,
 // it — so the call now has to be interactive on the buyer's terms, and a clean reverse-image
 // result no longer clears anyone. Asserting the caveats exist is what stops a future copy edit
 // quietly restoring advice that no longer holds.
-await page.click('button:has-text("Scam-safety checklist")')
-await page.waitForTimeout(1000)
-// Open the section first: it's collapsed by default (correctly — that's the progressive
-// disclosure the guide is built on), and innerText excludes hidden content.
-await page.click('summary:has-text("Make the video call prove something")')
-await page.waitForTimeout(500)
-const guideText = await page.locator('.modal-box').innerText()
-const namesLivenessTests = /on the spot|name the test|continuous pan/i.test(guideText)
-const cleanImageSearchCaveated = /appears nowhere else|no longer clears/i.test(guideText)
+//
+// Read on a second tab so the main page keeps the search state the checks below depend on:
+// the guide is a real page now, not a dialog over this one.
+const guide = await browser.newPage()
+await guide.goto(BASE + '/safe')
+await guide.waitForSelector('h1')
+// Scoped per section rather than reading the whole page. Every one of these sentences lives
+// in exactly one section, and a page-wide regex would keep passing after a section vanished.
+const readSection = (slug) => guide.locator(`article#${slug}`).innerText()
+const namesLivenessTests = /on the spot|name the test|continuous pan/i
+  .test(await readSection('video-call'))
+// The reverse-image caveat is a red flag, not a video-call test.
+const cleanImageSearchCaveated = /appears nowhere else|no longer clears/i
+  .test(await readSection('red-flags'))
 
 // The one fact people get wrong about payments, asserted so a copy edit can't flatten it into
 // "use a card". Credit and debit behave differently for the identical fraud: credit-card rights
 // turn on what you bought, card-network-independent bank-transfer rights turn on who moved the
 // money. BBB documents a victim who refused a wire as too risky and then paid by Zelle
 // believing it was protected — the misunderstanding was itself the cause of the loss.
-await page.click('summary:has-text("What you can actually get back")')
-await page.waitForTimeout(500)
-const payText = await page.locator('.modal-box').innerText()
+const payText = await readSection('payments')
 const separatesCreditFromDebit = /Usually recoverable/.test(payText)
   && /Much weaker than credit/.test(payText)
 const p2pNotProtected = /Rarely recoverable/.test(payText) && /Zelle/.test(payText)
 // Every verdict is a word, not just a badge colour — colour alone never carries the meaning.
-const everyMethodHasAWord = (await page
+const everyMethodHasAWord = (await guide
   .locator('[data-testid="payment-recourse"] .badge').allInnerTexts())
   .filter((t) => t.trim().length > 0).length >= 7
 // Everything else in this guide fires before the first payment. BBB's finding is that the scam
 // is profitable because its "multi-tiered setup" lets them come back for money several times, so
 // the loss accumulates on payments the app never saw. The advice that matters to someone already
 // in it is "stop paying" — anything softer is not an intervention.
-await page.click('summary:has-text("They are asking for more money")')
-await page.waitForTimeout(500)
-const feeText = await page.locator('.modal-box').innerText()
+const feeText = await readSection('escalating-fees')
 const saysStopPaying = /Stop paying/i.test(feeText)
 const namesTheInventedFees = /temperature-controlled|shipping insurance/i.test(feeText)
   && /refundable/i.test(feeText)
@@ -304,12 +307,30 @@ const namesTheInventedFees = /temperature-controlled|shipping insurance/i.test(f
 // fault. Naming the threats as scripted is what defuses them.
 const defusesTheThreats = /animal abandonment/i.test(feeText)
 // Order: recognise it, stop, then recover. Assert it rather than trusting the array index.
-const sectionOrder = await page.locator('.modal-box summary').allInnerTexts()
+const sectionOrder = await guide.locator('main article h2').allInnerTexts()
 const feesBeforeRecourse = sectionOrder.findIndex((t) => /asking for more money/i.test(t))
   < sectionOrder.findIndex((t) => /actually get back/i.test(t))
 
-await page.keyboard.press('Escape')
-await page.waitForTimeout(600)
+// Every section is reachable from the app without opening anything — the footer is the only
+// crawlable route in, and the guide is an orphan without it.
+const footerGuideLinks = await page.locator('footer a[href^="/safe"]').count()
+// A footer link must land on its section, not merely on the page. The anchor is only useful
+// if the id it names exists, and the two live in different files.
+const footerAnchors = await page.locator('footer a[href^="/safe#"]').evaluateAll(
+  (links) => links.map((a) => a.getAttribute('href').split('#')[1]),
+)
+const sectionIds = await guide.locator('main article').evaluateAll((els) => els.map((e) => e.id))
+// Counted off the page rather than hardcoded, so adding a ninth section doesn't fail the run
+// — the check is "the footer covers all of them", not "there are exactly eight".
+const SECTION_COUNT = sectionIds.length
+const everyFooterLinkHasASection = footerAnchors.length > 0
+  && footerAnchors.every((slug) => sectionIds.includes(slug))
+// The per-section URLs from before the guide became one page still have to resolve, and to
+// leave one canonical URL behind rather than a second copy of the same content.
+await guide.goto(BASE + '/safe/payments')
+await guide.waitForSelector('article#payments')
+const oldUrlRedirects = guide.url().endsWith('/safe#payments')
+await guide.close()
 console.log('advice — liveness tests named:', namesLivenessTests,
   '| clean image search caveated:', cleanImageSearchCaveated,
   '| says stop paying:', saysStopPaying,
@@ -318,7 +339,10 @@ console.log('advice — liveness tests named:', namesLivenessTests,
   '| fees before recourse:', feesBeforeRecourse,
   '| credit vs debit separated:', separatesCreditFromDebit,
   '| P2P not protected:', p2pNotProtected,
-  '| verdicts worded:', everyMethodHasAWord)
+  '| verdicts worded:', everyMethodHasAWord,
+  '| linked from the app footer:', footerGuideLinks,
+  '| every footer anchor has a section:', everyFooterLinkHasASection,
+  '| old section URL redirects:', oldUrlRedirects)
 
 // No source's markup may reach the reader. RescueGroups stores bios as HTML source, so 193 of
 // 297 arrived with entities intact and the page showed "I&rsquo;ve been at the Orangeburg SPCA"
@@ -496,7 +520,7 @@ await settle()
 const dialogCount = () => page.locator('.modal-box').count()
 const escapes = {}
 for (const [name, selector] of [
-  ['guide', 'button:has-text("Scam-safety checklist")'],
+  // The safety guide left this list when it stopped being a dialog: it is pages now.
   ['prices', 'button:has-text("sourced price ranges")'],
   ['quiz', 'button:has-text("breed quiz")'],
 ]) {
@@ -581,6 +605,12 @@ const checks = {
   'the fee section comes before the recourse section': feesBeforeRecourse,
   'payment apps are not presented as protected': p2pNotProtected,
   'every payment verdict is a word, not a badge colour alone': everyMethodHasAWord,
+  // The guide is reachable and its links land where they claim. A page nothing links to is an
+  // orphan however good it is, and an anchor whose id was renamed fails silently at the top of
+  // the page — the two halves live in different files, so only a test connects them.
+  'the app footer links every section of the guide': footerGuideLinks === SECTION_COUNT + 1,
+  'every footer anchor lands on a real section': everyFooterLinkHasASection,
+  'the older per-section URLs still resolve, to one canonical URL': oldUrlRedirects,
   'detail view opens in-app': detailOpen === 1 && detailAddressable,
   'detail view closes on Escape': detailClosed,
   'shared dog link resolves': sharedResolves,

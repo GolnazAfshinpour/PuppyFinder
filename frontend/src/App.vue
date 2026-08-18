@@ -6,6 +6,7 @@ import { loadFavorites, loadRecent, recordViewed, toggleFavorite } from './favor
 import { parseQuery } from './smartSearch.js'
 import { fetchBreedImage } from './dogImages.js'
 import { buildSearchQuery, parseSearchUrl } from './searchUrl.js'
+import { SAFETY_SECTIONS, safetyPath } from './content/safety.js'
 import SearchHub from './components/SearchHub.vue'
 import ResultsFallback from './components/ResultsFallback.vue'
 import ListingCard from './components/ListingCard.vue'
@@ -13,7 +14,6 @@ import DogDetail from './components/DogDetail.vue'
 import BreedCost from './components/BreedCost.vue'
 import AlertSignup from './components/AlertSignup.vue'
 import BreedQuiz from './components/BreedQuiz.vue'
-import SafetyGuide from './components/SafetyGuide.vue'
 import SourcedPrices from './components/SourcedPrices.vue'
 import SavedDogs from './components/SavedDogs.vue'
 import ThemePicker from './components/ThemePicker.vue'
@@ -42,7 +42,6 @@ const goal = ref(fromUrl.goal)
 const sort = ref(fromUrl.sort)
 const openDogId = ref(fromUrl.dog) // '' = no detail view open
 const quizOpen = ref(false)
-const guideOpen = ref(false)
 const pricesOpen = ref(false)
 const savedOpen = ref(false)
 const filtersOpen = ref(false) // mobile-only filter drawer state
@@ -620,9 +619,12 @@ onMounted(() => {
           <span v-if="favorites.length" class="badge badge-primary badge-sm">{{ favorites.length }}</span>
           <span class="hidden sm:inline">Your dogs</span>
         </button>
-        <button type="button" class="btn btn-ghost btn-sm" @click="guideOpen = true">
+        <!-- A link, not a dialog. The guide is eight pages now, and the state this used to
+             protect by staying in place is entirely in the query string — Back restores the
+             same search. See DESIGN.md. -->
+        <a href="/safe" class="btn btn-ghost btn-sm">
           🛡️ <span class="hidden sm:inline">Buy safely</span>
-        </button>
+        </a>
         <ThemePicker />
       </div>
     </div>
@@ -680,13 +682,12 @@ onMounted(() => {
           {{ liveCount }} dogs live across {{ coverage.length }}
           {{ coverage.length === 1 ? 'state' : 'states' }}
         </span>
-        <button
-          type="button"
+        <a
+          href="/safe"
           class="badge badge-lg badge-outline hover:badge-primary cursor-pointer underline decoration-dotted underline-offset-2"
-          @click="guideOpen = true"
         >
           🛡️ Scam-safety checklist →
-        </button>
+        </a>
         <!-- Underlined like the others because it is clickable; no arrow, because it toggles
              the view rather than opening something. -->
         <button
@@ -789,7 +790,6 @@ onMounted(() => {
               :photo="breedPhoto"
               @pick-breed="selectedBreed = $event"
               @open-quiz="quizOpen = true"
-              @open-guide="guideOpen = true"
               @open-prices="pricesOpen = true"
             />
             <div
@@ -815,7 +815,6 @@ onMounted(() => {
             :state="selectedState"
             :coverage="coverage"
             :result-count="0"
-            @open-guide="guideOpen = true"
           />
 
         </template>
@@ -1005,7 +1004,6 @@ onMounted(() => {
             :state="selectedState"
             :coverage="coverage"
             :result-count="rankedListings.length"
-            @open-guide="guideOpen = true"
           />
         </template>
       </section>
@@ -1026,7 +1024,6 @@ onMounted(() => {
       @select="pickQuizBreed"
       @profile-saved="applyProfileToFilters"
     />
-    <SafetyGuide v-if="guideOpen" @close="guideOpen = false" />
     <SavedDogs
       v-if="savedOpen"
       :favorites="favorites"
@@ -1042,4 +1039,27 @@ onMounted(() => {
       @pick-breed="selectedBreed = $event"
     />
   </main>
+
+  <!--
+    The safety guide's only link into the app used to be inside the modal, which nothing that
+    doesn't click ever opens — so eight pages of the best writing here had no route in. These
+    are real <a href>s on the default screen: a crawler can reach them, and a reader who wants
+    to send one to someone has a URL to copy.
+  -->
+  <footer class="border-base-300 border-t">
+    <div class="mx-auto max-w-6xl px-4 py-8 sm:px-6">
+      <h2 class="mb-3 text-xs font-bold tracking-wide uppercase opacity-60">
+        <a href="/safe" class="link link-hover">Buy &amp; adopt safely</a>
+      </h2>
+      <ul class="grid list-none gap-x-6 gap-y-1 p-0 text-sm sm:grid-cols-2 lg:grid-cols-4">
+        <li v-for="s in SAFETY_SECTIONS" :key="s.slug">
+          <a :href="safetyPath(s.slug)" class="link link-hover opacity-70">
+            <span aria-hidden="true">{{ s.emoji }}</span> {{ s.title }}
+          </a>
+        </li>
+      </ul>
+      <!-- No disclaimer here: ResultsFallback already ends every screen with one, and two
+           near-identical ones stacked a scroll apart is how a caveat stops being read. -->
+    </div>
+  </footer>
 </template>

@@ -3,7 +3,7 @@ import { onMounted, onUnmounted } from 'vue'
 /**
  * The three things every dialog in this app owes the reader.
  *
- * DogDetail did all three; SafetyGuide, SourcedPrices and BreedQuiz did none — so Escape
+ * DogDetail did all three; the safety guide, SourcedPrices and BreedQuiz did none — so Escape
  * closed the dog detail and silently did nothing on the other three, which is worse than a
  * consistent absence because it teaches the key and then ignores it. Extracted rather than
  * copied so there is one implementation to be right.

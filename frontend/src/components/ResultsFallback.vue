@@ -15,8 +15,6 @@ const props = defineProps({
   flush: { type: Boolean, default: false },
 })
 
-defineEmits(['open-guide'])
-
 // Which site we'd actually send someone to, in order: no caution label first,
 // then the link that carries the most of their filters, then our own ranking.
 // One recommendation beats fourteen tabs — the old "open all sites" button
@@ -126,7 +124,6 @@ const filterSummary = computed(() =>
             :key="site.id"
             :site="site"
             :wanted="wanted"
-            @open-guide="$emit('open-guide')"
           />
         </ul>
       </div>
