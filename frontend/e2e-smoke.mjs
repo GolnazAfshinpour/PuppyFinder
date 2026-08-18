@@ -395,6 +395,60 @@ const feeApiNeedsNoBreed = await fees.evaluate(async () => {
   return res.ok && body.level === 'StopPaying'
 })
 await fees.close()
+// Adoption fee and good-with-kids/dogs/cats: the two fields DESIGN.md named as the biggest
+// listing gaps. Both are sparse in the feed (fee ~24%, good-with 21-41%), so the checks are
+// about honesty as much as presence — a blank must never render as "no".
+const profiles = await browser.newPage()
+await profiles.goto(BASE + '/?goal=adopt')
+await profiles.waitForSelector('[data-testid="dog-results"] > li', { timeout: 20000 })
+const sample = await profiles.evaluate(async () => {
+  const dogs = await (await fetch('/api/listings')).json()
+  return {
+    total: dogs.length,
+    withFee: dogs.filter((d) => d.adoptionFee).length,
+    // A fee that is a bare number, a placeholder, or "$0" would all be bugs.
+    badFees: dogs.map((d) => d.adoptionFee).filter(Boolean)
+      .filter((f) => /^\s*[\d.,]+\s*$/.test(f) || /^(n\/a|none|tbd|-)$/i.test(f) || /^\$0(\.00)?$/.test(f)),
+    // Two dogs, chosen for what they prove. One sample can only ever show whichever of the
+    // two the feed happened to give it, and the negative case is the one worth pinning: a run
+    // that picked an all-negative dog reported "the detail view shows good-with" as broken.
+    withFeeAndPositive: dogs.find((d) => d.adoptionFee
+      && (d.goodWithKids === true || d.goodWithDogs === true || d.goodWithCats === true))?.id,
+    withNegative: dogs.find((d) => d.goodWithKids === false
+      || d.goodWithDogs === false || d.goodWithCats === false)?.id,
+    noFee: dogs.find((d) => !d.adoptionFee)?.id,
+    // The three-state rule, checked on the wire rather than in the UI: absent must arrive as
+    // null, not false, or the whole "unknown is not no" contract is broken at the source.
+    nullNotFalse: dogs.some((d) => d.goodWithCats === null),
+  }
+})
+const feesAreFormatted = sample.badFees.length === 0
+const someFeesPublished = sample.withFee > 0
+
+const badgesFor = async (id) => {
+  await profiles.goto(`${BASE}/?dog=${encodeURIComponent(id)}`)
+  await profiles.waitForSelector('.modal-box .badge')
+  return (await profiles.locator('.modal-box .badge').allInnerTexts()).join(' | ')
+}
+
+const detailBadges = await badgesFor(sample.withFeeAndPositive)
+const detailShowsFee = /Adoption fee \$/.test(detailBadges)
+// A positive must read as one, and not be swallowed by the "Not good with" wording.
+const detailShowsGoodWith = /(^|\| )Good with/.test(detailBadges)
+
+// Stated plainly rather than hidden — someone with a cat needs the negative most of all.
+const negativeBadges = await badgesFor(sample.withNegative)
+const detailStatesNegatives = /Not good with/.test(negativeBadges)
+
+await profiles.goto(`${BASE}/?dog=${encodeURIComponent(sample.noFee)}`)
+await profiles.waitForSelector('.modal-box')
+const noFeeAsksInstead = (await profiles.locator("text=haven't listed an adoption fee").count()) === 1
+await profiles.close()
+console.log('listing profiles — total:', sample.total, '| with a fee:', sample.withFee,
+  '| malformed fees:', sample.badFees.length,
+  '| detail badges:', JSON.stringify(detailBadges),
+  '| negative badges:', JSON.stringify(negativeBadges))
+
 console.log('fee check — handoff:', JSON.stringify(handoffUnknownFee.text.split('\n')[0]),
   '| booked transporter warns:', bookedTransporter.warning,
   '| pickup test offered:', offersThePickupTest,
@@ -704,6 +758,16 @@ const checks = {
   'the pickup test is offered — a real puppy can be collected': offersThePickupTest,
   'the shipper directory is named rather than their own paperwork': namesTheDirectory,
   'Western Union and MoneyGram are named among the unrecoverable rails': namesAllTheRails,
+  // The two fields adopters rank highest, and the app showed neither.
+  'adoption fees reach the listings': someFeesPublished,
+  'every published fee is formatted, never a bare number or a placeholder': feesAreFormatted,
+  'the detail view shows the adoption fee': detailShowsFee,
+  'a dog with no published fee is told to ask instead': noFeeAsksInstead,
+  'the detail view shows good-with-kids/dogs/cats': detailShowsGoodWith,
+  'a negative is stated plainly, not hidden': detailStatesNegatives,
+  // The contract the whole feature rests on: the feed omits null attributes, so an unrecorded
+  // field must arrive as null. Coercing it to false would rule dogs out over a blank.
+  'an unrecorded good-with field arrives as null, not false': sample.nullNotFalse,
   'detail view opens in-app': detailOpen === 1 && detailAddressable,
   'detail view closes on Escape': detailClosed,
   'shared dog link resolves': sharedResolves,

@@ -199,7 +199,14 @@ public sealed class RescueGroupsProvider(
                 Size: SocrataProvider.NormalizeSize(GetString(attrs, "sizeGroup")),
                 ContactInfo: orgPhone,
                 Latitude: orgLat,
-                Longitude: orgLon));
+                Longitude: orgLon,
+                // The two fields the design doc named as the biggest listing gaps. Both are
+                // sparse and both stay honest about it: absent means the rescue did not say,
+                // never "no".
+                AdoptionFee: NormalizeFee(CleanText(GetString(attrs, "adoptionFeeString"))),
+                GoodWithKids: GetBool(attrs, "isKidsOk"),
+                GoodWithDogs: GetBool(attrs, "isDogsOk"),
+                GoodWithCats: GetBool(attrs, "isCatsOk")));
         }
 
         return seen;
@@ -260,6 +267,71 @@ public sealed class RescueGroupsProvider(
         // Nothing better exists for this record, rather than a default nobody checked.
         return "https://rescuegroups.org";
     }
+
+    /// <summary>
+    /// Makes an adoption fee presentable without inventing anything.
+    ///
+    /// <para>
+    /// Rescues type this field by hand and it shows: one live page returned "$175.00", "175.00",
+    /// "375", "795", "150.00" and "500" among the first six. Rendered raw, half the badges lose
+    /// their currency symbol and the other half carry cents nobody charges.
+    /// </para>
+    ///
+    /// <para>
+    /// So a bare amount is formatted, and <b>anything else is passed through untouched</b> —
+    /// "$300-$450", "Varies", "Waived for seniors" are all real answers this field carries, and
+    /// parsing them into a number would throw away the cases where the answer is not a number.
+    /// </para>
+    ///
+    /// <para>
+    /// A bare zero becomes null rather than "$0". A free adoption is a real thing, but a rescue
+    /// that means it writes "Waived" or "Free"; an unedited numeric field defaulting to 0 is far
+    /// more likely, and "Adoption fee $0" is a claim on the rescue's behalf that we cannot back.
+    /// Null instead sends the reader to the "ask what it is" prompt, which is true either way.
+    /// </para>
+    /// </summary>
+    public static string? NormalizeFee(string? raw)
+    {
+        if (string.IsNullOrWhiteSpace(raw))
+        {
+            return null;
+        }
+
+        var trimmed = raw.Trim();
+
+        // The hand-typed way of leaving the field blank. Live data returned "n/a" three times;
+        // rendered as a badge it reads like a fee called "n/a", when what it means is that the
+        // rescue did not state one — which the prompt below the contact box already says better.
+        if (NonAnswers.Contains(trimmed))
+        {
+            return null;
+        }
+
+        var digits = trimmed.TrimStart('$').Trim();
+        if (!decimal.TryParse(
+                digits,
+                System.Globalization.NumberStyles.AllowDecimalPoint | System.Globalization.NumberStyles.AllowThousands,
+                System.Globalization.CultureInfo.InvariantCulture,
+                out var amount))
+        {
+            return trimmed;  // a range, a word, or anything else the rescue chose to write
+        }
+
+        if (amount <= 0)
+        {
+            return null;
+        }
+
+        // Whole dollars unless the rescue really did specify cents.
+        return amount == decimal.Truncate(amount)
+            ? $"${amount:n0}"
+            : $"${amount:n2}";
+    }
+
+    private static readonly HashSet<string> NonAnswers = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "n/a", "na", "n.a.", "none", "unknown", "tbd", "tba", "?", "-", "--", "ask", "call",
+    };
 
     /// <summary>Org URLs come back as http; the app is served over https.</summary>
     private static string Https(string url) =>
@@ -342,6 +414,33 @@ public sealed class RescueGroupsProvider(
                 System.Globalization.NumberStyles.Float,
                 System.Globalization.CultureInfo.InvariantCulture,
                 out var parsed) => parsed,
+            _ => null,
+        };
+    }
+
+    /// <summary>
+    /// A JSON boolean, tolerating the string and numeric forms some rescues' records use.
+    /// Returns null for a missing or unparseable value — which is a real answer here, not a
+    /// failure: the whole point of these fields is that "unknown" is distinct from "no".
+    /// </summary>
+    private static bool? GetBool(JsonElement element, string property)
+    {
+        if (!element.TryGetProperty(property, out var value))
+        {
+            return null;
+        }
+
+        return value.ValueKind switch
+        {
+            JsonValueKind.True => true,
+            JsonValueKind.False => false,
+            JsonValueKind.Number => value.TryGetInt32(out var n) ? n != 0 : null,
+            JsonValueKind.String => value.GetString()?.Trim().ToLowerInvariant() switch
+            {
+                "true" or "yes" or "1" => true,
+                "false" or "no" or "0" => false,
+                _ => null,
+            },
             _ => null,
         };
     }

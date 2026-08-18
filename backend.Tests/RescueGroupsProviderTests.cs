@@ -63,4 +63,58 @@ public class RescueGroupsProviderTests
         // default nobody examined.
         Assert.Equal("https://rescuegroups.org", RescueGroupsProvider.DetailUrl(null, orgUrl, "1"));
     }
+
+    // ---- adoption fee ----
+
+    [Theory]
+    // Rescues type this by hand; all of these came off one live page.
+    [InlineData("$175.00", "$175")]
+    [InlineData("175.00", "$175")]
+    [InlineData("375", "$375")]
+    [InlineData("795", "$795")]
+    [InlineData("1250", "$1,250")]
+    [InlineData(" $500 ", "$500")]
+    public void FormatsABareAmountConsistently(string raw, string expected) =>
+        Assert.Equal(expected, RescueGroupsProvider.NormalizeFee(raw));
+
+    [Theory]
+    // Not a number, and not ours to turn into one — these are all real answers.
+    [InlineData("$300-$450")]
+    [InlineData("Varies")]
+    [InlineData("Waived for seniors")]
+    [InlineData("Call for details")]
+    public void PassesThroughAnythingThatIsNotABareAmount(string raw) =>
+        Assert.Equal(raw, RescueGroupsProvider.NormalizeFee(raw));
+
+    [Fact]
+    public void KeepsCentsOnlyWhenTheRescueSpecifiedThem() =>
+        Assert.Equal("$175.50", RescueGroupsProvider.NormalizeFee("175.50"));
+
+    [Theory]
+    // The hand-typed way of leaving the field blank — "n/a" appeared three times in live data.
+    [InlineData("n/a")]
+    [InlineData("N/A")]
+    [InlineData("none")]
+    [InlineData("TBD")]
+    [InlineData("-")]
+    public void TreatsAHandTypedBlankAsUnstated(string raw) =>
+        Assert.Null(RescueGroupsProvider.NormalizeFee(raw));
+
+    [Fact]
+    public void KeepsARescuesOwnWordsWhenTheyActuallySaySomething() =>
+        // Not a number and not a placeholder — it is the rescue answering the question.
+        Assert.Equal(
+            "No Fee-readopted by original owner",
+            RescueGroupsProvider.NormalizeFee("No Fee-readopted by original owner"));
+
+    [Theory]
+    [InlineData("0")]
+    [InlineData("$0.00")]
+    [InlineData("")]
+    [InlineData(null)]
+    public void TreatsAnAbsentOrZeroFeeAsUnstated(string? raw) =>
+        // "Adoption fee $0" is a claim on the rescue's behalf. A rescue that means free writes
+        // "Waived"; an unedited numeric field defaulting to zero is the likelier explanation, and
+        // null sends the reader to the "ask what it covers" prompt, which is true either way.
+        Assert.Null(RescueGroupsProvider.NormalizeFee(raw));
 }

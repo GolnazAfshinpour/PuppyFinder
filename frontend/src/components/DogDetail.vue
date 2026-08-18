@@ -1,6 +1,7 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue'
 import { useModal } from '../useModal.js'
+import { goodWith as splitGoodWith, goodWithBadges, joinList } from '../goodWith.js'
 
 const props = defineProps({
   // The grid already holds the full listing, so pass it to avoid a round trip.
@@ -32,6 +33,12 @@ const metaLine = computed(() => {
     dog.value.size,
   ].filter(Boolean).join(' · ')
 })
+
+const temperament = computed(() => (dog.value ? goodWithBadges(dog.value) : []))
+// Named explicitly rather than left blank. The rescue not recording it is the common case, and
+// the useful thing to tell an adopter is which question to ask when they call — not to imply
+// the answer is no.
+const unrecorded = computed(() => (dog.value ? splitGoodWith(dog.value).unknown : []))
 
 // Escape, scroll lock and initial focus now come from the shared composable — this was the
 // only dialog that had them, and the other three each needed the same three behaviours.
@@ -134,6 +141,28 @@ onMounted(async () => {
           <div class="flex flex-wrap gap-2">
             <span v-if="dog.ageGroup" class="badge badge-primary badge-soft">{{ dog.ageGroup }}</span>
             <span class="badge badge-soft">{{ dog.breed }}</span>
+            <!-- 81% of adopters rank the fee the most important item on a profile, and it was
+                 the one thing this screen never showed. -->
+            <span v-if="dog.adoptionFee" class="badge badge-secondary badge-soft font-bold">
+              Adoption fee {{ dog.adoptionFee }}
+            </span>
+          </div>
+
+          <!--
+            How the dog does with kids, dogs and cats — the other field adopters act on, and the
+            one most likely to be blank. Known values are stated; blanks become a question to
+            ask, never an implied "no".
+          -->
+          <div v-if="temperament.length || unrecorded.length" class="flex flex-col gap-1">
+            <div v-if="temperament.length" class="flex flex-wrap gap-2">
+              <span v-for="badge in temperament" :key="badge.text" class="badge" :class="badge.tone">
+                {{ badge.text }}
+              </span>
+            </div>
+            <p v-if="unrecorded.length" class="text-xs opacity-60 italic">
+              This rescue hasn't recorded how {{ dog.name }} does with
+              {{ joinList(unrecorded) }} — worth asking when you call.
+            </p>
           </div>
 
           <p class="flex items-center gap-1.5 text-sm">
@@ -160,6 +189,11 @@ onMounted(async () => {
             <p class="mt-1 text-sm font-medium">{{ dog.contactInfo }}</p>
             <p v-if="dog.animalRef" class="mt-1 text-sm">
               Mention animal ID <strong>{{ dog.animalRef }}</strong> so they know which dog you mean.
+            </p>
+            <p v-if="!dog.adoptionFee" class="mt-1 text-sm opacity-70">
+              They haven't listed an adoption fee — ask what it is and what it covers. Shelter
+              and rescue fees usually run $50–$500 and include vaccinations, microchip and
+              often spay or neuter.
             </p>
           </div>
 

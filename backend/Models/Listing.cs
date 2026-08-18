@@ -28,7 +28,33 @@ public record Listing(
     // rather than the animal's own — a fostered dog is wherever its foster is, which no feed
     // publishes. Null when the source records none, which is common.
     double? Latitude = null,
-    double? Longitude = null)
+    double? Longitude = null,
+    /// <summary>
+    /// What the rescue charges, verbatim. The single item adopters rank most important on a
+    /// profile, and this app showed it nowhere.
+    ///
+    /// <para>
+    /// A string rather than a number because RescueGroups publishes <c>adoptionFeeString</c>,
+    /// and the string carries things a number cannot: "$250", "$300-$450", "Varies", "Waived for
+    /// seniors". Parsing it to a number would throw away the cases where the answer is genuinely
+    /// not a number. Present on roughly 28% of live records.
+    /// </para>
+    /// </summary>
+    string? AdoptionFee = null,
+    /// <summary>
+    /// How the dog does with children, other dogs, and cats. Three states, not two: true, false,
+    /// and <b>the rescue didn't say</b>.
+    ///
+    /// <para>
+    /// Nullable is the whole point. RescueGroups omits null attributes from the response
+    /// entirely, so an absent field is genuinely unknown — and collapsing that to "no" would
+    /// libel a dog that is perfectly fine with children, which is the same mistake the size and
+    /// age filters were fixed for. Live coverage: dogs 41%, kids 25%, cats 21%.
+    /// </para>
+    /// </summary>
+    bool? GoodWithKids = null,
+    bool? GoodWithDogs = null,
+    bool? GoodWithCats = null)
 {
     /// <summary>Derived from the free-text <see cref="Age"/> so the UI can filter and
     /// sort on it. Serialized to JSON automatically — the frontend never re-parses ages.</summary>

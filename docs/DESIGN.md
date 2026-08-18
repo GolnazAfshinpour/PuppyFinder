@@ -276,11 +276,24 @@ Honesty beats marketing — cautions and coverage limits are stated plainly.
   matching only — never a model that can hallucinate inventory); contradictions
   resolve toward the more specific intent with an explanatory hint. "Near me"
   geolocates to state+city with a manual fallback on denial.
-- Known gaps (documented, not yet built): **ZIP + radius search and a true
-  distance sort** — the single biggest miss, since both leaders treat distance as
-  an always-on default; needs per-listing coordinates, which arrive with
-  RescueGroups. Also: adoption fee on the card (81% of adopters rank it the most
-  important item on a profile, and we show it nowhere), real "good with
-  kids/dogs/cats" listing fields (+56% adoption likelihood), breed typeahead
-  instead of a 179-option `<select>`, per-option result counts, and a compare view
-  for saved dogs.
+- **Adoption fee and good-with are on the listing now, and both are sparse.** These were the top
+  two gaps on this list: 81% of adopters rank the fee the most important item on a profile and
+  the app showed it nowhere, and real "good with kids/dogs/cats" fields carry +56% adoption
+  likelihood. Live coverage is fee 24%, dogs 41%, kids 25%, cats 21% — so the honest handling
+  matters more than the fields. The fee is a badge on the card and the detail view when the
+  rescue published one; when they didn't, the detail view says so and tells the reader what to
+  ask, rather than leaving a silent gap. Good-with is **three states, never two** (yes / no /
+  the rescue didn't say): the feed omits null attributes entirely, so a blank is genuinely
+  unknown and rendering it as "no" would rule a dog out over an empty field — the same mistake
+  size and age were fixed for. Negatives are stated plainly rather than hidden, because someone
+  with a cat needs "not good with cats" most of all. The card stays silent when nothing was
+  recorded; "not recorded" on three quarters of a grid is noise, not honesty.
+- **Fees are normalised, not parsed away.** Rescues type the field by hand — one page returned
+  "$175.00", "175.00", "375", "795", "150.00" and "500". A bare amount is formatted to "$175";
+  anything else passes through verbatim, because "$300-$450", "Varies" and "Waived for seniors"
+  are real answers a number cannot hold. Hand-typed blanks ("n/a", "none", "TBD") and a bare
+  zero become null: "Adoption fee $0" is a claim on the rescue's behalf we cannot back, and an
+  unedited numeric field defaulting to zero is the likelier explanation.
+- Known gaps (documented, not yet built): breed typeahead instead of a 179-option
+  `<select>`, per-option result counts, filtering on the good-with fields now that
+  they exist (they display but don't narrow), and a compare view for saved dogs.

@@ -1,5 +1,6 @@
 <script setup>
 import { computed, ref } from 'vue'
+import { goodWithLine } from '../goodWith.js'
 
 const props = defineProps({
   listing: { type: Object, required: true },
@@ -18,6 +19,11 @@ defineEmits(['toggle-favorite', 'open'])
 const detailHref = computed(() => `?dog=${encodeURIComponent(props.listing.id)}`)
 
 const imageFailed = ref(false)
+
+// Present on about 28% of listings, and the single item adopters rank most important on a
+// profile. Shown when the rescue published it and silent otherwise — the detail view is where
+// "they haven't listed one, ask when you call" belongs.
+const goodWith = computed(() => goodWithLine(props.listing))
 
 // One muted metadata line instead of a pile of badges — evidence caps badges
 // at 1-2 per card, so the fit % keeps badge treatment and the rest is text.
@@ -74,13 +80,23 @@ const metaLine = computed(() => {
             {{ listing.name }}
           </a>
         </h3>
-        <span v-if="listing.fit != null" class="badge badge-primary badge-soft font-bold whitespace-nowrap">
-          {{ listing.fit }}% fit
-        </span>
+        <div class="flex shrink-0 flex-wrap justify-end gap-1">
+          <!-- The card's badge cap is two, and these are the two worth having: what it costs,
+               and how well it fits. -->
+          <span v-if="listing.adoptionFee" class="badge badge-secondary badge-soft font-bold whitespace-nowrap">
+            {{ listing.adoptionFee }}
+          </span>
+          <span v-if="listing.fit != null" class="badge badge-primary badge-soft font-bold whitespace-nowrap">
+            {{ listing.fit }}% fit
+          </span>
+        </div>
       </div>
       <p v-if="metaLine" class="text-sm opacity-70">{{ metaLine }}</p>
       <p v-if="unconfirmedNote" class="text-xs opacity-60 italic">{{ unconfirmedNote }}</p>
       <p class="text-sm font-medium">{{ listing.breed }}</p>
+      <!-- Only rendered when the rescue actually recorded something. A "not recorded" line on
+           three quarters of the grid would be noise rather than honesty. -->
+      <p v-if="goodWith" class="text-xs opacity-70">{{ goodWith }}</p>
       <!--
         Heroicons, not emoji. DESIGN.md §4 allows emoji only as content warmth and never as
         field icons, and 📍/📞 were doing exactly that. Inline paths rather than a dependency
