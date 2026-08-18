@@ -85,7 +85,7 @@ into a log or a shared terminal. Use `dotnet user-secrets list --json | jq 'keys
 | `GET /api/listings?breed=&state=&city=&size=&age=&sort=&includeUnlisted=&lat=&lon=&radius=` | Aggregated real dog listings, filtered and sorted. Each result carries derived `ageMonths` / `ageGroup` and an `unconfirmed` flag (matched only because a field was blank). Supplying `lat`/`lon` adds `distanceMiles` to every result and enables `sort=nearest`; adding `radius` (miles) also filters. |
 | `GET /api/listings/{id}` | One dog, so a shared `?dog=` link opens regardless of the visitor's filters. 404 = adopted or pulled from the feed. |
 | `GET /api/coverage` | Where live dogs exist right now: `[{ state, count, cities }]` |
-| `GET /api/sources` | Per-source status: enabled, count, last error |
+| `GET /api/sources` | Per-source status: enabled, count, last error, and `lastFetchedAt` (null = never asked, which is not the same as a source that returned nothing) |
 | `GET /api/breeds` | Breed list with price ranges plus `confidence` (`unverified`/`single_source`/`contested`/`verified`), `sourceCount` and `priceUpdatedAt`. Null price = no range at all. |
 | `GET /api/price-sources?breed=` | The cited sources behind a breed's range — publisher, URL, verbatim quote, scope, retrieval date |
 | `GET /api/price-check?breed=&price=` | Verdict on a quoted price. Returns `Unavailable` unless the breed's range is `verified`. Otherwise `Free` / `FarBelow` / `Below` / `Typical` / `Above`. |
