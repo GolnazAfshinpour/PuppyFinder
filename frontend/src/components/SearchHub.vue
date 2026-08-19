@@ -2,7 +2,7 @@
 import { computed } from 'vue'
 import { TRAITS, breedMatches } from '../breedFilters.js'
 import BreedPicker from './BreedPicker.vue'
-import { AGES } from '../searchUrl.js'
+import { AGES, DEFAULT_GOAL } from '../searchUrl.js'
 
 const props = defineProps({
   breeds: { type: Array, required: true },
@@ -15,7 +15,7 @@ const props = defineProps({
   traits: { type: Array, default: () => [] },
   // Filters the dogs, from each rescue's own listing. `traits` above prunes the breed list.
   goodWith: { type: Array, default: () => [] },
-  goal: { type: String, default: 'both' },
+  goal: { type: String, default: DEFAULT_GOAL },
   coverage: { type: Array, default: () => [] }, // [{ state, count, cities }] — live dogs right now
   locating: { type: Boolean, default: false }, // geolocation lookup in flight
   zip: { type: String, default: '' },
@@ -53,10 +53,14 @@ const GOOD_WITH = [
   { key: 'cats', label: 'Cats' },
 ]
 
+// Compared against the app's real default goal — this used to test `!== 'both'` while the
+// default is 'buy', so a pristine page permanently showed a "Clear filters" link that did
+// nothing visible.
 const anyFilterActive = computed(
   () =>
     props.breed || props.state || props.city.trim() || props.size || props.age ||
-    props.traits.length > 0 || props.goodWith.length > 0 || props.goal !== 'both' || props.zip.trim(),
+    props.traits.length > 0 || props.goodWith.length > 0 || props.goal !== DEFAULT_GOAL ||
+    props.zip.trim(),
 )
 
 // Goal leads the panel because it isn't a refiner — it decides whether the page

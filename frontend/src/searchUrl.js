@@ -4,7 +4,7 @@
 // Buying is the app's primary path, so it's the default and never appears in the
 // URL; 'adopt' and 'both' are the explicit choices.
 const GOALS = ['adopt', 'buy', 'both']
-const DEFAULT_GOAL = 'buy'
+export const DEFAULT_GOAL = 'buy'
 const SIZES = ['Teacup', 'Small', 'Medium', 'Large']
 export const AGES = ['Puppy', 'Young', 'Adult', 'Senior']
 // 'nearest' is only offered when a ZIP or geolocation supplied an origin, but it is accepted
@@ -37,7 +37,10 @@ export function parseSearchUrl(search, usStates) {
     // Unknown values are dropped rather than passed through: this goes into a filter that
     // removes dogs, and a typo in a shared link should not silently narrow someone's search.
     goodWith: GOOD_WITH.filter((w) => (params.get('goodWith') ?? '').split(',').includes(w)),
-    goal: GOALS.includes(goal) ? goal : DEFAULT_GOAL,
+    // A dog link is an adoption context by construction: every dog here is a rescue dog.
+    // Without this, sharing one opened the recipient on "Buy a puppy. Don't get scammed."
+    // with breeder marketplaces behind the detail view.
+    goal: GOALS.includes(goal) ? goal : (params.get('dog') ? 'adopt' : DEFAULT_GOAL),
     sort: match(SORTS, params.get('sort')) ?? '',
     // Five digits or nothing. A malformed ZIP would fail the lookup anyway, but rejecting it
     // here keeps a junk value out of the input box on load.

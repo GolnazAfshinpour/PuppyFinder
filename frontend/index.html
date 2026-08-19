@@ -14,7 +14,10 @@
     <script>
       const saved = localStorage.getItem('puppyfinder-theme')
       // Only brand themes exist now; ignore stale picks from the old multi-theme picker.
+      // With no saved pick, follow the system preference: the hardcoded light default meant
+      // a dark-mode visitor's first impression was a bright page and a ☀️ icon.
       if (saved && saved.startsWith('goldenhour')) document.documentElement.dataset.theme = saved
+      else if (matchMedia('(prefers-color-scheme: dark)').matches) document.documentElement.dataset.theme = 'goldenhour-dark'
     </script>
   </head>
   <body>

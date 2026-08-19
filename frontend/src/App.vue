@@ -130,6 +130,11 @@ const liveCount = computed(() => coverage.value.reduce((total, c) => total + c.c
 // feed, so we have no listings of our own to show — say so instead of an
 // empty grid.
 const buying = computed(() => goal.value === 'buy')
+// "Show me both" has to mean both. It used to render the adopt template alone, so an
+// explicit user choice quietly did something else — the price panels and the live dogs
+// now render together, buy-first per the decision order in DESIGN.md.
+const showBuy = computed(() => goal.value !== 'adopt')
+const showAdopt = computed(() => goal.value !== 'buy')
 
 const resultsHeading = computed(() => {
   const count = rankedListings.value.length
@@ -182,10 +187,26 @@ const activeChips = computed(() => {
     chips.push({ key: `goodwith-${w}`, label: GOOD_WITH_LABELS[w] ?? w, clear: () => (goodWith.value = goodWith.value.filter((x) => x !== w)) })
   }
   if (selectedBreed.value) chips.push({ key: 'breed', label: selectedBreedName.value || selectedBreed.value, clear: () => (selectedBreed.value = '') })
+  // Distance gets a chip like everything else. It used to be invisible here and untouched by
+  // "Clear all", so a 25-mile radius kept narrowing results with nothing on screen to explain why.
+  if (zipResolved.value || zip.value.trim()) {
+    const origin = zip.value.trim() ? `ZIP ${zip.value.trim()}` : 'my location'
+    const label = radius.value && zipResolved.value ? `Within ${radius.value} mi of ${origin}` : `Near ${origin}`
+    chips.push({ key: 'origin', label, clear: clearOrigin })
+  }
   if (selectedState.value) chips.push({ key: 'state', label: selectedState.value, clear: () => (selectedState.value = '') })
   if (selectedCity.value.trim() && selectedState.value) chips.push({ key: 'city', label: selectedCity.value.trim(), clear: () => (selectedCity.value = '') })
   return chips
 })
+// The origin can come from a ZIP or from geolocation, and both must clear together with the
+// radius — a radius without an origin looks applied and does nothing.
+function clearOrigin() {
+  zip.value = ''
+  radius.value = ''
+  originLat.value = null
+  originLon.value = null
+  if (sort.value === 'nearest') sort.value = ''
+}
 function clearAllFilters() {
   selectedBreed.value = ''
   selectedState.value = ''
@@ -194,6 +215,7 @@ function clearAllFilters() {
   selectedAge.value = ''
   traits.value = []
   goodWith.value = []
+  clearOrigin()
 }
 
 // The search card's "Clear filters" is a full reset — back to the buying default.
@@ -427,7 +449,12 @@ watch(selectedBreed, async (slug) => {
   if (selectedBreed.value === slug) breedPhoto.value = url // ignore stale fetches
 })
 
+// Monotonic request ids, so a slow response can never overwrite a newer one. Filters fire a
+// fetch per change and nothing guaranteed the replies landed in order — rapid changes could
+// paint a stale search's results over the current one.
+let sitesRequest = 0
 async function loadSites() {
+  const requestId = ++sitesRequest
   error.value = ''
   try {
     const params = new URLSearchParams()
@@ -436,9 +463,12 @@ async function loadSites() {
     if (selectedCity.value.trim() && selectedState.value) params.set('city', selectedCity.value.trim())
     const res = await fetch(`/api/sites${params.size ? `?${params}` : ''}`)
     if (!res.ok) throw new Error(`API returned ${res.status}`)
-    sites.value = await res.json()
-  } catch (e) {
-    error.value = `Could not load the site directory — is the backend running? (${e.message})`
+    const data = await res.json()
+    if (requestId !== sitesRequest) return // superseded by a newer search
+    sites.value = data
+  } catch {
+    if (requestId !== sitesRequest) return
+    error.value = 'We couldn’t load the site guide. Check your connection and try again in a moment.'
   }
 }
 
@@ -504,7 +534,9 @@ async function broadenSearch() {
   return null
 }
 
+let listingsRequest = 0
 async function loadListings() {
+  const requestId = ++listingsRequest
   loadingListings.value = true
   listingsError.value = ''
   try {
@@ -513,14 +545,20 @@ async function loadListings() {
       sources.value.length ? Promise.resolve(null) : fetch('/api/sources'),
       coverage.value.length ? Promise.resolve(null) : fetch('/api/coverage'),
     ])
+    if (requestId !== listingsRequest) return // superseded by a newer search
     listings.value = listRes
-    broadened.value = listRes.length ? null : await broadenSearch()
+    // Broadening is up to seven more sequential requests, so check again after it: the user
+    // may have changed the search while an already-superseded broaden was still walking.
+    const widened = listRes.length ? null : await broadenSearch()
+    if (requestId !== listingsRequest) return
+    broadened.value = widened
     if (srcRes?.ok) sources.value = await srcRes.json()
     if (covRes?.ok) coverage.value = await covRes.json()
-  } catch (e) {
-    listingsError.value = `Could not load listings (${e.message})`
+  } catch {
+    if (requestId !== listingsRequest) return
+    listingsError.value = 'We couldn’t load the dogs. Check your connection and try again in a moment.'
   } finally {
-    loadingListings.value = false
+    if (requestId === listingsRequest) loadingListings.value = false
   }
 }
 
@@ -642,10 +680,11 @@ onMounted(() => {
   <!-- Glass sticky nav: identity + global actions, nothing else. -->
   <nav class="bg-base-200/80 sticky top-0 z-40 backdrop-blur-md">
     <div class="mx-auto flex max-w-6xl items-center justify-between gap-3 px-4 py-2 sm:px-6">
-      <div class="flex items-center gap-2">
+      <!-- A link, like the guide's logo already is: there was no home link anywhere in this nav. -->
+      <a href="/" class="flex items-center gap-2">
         <PuppyLogo class="h-9 w-9 shrink-0" />
         <span class="font-display text-xl font-semibold tracking-tight">PuppyFinder</span>
-      </div>
+      </a>
       <div class="flex items-center gap-1">
         <!--
           Saving was one click and everywhere; retrieving was a 5,000px scroll and then an
@@ -687,6 +726,10 @@ onMounted(() => {
           Buy a puppy.
           <span class="text-primary">Don't get scammed.</span>
         </template>
+        <template v-else-if="goal === 'both'">
+          Adopt or buy.
+          <span class="text-primary">Don't get scammed either way.</span>
+        </template>
         <template v-else>
           Adopt a dog.
           <span class="text-primary">They're already waiting.</span>
@@ -696,6 +739,10 @@ onMounted(() => {
         <template v-if="buying">
           Which marketplaces actually vet their breeders, which ones have a complaint
           record, and the checks that catch a scam before you send a cent.
+        </template>
+        <template v-else-if="goal === 'both'">
+          Live shelter dogs next to honestly rated breeder marketplaces — and the checks
+          that catch a scam before you send a cent.
         </template>
         <template v-else>
           Real dogs from public shelter feeds — photo, age, size and the shelter's own phone
@@ -710,7 +757,7 @@ onMounted(() => {
       -->
       <div class="mt-4 flex flex-wrap justify-center gap-2">
         <button
-          v-if="buying && verifiedBreedCount"
+          v-if="showBuy && verifiedBreedCount"
           type="button"
           class="badge badge-lg badge-outline hover:badge-primary cursor-pointer underline decoration-dotted underline-offset-2"
           @click="pricesOpen = true"
@@ -732,9 +779,10 @@ onMounted(() => {
           🛡️ Scam-safety checklist →
         </a>
         <!-- Underlined like the others because it is clickable; no arrow, because it toggles
-             the view rather than opening something. -->
+             the view rather than opening something. Hidden in both mode, where each half of
+             its label would describe something already on the page. -->
         <button
-          v-if="liveCount"
+          v-if="liveCount && goal !== 'both'"
           type="button"
           class="badge badge-lg cursor-pointer underline decoration-dotted underline-offset-2"
           :class="goal === 'adopt' ? 'badge-primary' : 'badge-outline hover:badge-primary'"
@@ -823,8 +871,8 @@ onMounted(() => {
              marketplace publishes a feed, so there are no listings of our own to
              show; the useful thing we can give a buyer is the price floor and the
              vetting differences between sites. -->
-        <template v-if="buying">
-          <div class="flex flex-col gap-5">
+        <template v-if="showBuy">
+          <div class="flex flex-col gap-5" :class="showAdopt ? 'mb-10' : ''">
             <!-- One card: the range, the meter and the quote checker together. They were two
                  stacked cards, which duplicated the breed name and the "far below market" line
                  and put the answer a scroll away from the question. -->
@@ -849,8 +897,9 @@ onMounted(() => {
               reaches someone who has already paid.
             -->
             <FeeCheck />
+            <!-- Redundant in both mode, where the dogs it points at are already on the page. -->
             <div
-              v-if="listings.length"
+              v-if="listings.length && goal === 'buy'"
               class="alert alert-soft alert-info flex flex-wrap items-center justify-between gap-2 py-2 text-sm"
             >
               <span class="max-w-prose">
@@ -862,21 +911,25 @@ onMounted(() => {
             </div>
           </div>
 
-          <div v-if="error" class="alert alert-error mt-6">{{ error }}</div>
-          <ResultsFallback
-            v-else
-            :sites="sites"
-            :wanted="wantedFilters"
-            goal="buy"
-            :breed-name="selectedBreedName"
-            :state="selectedState"
-            :coverage="coverage"
-            :result-count="0"
-          />
+          <!-- In both mode the adopt section below renders the one directory, with both kinds
+               of site in it — two directories a scroll apart would each look like all there is. -->
+          <template v-if="goal === 'buy'">
+            <div v-if="error" class="alert alert-error mt-6">{{ error }}</div>
+            <ResultsFallback
+              v-else
+              :sites="sites"
+              :wanted="wantedFilters"
+              goal="buy"
+              :breed-name="selectedBreedName"
+              :state="selectedState"
+              :coverage="coverage"
+              :result-count="0"
+            />
+          </template>
 
         </template>
 
-        <template v-else>
+        <template v-if="showAdopt">
           <div class="mb-1 flex flex-wrap items-end justify-between gap-3">
             <h2 class="flex items-center gap-3 text-2xl font-bold">
               <img
@@ -890,7 +943,9 @@ onMounted(() => {
                 <span v-if="selectedBreedName" class="text-primary">— {{ selectedBreedName }}s</span>
               </span>
             </h2>
-            <label v-if="rankedListings.length > 1" class="flex items-center gap-2 text-xs">
+            <!-- Also kept while a sort is set: narrowing to one result used to remove the only
+                 control that could undo "Youngest first". -->
+            <label v-if="rankedListings.length > 1 || sort" class="flex items-center gap-2 text-xs">
               <span class="font-bold tracking-wide uppercase opacity-60">Sort</span>
               <select v-model="sort" class="select select-bordered select-sm">
                 <option v-for="s in SORTS" :key="s.value" :value="s.value">{{ s.label }}</option>
@@ -990,7 +1045,10 @@ onMounted(() => {
               </div>
             </li>
           </ul>
-          <div v-else-if="listingsError" class="alert alert-error">{{ listingsError }}</div>
+          <div v-else-if="listingsError" class="alert alert-error flex flex-wrap items-center justify-between gap-2">
+            <span>{{ listingsError }}</span>
+            <button type="button" class="btn btn-sm" @click="loadListings">Try again</button>
+          </div>
           <ul
             v-else-if="rankedListings.length"
             data-testid="dog-results"
@@ -1006,16 +1064,10 @@ onMounted(() => {
               @open="openDog(l)"
             />
           </ul>
-
-          <!-- Names the remaining number rather than saying "load more": the count is the
-               useful part, and hiding it would understate coverage. -->
-          <div v-if="moreCount" class="mt-6 text-center">
-            <button type="button" class="btn btn-outline" @click="shownCount += PAGE">
-              Show {{ Math.min(moreCount, PAGE) }} more
-              {{ moreCount === 1 ? 'dog' : 'dogs' }}
-              <span class="opacity-60">({{ moreCount }} left)</span>
-            </button>
-          </div>
+          <!-- The v-else of "are there results?", not of "are there more pages?" — it used to
+               hang off the show-more button's v-if, so every search returning a single page of
+               dogs rendered the grid and then this card claiming nothing matched, under the
+               skeleton and the error alert too. -->
           <div v-else class="card bg-base-100 shadow-md">
             <div class="card-body items-center text-center">
               <span class="text-4xl">🐾</span>
@@ -1036,6 +1088,16 @@ onMounted(() => {
                 </button>
               </div>
             </div>
+          </div>
+
+          <!-- Names the remaining number rather than saying "load more": the count is the
+               useful part, and hiding it would understate coverage. -->
+          <div v-if="!loadingListings && !listingsError && moreCount" class="mt-6 text-center">
+            <button type="button" class="btn btn-outline" @click="shownCount += PAGE">
+              Show {{ Math.min(moreCount, PAGE) }} more
+              {{ moreCount === 1 ? 'dog' : 'dogs' }}
+              <span class="opacity-60">({{ moreCount }} left)</span>
+            </button>
           </div>
 
           <div class="mt-6">
@@ -1072,7 +1134,7 @@ onMounted(() => {
       :favorite="favoriteIds.has(openDogId)"
       @close="closeDog"
       @toggle-favorite="openDogListing && onToggleFavorite(openDogListing)"
-      @search-similar="closeDog(); clearAllFilters()"
+      @search-similar="closeDog(); clearAllFilters(); goal = 'adopt'"
     />
     <BreedQuiz
       v-if="quizOpen"

@@ -56,6 +56,9 @@ const QUESTIONS = [
   {
     key: 'budget',
     label: 'Puppy budget (if buying)?',
+    // Optional: an adopter has no puppy budget, and requiring an answer to an irrelevant
+    // question was the one thing standing between them and their matches.
+    optional: true,
     options: [
       { value: 'under1500', label: 'Under $1,500' },
       { value: 'over1500', label: '$1,500 is fine' },
@@ -64,12 +67,18 @@ const QUESTIONS = [
   },
 ]
 
+const REQUIRED = QUESTIONS.filter((q) => !q.optional)
+
 const answers = ref({ home: '', activity: '', kids: '', grooming: '', size: '', budget: '' })
 const results = ref(null)
 const photos = ref({}) // slug → dog.ceo image url, filled in as fetches resolve
 const submitting = ref(false)
 const error = ref('')
 const profileSaved = ref(false)
+
+// A skipped optional question goes to the backend as its neutral answer, so the scorer
+// never sees an empty string.
+const payload = () => ({ ...answers.value, budget: answers.value.budget || 'any' })
 
 // Persist the answers as "my profile": fetch fit scores for every quiz breed,
 // store locally, and let the app re-rank live listings by fit.
@@ -79,19 +88,19 @@ async function saveAsProfile() {
     const res = await fetch('/api/quiz/scores', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(answers.value),
+      body: JSON.stringify(payload()),
     })
     if (!res.ok) throw new Error(`API returned ${res.status}`)
     const profile = saveProfile(answers.value, await res.json())
     profileSaved.value = true
     emit('profile-saved', profile)
-  } catch (e) {
-    error.value = `Could not save your profile (${e.message})`
+  } catch {
+    error.value = 'Could not save your profile — try again in a moment.'
   }
 }
 
-const answered = computed(() => Object.values(answers.value).filter(Boolean).length)
-const complete = computed(() => answered.value === QUESTIONS.length)
+const answered = computed(() => REQUIRED.filter((q) => answers.value[q.key]).length)
+const complete = computed(() => answered.value === REQUIRED.length)
 
 async function submit() {
   if (!complete.value) return
@@ -101,7 +110,7 @@ async function submit() {
     const res = await fetch('/api/quiz', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(answers.value),
+      body: JSON.stringify(payload()),
     })
     if (!res.ok) throw new Error(`API returned ${res.status}`)
     results.value = await res.json()
@@ -111,8 +120,8 @@ async function submit() {
         if (url) photos.value = { ...photos.value, [m.slug]: url }
       })
     }
-  } catch (e) {
-    error.value = `Could not score the quiz (${e.message})`
+  } catch {
+    error.value = 'Could not score the quiz — try again in a moment.'
   } finally {
     submitting.value = false
   }
@@ -148,7 +157,9 @@ function reset() {
         </div>
 
         <fieldset v-for="q in QUESTIONS" :key="q.key" class="mb-4">
-          <legend class="mb-2 text-xs font-bold tracking-wide uppercase opacity-60">{{ q.label }}</legend>
+          <legend class="mb-2 text-xs font-bold tracking-wide uppercase opacity-60">
+            {{ q.label }}<span v-if="q.optional" class="normal-case opacity-70"> · optional — skip if adopting</span>
+          </legend>
           <div class="flex flex-wrap gap-2">
             <button
               v-for="o in q.options"
@@ -164,7 +175,9 @@ function reset() {
         </fieldset>
 
         <p v-if="error" class="text-error text-sm">{{ error }}</p>
-        <p class="mb-2 text-center text-xs opacity-60">{{ answered }} of {{ QUESTIONS.length }} answered</p>
+        <p class="mb-2 text-center text-xs opacity-60">
+          {{ answered }} of {{ REQUIRED.length }} answered · budget is optional
+        </p>
         <button
           type="button"
           class="btn btn-primary btn-block"
@@ -172,7 +185,7 @@ function reset() {
           @click="submit"
         >
           <span v-if="submitting" class="loading loading-spinner loading-sm" />
-          {{ submitting ? 'Matching…' : complete ? 'Show my matches' : 'Answer all six to continue' }}
+          {{ submitting ? 'Matching…' : complete ? 'Show my matches' : 'Answer the remaining questions to continue' }}
         </button>
       </template>
 

@@ -79,6 +79,14 @@ describe('parseSearchUrl', () => {
     expect(buildSearchQuery({ ...defaults, dog: 'abc-123' })).toBe('dog=abc-123')
   })
 
+  it('opens a shared dog link in adopt mode, since every dog here is a rescue dog', () => {
+    // Without this, a shared dog opened over "Buy a puppy. Don't get scammed." with
+    // breeder marketplaces behind the detail view.
+    expect(parseSearchUrl('?dog=abc-123', US_STATES).goal).toBe('adopt')
+    // An explicit goal in the link still wins.
+    expect(parseSearchUrl('?dog=abc-123&goal=buy', US_STATES).goal).toBe('buy')
+  })
+
   it('ignores the retired tab parameter from older shared links', () => {
     expect(parseSearchUrl('?tab=adopt&breed=beagle', US_STATES)).toEqual({ ...defaults, breed: 'beagle' })
   })

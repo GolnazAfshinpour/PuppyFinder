@@ -17,7 +17,13 @@ function read(key) {
 }
 
 function write(key, value) {
-  localStorage.setItem(key, JSON.stringify(value))
+  // Safari private browsing and full quotas throw on write. The heart still works for this
+  // page view (the caller keeps the returned list in memory); it just won't survive a reload.
+  try {
+    localStorage.setItem(key, JSON.stringify(value))
+  } catch {
+    // nothing useful to do — saving in-memory already succeeded
+  }
 }
 
 function snapshot(listing) {

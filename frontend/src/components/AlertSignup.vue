@@ -41,14 +41,17 @@ async function loadMyAlerts() {
     const res = await fetch(`/api/alerts?email=${encodeURIComponent(email.value.trim())}`)
     if (!res.ok) throw new Error(`API returned ${res.status}`)
     myAlerts.value = await res.json()
-  } catch (e) {
-    error.value = e.message
+  } catch {
+    // Never e.message: "Failed to fetch" and "API returned 500" are sentences for a log,
+    // not for a person looking for a dog.
+    error.value = 'We couldn’t look up your alerts — try again in a moment.'
   } finally {
     loadingAlerts.value = false
   }
 }
 
 async function removeAlert(alert) {
+  error.value = ''
   try {
     const res = await fetch(
       `/api/alerts/${alert.id}?email=${encodeURIComponent(alert.email)}`,
@@ -56,9 +59,11 @@ async function removeAlert(alert) {
     )
     if (res.ok || res.status === 404) {
       myAlerts.value = myAlerts.value.filter((a) => a.id !== alert.id)
+    } else {
+      error.value = 'We couldn’t remove that alert — try again in a moment.'
     }
-  } catch (e) {
-    error.value = e.message
+  } catch {
+    error.value = 'We couldn’t remove that alert — try again in a moment.'
   }
 }
 
@@ -91,11 +96,17 @@ async function save() {
         age: props.age || null,
       }),
     })
-    if (!res.ok) throw new Error((await res.text()).replaceAll('"', '') || `API returned ${res.status}`)
-    savedFor.value = filterSummary.value
-    if (myAlerts.value !== null) await loadMyAlerts()
-  } catch (e) {
-    error.value = e.message
+    if (res.ok) {
+      savedFor.value = filterSummary.value
+      if (myAlerts.value !== null) await loadMyAlerts()
+    } else {
+      // A 400 carries a validation message written for the reader ("email looks wrong");
+      // any other status is a server detail they can do nothing with.
+      const message = res.status === 400 ? (await res.text()).replaceAll('"', '') : ''
+      error.value = message || 'We couldn’t save your alert — try again in a moment.'
+    }
+  } catch {
+    error.value = 'We couldn’t save your alert — try again in a moment.'
   } finally {
     saving.value = false
   }

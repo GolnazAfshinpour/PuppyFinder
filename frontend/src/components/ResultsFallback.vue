@@ -25,15 +25,23 @@ const PREFERENCE = {
 }
 
 const buying = computed(() => props.goal === 'buy')
+// "Show me both" reaches here as goal="both": one directory carrying both kinds of site,
+// rather than a second copy of this section a scroll below the first.
+const showAll = computed(() => props.goal === 'both')
 
-const relevantSites = computed(() =>
-  buying.value
+const relevantSites = computed(() => {
+  if (showAll.value) return props.sites
+  return buying.value
     ? props.sites.filter((s) => s.kind !== 'Adopt')
-    : props.sites.filter((s) => s.kind === 'Adopt'),
-)
+    : props.sites.filter((s) => s.kind === 'Adopt')
+})
 
 const recommended = computed(() => {
-  const order = PREFERENCE[buying.value ? 'buy' : 'adopt']
+  // Adoption leads the combined order: the rescue sites carry no caution labels, and the
+  // reader who said "both" has not yet chosen to spend four figures.
+  const order = showAll.value
+    ? [...PREFERENCE.adopt, ...PREFERENCE.buy]
+    : PREFERENCE[buying.value ? 'buy' : 'adopt']
   const rank = (site) => {
     const index = order.indexOf(site.id)
     return [site.caution ? 1 : 0, -site.appliedFilters.length, index < 0 ? order.length : index]
@@ -52,10 +60,12 @@ const others = computed(() => relevantSites.value.filter((s) => s.id !== recomme
 const coverageLine = computed(() => {
   if (!props.coverage.length) return 'Our live shelter feeds are offline right now.'
   const where = props.coverage.map((c) => `${c.state} (${c.count})`).join(' and ')
+  // In both mode the list also holds breeder marketplaces, which are rated, not coverage.
+  const what = showAll.value ? 'The adoption sites below' : 'These national sites'
   if (props.state && !props.coverage.some((c) => c.state === props.state)) {
-    return `No shelter feed covers ${props.state} yet — our live data is ${where}. These national sites do cover it.`
+    return `No shelter feed covers ${props.state} yet — our live data is ${where}. ${what} do cover it.`
   }
-  return `Our live feeds cover ${where}. These national sites cover the rest of the country.`
+  return `Our live feeds cover ${where}. ${what} cover the rest of the country.`
 })
 
 const filterSummary = computed(() =>
@@ -114,7 +124,8 @@ const filterSummary = computed(() =>
 
     <details v-if="others.length" class="collapse-arrow border-base-300 bg-base-100 collapse border">
       <summary class="collapse-title text-sm font-semibold">
-        Compare all {{ relevantSites.length }} {{ buying ? 'breeder marketplaces' : 'adoption sites' }}
+        Compare all {{ relevantSites.length }}
+        {{ buying ? 'breeder marketplaces' : showAll ? 'adoption sites and breeder marketplaces' : 'adoption sites' }}
         — vetting, prices, and cautions
       </summary>
       <div class="collapse-content">
