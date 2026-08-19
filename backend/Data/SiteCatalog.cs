@@ -91,6 +91,11 @@ public static class SiteCatalog
     public static readonly HashSet<string> DuplicateOfCurated = new(StringComparer.OrdinalIgnoreCase)
     {
         "shepherd-australian",  // == australian-shepherd
+        // Found when the breed typeahead put both on screen at once — alphabetically they sat
+        // 170 rows apart in the old <select>, which is how it survived the australian fix.
+        // German Shepherd is one of the three breeds BBB names as most used in scams, and the
+        // curated entry carries a $2,000 range the duplicate had no access to.
+        "shepherd-german",      // == german-shepherd
         "english-bulldog",      // == bulldog
         "standard-poodle",      // == poodle ("Poodle (Standard)")
         "pembroke",             // == pembroke-welsh-corgi

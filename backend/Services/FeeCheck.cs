@@ -52,7 +52,7 @@ public record FeeVerdict(
 ///
 /// <para>
 /// The price check answers "is this quote plausible for this breed", which requires a sourced
-/// range and is therefore live for 50 of 175 breeds. This answers a different question — "they
+/// range and is therefore live for 50 of 174 breeds. This answers a different question — "they
 /// are asking me for $350, should I send it" — and needs no range at all, so it works for every
 /// breed and, more importantly, for the person who has already paid.
 /// </para>

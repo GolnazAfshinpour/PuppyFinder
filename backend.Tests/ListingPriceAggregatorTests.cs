@@ -375,6 +375,7 @@ public class ListingPriceAggregatorTests
         Assert.Contains("english-bulldog", PuppyFinder.Api.Data.SiteCatalog.DuplicateOfCurated);
         Assert.Contains("standard-poodle", PuppyFinder.Api.Data.SiteCatalog.DuplicateOfCurated);
         Assert.Contains("pembroke", PuppyFinder.Api.Data.SiteCatalog.DuplicateOfCurated);
+        Assert.Contains("shepherd-german", PuppyFinder.Api.Data.SiteCatalog.DuplicateOfCurated);
 
         // The other poodle sizes are genuinely distinct breeds we don't otherwise carry.
         Assert.DoesNotContain("miniature-poodle", PuppyFinder.Api.Data.SiteCatalog.DuplicateOfCurated);

@@ -1,6 +1,7 @@
 <script setup>
 import { computed } from 'vue'
 import { TRAITS, breedMatches } from '../breedFilters.js'
+import BreedPicker from './BreedPicker.vue'
 import { AGES } from '../searchUrl.js'
 
 const props = defineProps({
@@ -135,20 +136,19 @@ function toggleTrait(key) {
         </div>
       </div>
 
-      <label class="form-control">
-        <span class="label-text mb-1 text-xs font-bold tracking-wide uppercase opacity-60">Breed</span>
-        <select
-          class="select select-bordered w-full"
-          :value="breed"
-          @change="emit('update:breed', $event.target.value)"
-        >
-          <option value="">Any breed</option>
-          <option v-for="b in filteredBreeds" :key="b.slug" :value="b.slug">{{ b.displayName }}</option>
-        </select>
+      <div class="form-control">
+        <span class="label-text mb-1 block text-xs font-bold tracking-wide uppercase opacity-60">Breed</span>
+        <!-- A typeahead rather than a 179-option <select>: a native one only jumps to names
+             beginning with what you type, so "retriever" found nothing at all. -->
+        <BreedPicker
+          :breeds="filteredBreeds"
+          :model-value="breed"
+          @update:model-value="emit('update:breed', $event)"
+        />
         <p v-if="narrowed" class="mt-1 text-xs opacity-60">
           Showing {{ filteredBreeds.length }} breeds matching your filters (from our curated list).
         </p>
-      </label>
+      </div>
 
       <div v-if="goal !== 'buy'">
         <span class="label-text mb-1 block text-xs font-bold tracking-wide uppercase opacity-60">Age</span>

@@ -201,7 +201,7 @@ Honesty beats marketing — cautions and coverage limits are stated plainly.
   different people. Unanswered by default rather than defaulted to "not yet": guessing there
   would hand the calmer advice to the reader who least needs it.
 - **The fee check needs no price range, which is the point.** Price screening is live for 50 of
-  175 breeds; an invented crate fee is the same invented crate fee whatever the breed. It is a
+  174 breeds; an invented crate fee is the same invented crate fee whatever the breed. It is a
   separate endpoint rather than a branch of `/api/price-check` for exactly that reason.
 - **A fee catalog has to hold the real costs too.** A tool that only knew scam fees would answer
   "that's a scam" to a legitimate deposit — and being wrong in that direction is not the safe
@@ -335,6 +335,20 @@ Honesty beats marketing — cautions and coverage limits are stated plainly.
   size/age with age as the fallback, so filtering on "good with cats" alone produced "didn't have
   a age listed" — wrong field and wrong grammar on the one sentence whose whole job is explaining
   why those dogs are in the list.
-- Known gaps (documented, not yet built): breed typeahead instead of a 179-option
-  `<select>`, per-option result counts, good-with in saved-search alerts (the filter
-  is search-only), and a compare view for saved dogs.
+- **The breed control is a typeahead, and the reason is not polish.** A native `<select>` only
+  jumps to names *beginning* with what you type, so "retriever" matched nothing at all and
+  "shepherd" missed Australian Shepherd — nobody files a Labrador Retriever under L. The picker
+  matches anywhere in the name, ranks exact → starts-with → word-starts-with → contains, is fully
+  keyboard operable (arrows, Enter, Escape) with the ARIA combobox roles, clears in one click
+  instead of a scroll back to "Any breed", and says "No breeds match" rather than showing an
+  empty box. Ranking lives in `frontend/src/breedSearch.js` so it is testable without mounting,
+  the same reason `priceMeter.js` exists.
+- **It also found a duplicate breed.** "Shepherd German" and "German Shepherd" were both in the
+  catalog — the same bug `DuplicateOfCurated` exists to fix, and one the alphabetical `<select>`
+  hid by putting them 170 rows apart. It mattered: German Shepherd is one of the three breeds
+  BBB names as most used in scams, and the curated entry carries a $2,000 range the duplicate had
+  no access to, so the duplicate bypassed the price floor guard entirely. The e2e suite now
+  asserts no two breeds share a word set, so the next one fails a test instead of waiting for a
+  UI change to expose it.
+- Known gaps (documented, not yet built): per-option result counts, good-with in
+  saved-search alerts (the filter is search-only), and a compare view for saved dogs.

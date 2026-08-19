@@ -34,7 +34,25 @@ const resultTotal = async () => {
 const BASE = (process.env.BASE_URL ?? 'http://localhost:5173').replace(/\/$/, '')
 
 const settle = () => page.waitForTimeout(2500)
-const breedSelect = 'select:below(:text("BREED"))'
+// The breed control is a typeahead now, not a <select>, so driving it means typing rather than
+// selecting. Both helpers go through the real control: `pickBreed` opens it, types enough to
+// find the breed, and clicks the option by its slug, which is what a person does.
+const pickBreed = async (slug) => {
+  const input = page.locator('[data-testid="breed-input"]').first()
+  await input.click()
+  if (!slug) {
+    // "Any breed" is the first row, and clearing has to be reachable without scrolling 179 of them.
+    await page.locator('[role="option"]:has-text("Any breed")').first().click()
+  } else {
+    await input.fill(slug.replace(/-/g, ' '))
+    await page.locator(`[role="option"][data-slug="${slug}"]`).first().click()
+  }
+  await settle()
+}
+// Read from the URL rather than from the widget: that is the real contract (searches are
+// shareable), and it does not need a test-only attribute on the component to work.
+const currentBreed = () => page.evaluate(
+  () => new URLSearchParams(window.location.search).get('breed') ?? '')
 
 // ---------- buying: the default path ----------
 await page.goto(BASE)
@@ -84,7 +102,7 @@ console.log('buying is the default path:', buyDefault)
 // Price screening is gated on sourced data (owner decision, July 2026). With
 // nothing verified in the DB, the checker and the headline range must both be
 // absent — and the hero must not promise a check it doesn't offer.
-await page.selectOption(breedSelect, examples.unsourced)
+await pickBreed(examples.unsourced)
 await settle()
 const heroSub = await page.locator('header p').first().innerText()
 const checkerPresent = await page.locator('input[aria-label="Price you were quoted, in dollars"]').count()
@@ -103,7 +121,7 @@ console.log('api verdict level:', gated.level, '| isWarning:', gated.isWarning)
 // verified: for a sourced breed the checker, the range and a real verdict must all appear.
 // Asserting only the hidden case would keep passing if the feature never switched on for
 // anyone.
-await page.selectOption(breedSelect, examples.sourced)
+await pickBreed(examples.sourced)
 await settle()
 const sourcedChecker = await page.locator('input[aria-label="Price you were quoted, in dollars"]').count()
 const sourcedRange = await page.locator('.text-primary.text-4xl').count()
@@ -147,7 +165,7 @@ console.log(`non-round quote $${odd} produced a verdict:`, oddVerdictShown)
 // price ranges or checking quotes yet" long after 50 breeds had sourced ranges — written to
 // avoid overstating what we had, and left understating it. Assert on what it must NOT say,
 // because that's the failure mode: copy that quietly outlives the state it described.
-await page.selectOption(breedSelect, '')
+await pickBreed('')
 await settle()
 const pickCard = page.locator('section.card-lift').first()
 const pickText = await pickCard.innerText()
@@ -158,7 +176,7 @@ const exampleChip = pickCard.locator('button.btn-outline.btn-sm').first()
 const exampleCount = await pickCard.locator('button.btn-outline.btn-sm').count()
 await exampleChip.click()
 await settle()
-const chipSelectedBreed = await page.locator(breedSelect).first().inputValue()
+const chipSelectedBreed = await currentBreed()
 console.log('no-range card — stale claim present:', staleClaim,
   '| names a count:', namesSourcedCount, '| examples:', exampleCount,
   '| chip selected:', chipSelectedBreed)
@@ -172,10 +190,10 @@ console.log('no-range card — stale claim present:', staleClaim,
 const priceCard = page.locator('section.card-lift').first()
 // Clear the breed first: a breed is still selected from the checks above, and with one
 // selected the card shows that breed's range rather than the examples-and-"See all" state.
-await page.selectOption(breedSelect, '')
+await pickBreed('')
 await settle()
 const seeAllFromCard = await priceCard.locator('button:has-text("See all")').count()
-await page.selectOption(breedSelect, examples.sourced)
+await pickBreed(examples.sourced)
 await settle()
 const compareFromCard = await priceCard.locator('button:has-text("Compare")').count()
 // Anchors count too: the scam-safety chip became a link to /safe when the guide stopped being
@@ -185,7 +203,7 @@ const staticChipsMarked = await page.locator('div.mt-4 > span.underline').count(
 console.log('routes to the list — card "See all":', seeAllFromCard,
   '| card "Compare":', compareFromCard,
   '| chips marked clickable:', clickableChipsMarked, '| static chips underlined:', staticChipsMarked)
-await page.selectOption(breedSelect, '')
+await pickBreed('')
 await settle()
 
 // The hero advertised "N sourced price ranges" as plain text, with no way to see them: the
@@ -208,7 +226,7 @@ const rangesCiteEvidence = await page.locator(
 await page.locator('[data-testid="sourced-prices"] > li button').first().click()
 await settle()
 const listClosed = (await page.locator('.modal-box').count()) === 0
-const listPickedBreed = await page.locator(breedSelect).first().inputValue()
+const listPickedBreed = await currentBreed()
 console.log('sourced list — rows:', listedRanges, 'of', claimedRanges, 'claimed |',
   'rows citing evidence:', rangesCiteEvidence, '| closed:', listClosed,
   '| selected:', listPickedBreed)
@@ -220,12 +238,12 @@ await settle()
 // Pick a breed the shelter feeds actually carry. With a breed that has zero matches
 // the auto-broadening kicks in and correctly returns everything, which would make
 // "does the filter narrow?" unanswerable.
-await page.selectOption(breedSelect, 'beagle')
+await pickBreed('beagle')
 await settle()
 const countAll = await resultTotal()
 console.log('adopt mode, breed=beagle:', countAll, 'results')
 
-await page.selectOption(breedSelect, '')
+await pickBreed('')
 await settle()
 const countAny = await resultTotal()
 console.log('any breed:', countAny, 'results')
@@ -395,6 +413,65 @@ const feeApiNeedsNoBreed = await fees.evaluate(async () => {
   return res.ok && body.level === 'StopPaying'
 })
 await fees.close()
+// The breed typeahead. It replaced a 179-option <select>, and the point is not that it looks
+// nicer: a native select only jumps to names *beginning* with what you type, so "retriever"
+// matched nothing at all and "shepherd" missed Australian Shepherd.
+const typeahead = await browser.newPage()
+await typeahead.goto(BASE)
+await typeahead.waitForSelector('[data-testid="breed-input"]', { timeout: 20000 })
+const typeaheadInput = typeahead.locator('[data-testid="breed-input"]').first()
+const suggest = async (text) => {
+  await typeaheadInput.click()
+  await typeaheadInput.fill(text)
+  await typeahead.waitForTimeout(300)
+  return typeahead.locator('[role="option"][data-slug]').allInnerTexts()
+}
+
+const midWordMatches = await suggest('retriever')
+// Every suggestion has to actually contain what was typed, or the filter is decorative.
+const midWordSearchWorks = midWordMatches.length > 1
+  && midWordMatches.every((n) => /retriever/i.test(n))
+// A name that starts with the query outranks one that merely contains it.
+const prefixOutranksContains = (await suggest('poo'))[0]?.toLowerCase().startsWith('poo') === true
+// An empty list is explained rather than left as a blank box.
+await suggest('xyzzy')
+const noMatchIsExplained = (await typeahead.locator('[role="listbox"]').innerText()).includes('No breeds match')
+
+// Keyboard operable end to end: the list is useless to anyone not using a mouse otherwise.
+await typeaheadInput.fill('beagle')
+await typeahead.waitForTimeout(300)
+await typeaheadInput.press('ArrowDown')
+await typeaheadInput.press('ArrowDown')
+await typeaheadInput.press('Enter')
+await typeahead.waitForTimeout(1800)
+const keyboardSelects = await typeahead.evaluate(
+  () => new URLSearchParams(location.search).get('breed')) === 'beagle'
+// Clearing is one click, not a scroll back to the top of a 174-row list.
+await typeahead.locator('[aria-label="Clear breed"]').click()
+await typeahead.waitForTimeout(1500)
+const clearIsOneClick = await typeahead.evaluate(
+  () => new URLSearchParams(location.search).get('breed')) === null
+
+// The catalog must not carry the same animal twice. The typeahead is what exposed the German
+// Shepherd duplicate: alphabetically the two sat 170 rows apart, so the old select hid it.
+const duplicateBreeds = await typeahead.evaluate(async () => {
+  const breeds = await (await fetch('/api/breeds')).json()
+  const seen = new Map()
+  const dupes = []
+  for (const b of breeds) {
+    const key = [...new Set(b.displayName.toLowerCase().replace(/[()]/g, ' ').split(/\s+/).filter(Boolean))]
+      .sort().join(' ')
+    if (seen.has(key)) dupes.push(`${seen.get(key)} / ${b.slug}`)
+    else seen.set(key, b.slug)
+  }
+  return dupes
+})
+await typeahead.close()
+console.log('breed typeahead — "retriever":', midWordMatches.length, 'matches',
+  '| prefix outranks contains:', prefixOutranksContains,
+  '| keyboard:', keyboardSelects, '| clear:', clearIsOneClick,
+  '| duplicate breeds:', duplicateBreeds.length ? duplicateBreeds : 'none')
+
 // The seller check: the only thing in the app that ends in a public database rather than in
 // advice. Under the Animal Welfare Act a breeder needs a USDA licence when they keep more than
 // four breeding females AND sell sight-unseen, and a puppy shipped to a buyer is not a
@@ -719,7 +796,7 @@ await page.goto('about:blank')                 // give Back somewhere real to go
 await page.goto(BASE)
 await page.waitForSelector('h1', { timeout: 15000 })
 await settle()
-await page.selectOption(breedSelect, 'beagle')
+await pickBreed('beagle')
 await settle()
 const afterPick = page.url()
 await page.click('button:has-text("Or adopt")')
@@ -729,7 +806,7 @@ await page.goBack()
 await settle()
 const backUrl = page.url()
 const backHeading = await page.locator('h1').innerText()
-const backKeptBreed = (await page.locator(breedSelect).first().inputValue()) === 'beagle'
+const backKeptBreed = (await currentBreed()) === 'beagle'
 await page.goForward()
 await settle()
 const forwardUrl = page.url()
@@ -890,6 +967,13 @@ const checks = {
     && /proves nothing/i.test(sellerInPerson.text),
   'the licence question is only asked when it could matter': licenceAskedInPerson === 0,
   'the seller check is on the buying path and in the vetting section': sellerCheckInGuide === 1,
+  // The breed typeahead, and the reason it replaced a <select>.
+  'a breed is findable by a word in the middle of its name': midWordSearchWorks,
+  'a name starting with the query outranks one merely containing it': prefixOutranksContains,
+  'no matches is explained rather than left blank': noMatchIsExplained,
+  'the breed list is fully keyboard operable': keyboardSelects,
+  'clearing the breed is one click': clearIsOneClick,
+  'the breed catalog never lists the same animal twice': duplicateBreeds.length === 0,
   'detail view opens in-app': detailOpen === 1 && detailAddressable,
   'detail view closes on Escape': detailClosed,
   'shared dog link resolves': sharedResolves,

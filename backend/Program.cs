@@ -216,7 +216,7 @@ app.MapGet("/api/price-check", async (string? breed, int price,
 // but "they are asking me for $350, should I send it".
 //
 // It needs no price range, which is why it exists as its own endpoint rather than a branch of
-// the one above. Price screening is live for 50 of 175 breeds and silent for the rest; an
+// the one above. Price screening is live for 50 of 174 breeds and silent for the rest; an
 // invented crate fee is the same invented crate fee whatever the breed. It is also the only
 // check here aimed at someone who has already paid — BBB's "multi-tiered setup" means most of
 // the loss lands on payments two, three and four, and every other check in this app fires

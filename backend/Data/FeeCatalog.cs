@@ -44,7 +44,7 @@ public record FeeType(
 /// </para>
 ///
 /// <para>
-/// It also needs no price range, which matters: the price screen is live for 50 of 175 breeds
+/// It also needs no price range, which matters: the price screen is live for 50 of 174 breeds
 /// and silent for the rest, while the fee a seller invents is the same fee whatever the breed.
 /// </para>
 ///

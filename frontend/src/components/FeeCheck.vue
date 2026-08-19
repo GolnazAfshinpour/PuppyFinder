@@ -3,7 +3,7 @@ import { computed, ref } from 'vue'
 
 // The price check answers "is this quote plausible for this breed", which needs a sourced range
 // and is therefore silent for most breeds. This answers "they are asking me for $350, should I
-// send it" — no range required, so it works for all 175 breeds, and it is the only check in the
+// send it" — no range required, so it works for all 174 breeds, and it is the only check in the
 // app pointed at someone who has already paid.
 //
 // All the judgement lives in the API (backend/Services/FeeCheck.cs), the way the price gate
