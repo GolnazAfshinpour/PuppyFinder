@@ -102,7 +102,11 @@ public sealed class SocrataProvider(
                 Size: NormalizeSize(dataset.SizeField is null ? null : Get(row, dataset.SizeField))
                       ?? SizeFromWeightText(memo),
                 ContactInfo: dataset.ContactInfo,
-                AnimalRef: animalRef));
+                AnimalRef: animalRef,
+                // King County states the fee inside the memo blocks CleanMemo strips — parsed
+                // out before the stripping, or AdoptionFee is null for 100% of this feed's dogs
+                // by construction while the answer sits in the same row.
+                AdoptionFee: FeeFromMemo(memo)));
         }
 
         logger.LogInformation("{Source} returned {Count} dog listings", dataset.SourceName, listings.Count);
@@ -296,6 +300,34 @@ public sealed class SocrataProvider(
     // shows the metadata as structured fields, so keep only the bio text.
     private static readonly string[] MemoMetadataPrefixes =
         ["Received on:", "Description:", "Age:", "Adoption Fee:", "Current Location:"];
+
+    /// <summary>
+    /// The adoption fee stated inside a memo's metadata blocks ("Adoption Fee: $250"), or null.
+    /// Normalised through the shared fee formatter so "$250.00" renders the same way a
+    /// RescueGroups fee does, and a hand-typed blank ("TBD") stays null.
+    /// </summary>
+    public static string? FeeFromMemo(string? memo)
+    {
+        if (string.IsNullOrWhiteSpace(memo))
+        {
+            return null;
+        }
+
+        const string prefix = "Adoption Fee:";
+        foreach (var segment in memo.Split(
+            "</p>", StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries))
+        {
+            // Tags stripped before matching, so "<p>Adoption Fee:" and "Adoption Fee:" both hit.
+            var text = System.Text.RegularExpressions.Regex
+                .Replace(segment, "<[^>]*>", " ").Trim();
+            if (text.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+            {
+                return RescueGroupsProvider.NormalizeFee(text[prefix.Length..]);
+            }
+        }
+
+        return null;
+    }
 
     public static string CleanMemo(string? memo)
     {

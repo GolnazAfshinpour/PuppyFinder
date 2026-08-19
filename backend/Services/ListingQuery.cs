@@ -18,6 +18,10 @@ public record ListingFilter(
     string? City = null,
     string? Size = null,
     string? AgeGroup = null,
+    // "Male" | "Female". Prefix-matched, because the county feeds publish "Male (neutered)" and
+    // "Female (spayed)" — an equality test would hide every altered dog from the filter that
+    // most adopters combine with it.
+    string? Sex = null,
     bool IncludeUnlisted = true,
     // Where the visitor is searching from, and how far they will travel. All three are needed
     // for the filter to apply at all — a radius with no origin is meaningless.
@@ -90,6 +94,15 @@ public static class ListingQuery
                 : filter.Size.Equals(l.Size, StringComparison.OrdinalIgnoreCase));
         }
 
+        // Same unknown-is-not-no rule as size and age: a dog whose feed records no sex stays in,
+        // labelled, rather than vanishing over a blank field.
+        if (!string.IsNullOrWhiteSpace(filter.Sex))
+        {
+            listings = listings.Where(l => l.Sex is null
+                ? filter.IncludeUnlisted
+                : l.Sex.StartsWith(filter.Sex.Trim(), StringComparison.OrdinalIgnoreCase));
+        }
+
         // Same rule as size and age: a dog whose rescue recorded no location is "unknown", not
         // "far away". Dropping those would silently hide real dogs over a blank field, and most
         // of them are within range of somebody.
@@ -160,6 +173,7 @@ public static class ListingQuery
     /// <summary>True when this listing matched only because the shelter left a filtered field blank.</summary>
     public static bool Unconfirmed(Listing listing, ListingFilter filter) =>
         (!string.IsNullOrWhiteSpace(filter.Size) && listing.Size is null)
+        || (!string.IsNullOrWhiteSpace(filter.Sex) && listing.Sex is null)
         || (AgeParser.IsGroup(filter.AgeGroup) && listing.AgeGroup is null)
         || filter.GoodWith.Any(g => g.Wanted && g.Value(listing) is null);
 }

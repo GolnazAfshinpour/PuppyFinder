@@ -20,51 +20,104 @@ public sealed class RescueGroupsProvider(
         !string.IsNullOrWhiteSpace(configuration["RescueGroups:ApiKey"]);
 
     /// <summary>
-    /// Results per request. 25 was an arbitrary starter value and coverage is the whole point of
-    /// this source, but the API terms ask callers to avoid flooding it and document 429 as a
-    /// response, so this stays modest rather than maximal.
+    /// Results per request. The API's documented maximum is 250; the default asks for all of it
+    /// because coverage is the whole point of this source, and fewer larger requests is *less*
+    /// load on their side than more smaller ones. Clamped so a config typo can't exceed the cap.
     /// </summary>
-    private const int PageSize = 100;
+    private int PageSize => Math.Clamp(configuration.GetValue("RescueGroups:PageSize", 250), 1, 250);
 
-    /// <summary>How many pages to walk at most, so a paging bug cannot loop indefinitely.</summary>
-    private const int MaxPages = 3;
+    /// <summary>
+    /// How many pages to fetch at most. 8 × 250 = 2,000 dogs per refresh — the previous 3 × 100
+    /// held an arbitrary 300-dog window of a multi-thousand-dog source, which made "Labradors in
+    /// Texas" a scan of whichever dogs happened to arrive first rather than a real search.
+    /// Bounded (and clamped) so a paging bug can't loop; the terms ask us not to flood, and this
+    /// runs behind a 10-minute cache.
+    /// </summary>
+    private int MaxPages => Math.Clamp(configuration.GetValue("RescueGroups:MaxPages", 8), 1, 40);
+
+    /// <summary>
+    /// Pages fetched concurrently after the first. The aggregator's refresh blocks the visitor
+    /// who triggered it, so eight sequential ~10 s responses would be over a minute of spinner;
+    /// three at a time keeps the wall-clock near the old three-page fetch. Modest on purpose —
+    /// 429 is a documented response and their terms ask callers not to flood.
+    /// </summary>
+    private const int PageConcurrency = 3;
 
     public async Task<IReadOnlyList<Listing>> FetchListingsAsync(CancellationToken cancellationToken)
     {
-        var listings = new List<Listing>();
-        for (var page = 1; page <= MaxPages; page++)
-        {
-            int fetched;
-            try
-            {
-                fetched = await FetchPageAsync(page, listings, cancellationToken);
-            }
-            catch (Exception ex) when (ex is not OperationCanceledException
-                                       || cancellationToken.IsCancellationRequested)
-            {
-                // Keep the pages that did arrive. Letting this propagate discarded every dog
-                // already collected, so one slow page cost the whole source — and the aggregator
-                // then cached the shortfall for ten minutes.
-                logger.LogWarning(
-                    "RescueGroups page {Page} failed ({Message}); keeping {Count} listings from "
-                    + "earlier pages", page, ex.Message, listings.Count);
-                break;
-            }
+        // Page 1 is fetched alone because its meta says how many pages exist at all. It is also
+        // the one failure that costs the whole source — there is nothing to fall back on yet.
+        var first = await FetchPageAsync(1, cancellationToken);
 
-            if (fetched < PageSize)
+        // Trust the API's own page count over the short-page heuristic: a server that silently
+        // caps the limit below what we asked would make every page look "short" and end the walk
+        // at one page — a worse window than the bug this replaces.
+        var totalPages = first.TotalPages ?? (first.Seen < PageSize ? 1 : MaxPages);
+        var wanted = Math.Min(totalPages, MaxPages);
+
+        var pages = new List<PageResult?> { first };
+        if (wanted > 1)
+        {
+            using var gate = new SemaphoreSlim(PageConcurrency);
+            var rest = await Task.WhenAll(Enumerable.Range(2, wanted - 1).Select(async page =>
             {
-                break;  // short page means there is nothing after it
+                await gate.WaitAsync(cancellationToken);
+                try
+                {
+                    return await FetchPageAsync(page, cancellationToken);
+                }
+                catch (Exception ex) when (ex is not OperationCanceledException
+                                           || cancellationToken.IsCancellationRequested)
+                {
+                    // Keep the pages that did arrive. Losing one page to a timeout must not cost
+                    // the whole source — the aggregator would cache the shortfall for ten minutes.
+                    logger.LogWarning(
+                        "RescueGroups page {Page} failed ({Message}); keeping the other pages",
+                        page, ex.Message);
+                    return (PageResult?)null;
+                }
+                finally
+                {
+                    gate.Release();
+                }
+            }));
+            pages.AddRange(rest);
+        }
+
+        // Merged in page order, deduped by id: this is a live feed, so an adoption mid-walk
+        // shifts the page boundaries and the same dog can arrive on two pages. A duplicate id
+        // breaks list rendering and favorites downstream, which key on it.
+        var listings = new List<Listing>();
+        var seenIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var page in pages)
+        {
+            foreach (var listing in page?.Listings ?? [])
+            {
+                if (seenIds.Add(listing.Id))
+                {
+                    listings.Add(listing);
+                }
             }
         }
 
-        logger.LogInformation("RescueGroups returned {Count} listings", listings.Count);
+        // The measurement the roadmap asked for: how much of this source we actually hold.
+        logger.LogInformation(
+            "RescueGroups returned {Count} listings from {Fetched} of {Available} pages "
+            + "({Total} dogs available)",
+            listings.Count, pages.Count(p => p is not null), first.TotalPages ?? wanted,
+            first.TotalCount?.ToString() ?? "unknown");
         return listings;
     }
 
-    /// <returns>How many records the page contained, before filtering.</returns>
-    private async Task<int> FetchPageAsync(
-        int page, List<Listing> listings, CancellationToken cancellationToken)
+    /// <param name="Seen">Records the page contained, before filtering.</param>
+    /// <param name="TotalPages">The API's own page count for this search, when it says.</param>
+    /// <param name="TotalCount">The API's total matching-record count, when it says.</param>
+    private sealed record PageResult(
+        int Seen, int? TotalPages, int? TotalCount, IReadOnlyList<Listing> Listings);
+
+    private async Task<PageResult> FetchPageAsync(int page, CancellationToken cancellationToken)
     {
+        var listings = new List<Listing>();
         var client = httpClientFactory.CreateClient("rescuegroups");
 
         // orgs is included for its city/state: RescueGroups' own examples put location on the
@@ -82,6 +135,14 @@ public sealed class RescueGroupsProvider(
         using var json = JsonDocument.Parse(await response.Content.ReadAsStringAsync(cancellationToken));
         var root = json.RootElement;
 
+        // JSON:API meta: the API's own statement of how many records and pages this search has.
+        int? totalPages = null, totalCount = null;
+        if (root.TryGetProperty("meta", out var meta))
+        {
+            totalPages = GetInt(meta, "pages");
+            totalCount = GetInt(meta, "count");
+        }
+
         // JSON:API — related pictures/locations arrive in "included", keyed by type+id.
         var included = new Dictionary<(string Type, string Id), JsonElement>();
         if (root.TryGetProperty("included", out var includedArray))
@@ -94,7 +155,7 @@ public sealed class RescueGroupsProvider(
 
         if (!root.TryGetProperty("data", out var data) || data.ValueKind != JsonValueKind.Array)
         {
-            return 0;
+            return new PageResult(0, totalPages, totalCount, listings);
         }
 
         var seen = 0;
@@ -127,8 +188,10 @@ public sealed class RescueGroupsProvider(
                 name = "Unnamed";
             }
 
-            string? city = null, state = null, imageUrl = null, orgUrl = null, orgPhone = null;
+            string? city = null, state = null, orgUrl = null, orgPhone = null, orgName = null,
+                orgEmail = null;
             double? orgLat = null, orgLon = null;
+            var photos = new List<string>();
             if (animal.TryGetProperty("relationships", out var rels))
             {
                 if (FirstRelated(rels, "locations") is { } locId &&
@@ -158,8 +221,12 @@ public sealed class RescueGroupsProvider(
                     orgLat = GetDouble(orgAttrs, "lat");
                     orgLon = GetDouble(orgAttrs, "lon");
                     // The county feeds put a shelter number on every card; this one had none,
-                    // while the phone sat in a relationship we were already fetching.
+                    // while the phone sat in a relationship we were already fetching. Same for
+                    // the rescue's name and email — "Source: RescueGroups" names the feed, and
+                    // the reader's next step is contacting the rescue that has the dog.
                     orgPhone = CleanText(GetString(orgAttrs, "phone"));
+                    orgName = CleanText(GetString(orgAttrs, "name"));
+                    orgEmail = CleanText(GetString(orgAttrs, "email"));
                 }
 
                 // Casing varies by rescue — CA and Ca, TX and Tx, OK and ok all appear in one
@@ -170,13 +237,23 @@ public sealed class RescueGroupsProvider(
                     state = state.ToUpperInvariant();
                 }
 
-                if (FirstRelated(rels, "pictures") is { } picId &&
-                    included.TryGetValue(("pictures", picId), out var picture))
+                // All of them, not the first: the include already returns every picture, and
+                // adopters in every cited study wanted more than one photo before committing.
+                foreach (var picId in AllRelated(rels, "pictures"))
                 {
+                    if (!included.TryGetValue(("pictures", picId), out var picture))
+                    {
+                        continue;
+                    }
+
                     var picAttrs = picture.GetProperty("attributes");
-                    imageUrl = picAttrs.TryGetProperty("large", out var large)
+                    var url = picAttrs.TryGetProperty("large", out var large)
                         ? GetString(large, "url")
                         : GetString(picAttrs, "url");
+                    if (!string.IsNullOrWhiteSpace(url) && !photos.Contains(url))
+                    {
+                        photos.Add(url);
+                    }
                 }
             }
 
@@ -189,7 +266,7 @@ public sealed class RescueGroupsProvider(
                 Description: description,
                 City: city ?? "",
                 State: state ?? "",
-                ImageUrl: imageUrl,
+                ImageUrl: photos.FirstOrDefault(),
                 ListingUrl: DetailUrl(GetString(attrs, "url"), orgUrl, id),
                 Source: SourceName,
                 SourceUrl: "https://rescuegroups.org",
@@ -197,7 +274,7 @@ public sealed class RescueGroupsProvider(
                 // was invisible to the size filter. Normalised through the shared bucket map so
                 // "X-Large" lands somewhere rather than being dropped.
                 Size: SocrataProvider.NormalizeSize(GetString(attrs, "sizeGroup")),
-                ContactInfo: orgPhone,
+                ContactInfo: ContactLine(orgPhone, orgEmail),
                 Latitude: orgLat,
                 Longitude: orgLon,
                 // The two fields the design doc named as the biggest listing gaps. Both are
@@ -206,10 +283,20 @@ public sealed class RescueGroupsProvider(
                 AdoptionFee: NormalizeFee(CleanText(GetString(attrs, "adoptionFeeString"))),
                 GoodWithKids: GetBool(attrs, "isKidsOk"),
                 GoodWithDogs: GetBool(attrs, "isDogsOk"),
-                GoodWithCats: GetBool(attrs, "isCatsOk")));
+                GoodWithCats: GetBool(attrs, "isCatsOk"),
+                Photos: photos.Count > 0 ? photos : null,
+                OrgName: orgName));
         }
 
-        return seen;
+        return new PageResult(seen, totalPages, totalCount, listings);
+    }
+
+    /// <summary>Phone and email joined for display; null when the rescue published neither.</summary>
+    public static string? ContactLine(string? phone, string? email)
+    {
+        var parts = new[] { phone, email }.Where(p => !string.IsNullOrWhiteSpace(p));
+        var line = string.Join(" · ", parts);
+        return line.Length > 0 ? line : null;
     }
 
     /// <summary>
@@ -350,6 +437,40 @@ public sealed class RescueGroupsProvider(
         relData.GetArrayLength() > 0
             ? relData[0].GetProperty("id").GetString()
             : null;
+
+    private static IEnumerable<string> AllRelated(JsonElement relationships, string name)
+    {
+        if (!relationships.TryGetProperty(name, out var rel) ||
+            !rel.TryGetProperty("data", out var relData) ||
+            relData.ValueKind != JsonValueKind.Array)
+        {
+            yield break;
+        }
+
+        foreach (var item in relData.EnumerateArray())
+        {
+            if (item.TryGetProperty("id", out var id) && id.GetString() is { } value)
+            {
+                yield return value;
+            }
+        }
+    }
+
+    /// <summary>A JSON integer, tolerating the string form — same reasoning as <see cref="GetDouble"/>.</summary>
+    private static int? GetInt(JsonElement element, string property)
+    {
+        if (!element.TryGetProperty(property, out var value))
+        {
+            return null;
+        }
+
+        return value.ValueKind switch
+        {
+            JsonValueKind.Number when value.TryGetInt32(out var n) => n,
+            JsonValueKind.String when int.TryParse(value.GetString(), out var parsed) => parsed,
+            _ => null,
+        };
+    }
 
     /// <summary>
     /// Turns a RescueGroups text field into the plain text the rest of the app assumes.

@@ -373,6 +373,70 @@ public sealed class PriceRefreshJobTests : IDisposable
     }
 
     [Fact]
+    public void ListingScheduleMeasuresFromTheDataNotTheProcess()
+    {
+        var now = DateTimeOffset.Parse("2026-08-19T12:00:00Z");
+        var cadence = TimeSpan.FromDays(60);
+
+        // Never collected: due at the first check, however young the process is.
+        Assert.True(PriceRefreshJob.ListingRunDue(null, now, cadence));
+
+        // A completed run inside the cadence: not due — so a crash-looping service can
+        // restart all day without re-collecting.
+        Assert.False(PriceRefreshJob.ListingRunDue(now.AddDays(-59), now, cadence));
+
+        // Data older than the cadence: due, regardless of when the process started. This
+        // is the failure the uptime timer had — a weekly reboot reset a 30-day countdown
+        // forever, and the 90-day window emptied with the schedule "on".
+        Assert.True(PriceRefreshJob.ListingRunDue(now.AddDays(-60), now, cadence));
+        Assert.True(PriceRefreshJob.ListingRunDue(now.AddDays(-200), now, cadence));
+    }
+
+    [Fact]
+    public async Task ATotallyFailedRunDoesNotCountAsFreshData()
+    {
+        // A run whose every breed errored has accepted + pending = 0. If it counted, one
+        // bad day at the source would silence the schedule for a whole cadence — the next
+        // check must retry instead.
+        var app = NewApp(autoRefresh: false, listingsEnabled: false);
+        using (app)
+        {
+            var store = app.Services.GetRequiredService<PriceStore>();
+
+            Assert.Null(await store.LastCompletedListingRunAsync(Ct));
+
+            await store.StartRunAsync(new PriceRun("listings-fail", DateTimeOffset.UtcNow), Ct);
+            await store.FinishRunAsync(
+                new PriceRun("listings-fail", DateTimeOffset.UtcNow)
+                {
+                    FinishedAt = DateTimeOffset.UtcNow, BreedsChecked = 3, Error = "all failed",
+                }, Ct);
+            Assert.Null(await store.LastCompletedListingRunAsync(Ct));
+
+            // A research run never counts either, whatever it processed.
+            await store.StartRunAsync(new PriceRun("research-ok", DateTimeOffset.UtcNow), Ct);
+            await store.FinishRunAsync(
+                new PriceRun("research-ok", DateTimeOffset.UtcNow)
+                {
+                    FinishedAt = DateTimeOffset.UtcNow, BreedsChecked = 3, Accepted = 3,
+                }, Ct);
+            Assert.Null(await store.LastCompletedListingRunAsync(Ct));
+
+            var started = DateTimeOffset.UtcNow.AddDays(-1);
+            await store.StartRunAsync(new PriceRun("listings-ok", started), Ct);
+            await store.FinishRunAsync(
+                new PriceRun("listings-ok", started)
+                {
+                    FinishedAt = DateTimeOffset.UtcNow, BreedsChecked = 3, Accepted = 1, Pending = 2,
+                }, Ct);
+
+            var last = await store.LastCompletedListingRunAsync(Ct);
+            Assert.NotNull(last);
+            Assert.Equal(started, last.Value, TimeSpan.FromSeconds(1));
+        }
+    }
+
+    [Fact]
     public async Task CollectionRefusesWhenListingsAreOffAndSaysWhy()
     {
         var app = NewApp(autoRefresh: false, listingsEnabled: false);

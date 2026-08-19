@@ -39,6 +39,7 @@ const selectedState = ref(fromUrl.state)
 const selectedCity = ref(fromUrl.city)
 const selectedSize = ref(fromUrl.size)
 const selectedAge = ref(fromUrl.age) // Puppy | Young | Adult | Senior
+const selectedSex = ref(fromUrl.sex) // Male | Female — prefix-matched, so neutered/spayed count
 const traits = ref(fromUrl.traits)
 // Filters the dogs themselves, unlike `traits` above which prunes the breed list. Two controls
 // that sound alike and do different jobs, so both are labelled for what they actually do.
@@ -155,6 +156,7 @@ function unconfirmedNote(listing) {
   if (!listing.unconfirmed) return ''
   const missing = [
     selectedSize.value && !listing.size && 'size',
+    selectedSex.value && !listing.sex && 'sex',
     selectedAge.value && !listing.ageGroup && 'age',
   ].filter(Boolean)
   // Phrased separately: "didn't list a good with cats" doesn't parse, and this is the caveat
@@ -171,6 +173,9 @@ function unconfirmedNote(listing) {
   return `This shelter didn't list a ${missing.join(' or ')} — shown so you don't miss them.`
 }
 
+// Chip labels: "Female" alone reads as a name filter; said as what it filters.
+const SEX_LABELS = { Male: 'Male dogs', Female: 'Female dogs' }
+
 // Active filters as removable chips above the results (table-stakes search UX).
 // Chip labels for the breed-list narrowers. "Breeds" is load-bearing on the first one — see
 // TRAITS in breedFilters.js.
@@ -180,6 +185,7 @@ const activeChips = computed(() => {
   const chips = []
   if (selectedAge.value) chips.push({ key: 'age', label: selectedAge.value, clear: () => (selectedAge.value = '') })
   if (selectedSize.value) chips.push({ key: 'size', label: `Size: ${selectedSize.value}`, clear: () => (selectedSize.value = '') })
+  if (selectedSex.value) chips.push({ key: 'sex', label: SEX_LABELS[selectedSex.value] ?? selectedSex.value, clear: () => (selectedSex.value = '') })
   for (const t of traits.value) {
     chips.push({ key: `trait-${t}`, label: TRAIT_LABELS[t] ?? t, clear: () => (traits.value = traits.value.filter((x) => x !== t)) })
   }
@@ -213,6 +219,7 @@ function clearAllFilters() {
   selectedCity.value = ''
   selectedSize.value = ''
   selectedAge.value = ''
+  selectedSex.value = ''
   traits.value = []
   goodWith.value = []
   clearOrigin()
@@ -238,6 +245,7 @@ const unconfirmedCount = computed(() => rankedListings.value.filter((l) => l.unc
 const unconfirmedReason = computed(() => {
   const parts = []
   if (selectedSize.value) parts.push('a size')
+  if (selectedSex.value) parts.push('the sex')
   if (selectedAge.value) parts.push('an age')
   for (const w of goodWith.value) parts.push(`whether they're good with ${w}`)
   if (parts.length <= 1) return parts[0] ?? 'that'
@@ -479,6 +487,7 @@ function listingParams(overrides = {}) {
     city: selectedCity.value.trim() && selectedState.value ? selectedCity.value.trim() : '',
     size: selectedSize.value,
     age: selectedAge.value,
+    sex: selectedSex.value,
     sort: sort.value,
     includeUnlisted: strictMatch.value ? 'false' : '',
     goodWith: goodWith.value.join(','),
@@ -510,6 +519,7 @@ async function broadenSearch() {
   const relaxations = [
     { overrides: { city: '' }, note: `outside ${selectedCity.value.trim()} (all of ${selectedState.value})`, applies: () => selectedCity.value.trim() && selectedState.value },
     { overrides: { size: '' }, note: 'of any size', applies: () => selectedSize.value },
+    { overrides: { sex: '' }, note: 'of either sex', applies: () => selectedSex.value },
     { overrides: { age: '' }, note: 'of any age', applies: () => selectedAge.value },
     {
       overrides: { goodWith: '' },
@@ -518,7 +528,7 @@ async function broadenSearch() {
     },
     { overrides: { breed: '' }, note: 'of any breed', applies: () => selectedBreed.value },
     { overrides: { state: '', city: '' }, note: 'across all states with live feeds', applies: () => selectedState.value },
-    { overrides: { breed: '', state: '', city: '', size: '', age: '', goodWith: '' }, note: 'available right now (all filters relaxed)', applies: () => true },
+    { overrides: { breed: '', state: '', city: '', size: '', age: '', sex: '', goodWith: '' }, note: 'available right now (all filters relaxed)', applies: () => true },
   ]
   for (const relaxation of relaxations) {
     if (!relaxation.applies()) continue
@@ -585,7 +595,7 @@ function pickQuizBreed(slug) {
 }
 
 watch([selectedBreed, selectedState], loadSites)
-watch([selectedBreed, selectedState, selectedSize, selectedAge, goodWith, sort, strictMatch, originLat, radius], loadListings)
+watch([selectedBreed, selectedState, selectedSize, selectedAge, selectedSex, goodWith, sort, strictMatch, originLat, radius], loadListings)
 
 // Keep the address bar in sync, and make Back/Forward actually work.
 //
@@ -601,6 +611,7 @@ const currentQuery = () => buildSearchQuery({
   city: selectedCity.value,
   size: selectedSize.value,
   age: selectedAge.value,
+  sex: selectedSex.value,
   traits: traits.value,
   goodWith: goodWith.value,
   goal: goal.value,
@@ -614,7 +625,7 @@ const currentQuery = () => buildSearchQuery({
 // entry for a change that *came from* history — the classic popstate feedback loop.
 let applyingHistory = false
 
-watch([selectedBreed, selectedState, selectedCity, selectedSize, selectedAge, traits, goodWith, goal, sort, zip, radius, openDogId], () => {
+watch([selectedBreed, selectedState, selectedCity, selectedSize, selectedAge, selectedSex, traits, goodWith, goal, sort, zip, radius, openDogId], () => {
   if (applyingHistory) return
 
   const query = currentQuery()
@@ -635,6 +646,7 @@ window.addEventListener('popstate', () => {
   selectedCity.value = from.city
   selectedSize.value = from.size
   selectedAge.value = from.age
+  selectedSex.value = from.sex
   traits.value = from.traits
   goodWith.value = from.goodWith
   goal.value = from.goal
@@ -811,6 +823,7 @@ onMounted(() => {
           v-model:city="selectedCity"
           v-model:size="selectedSize"
           v-model:age="selectedAge"
+          v-model:sex="selectedSex"
           v-model:traits="traits"
           v-model:good-with="goodWith"
           v-model:goal="goal"

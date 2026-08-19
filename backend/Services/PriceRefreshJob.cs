@@ -78,49 +78,77 @@ public sealed class PriceRefreshJob(
             return;
         }
 
-        // Scheduled runs are opt-in, and default to off even with a key present.
+        // Scheduled runs are opt-in per pass, and default to off even when a pass could run.
         //
-        // This job is not like AlertChecker, whose loop it was first copied from: that one
-        // diffs local data for free, so running it at startup costs nothing. This one makes
-        // a paid API call per breed — 179 of them — and writes to the data a fraud check
-        // depends on. Setting a key should never, by itself, start spending money against
-        // an untuned prompt; the plan's calibration gate exists precisely to be walked
-        // through first, one breed at a time, via POST /api/admin/price-research.
-        if (!configuration.GetValue("Prices:AutoRefresh", false))
+        // Research keeps the stricter contract it always had: this job is not like
+        // AlertChecker, whose loop it was first copied from — a research pass makes a paid
+        // API call per breed and writes to the data a fraud check depends on, so setting a
+        // key must never, by itself, start spending money against an untuned prompt.
+        // Listing collection costs nothing but polite requests, so it gets its own opt-in
+        // (Prices:ListingAutoRefresh) that arms nothing else; Prices:AutoRefresh still
+        // schedules both, as it always did.
+        var researchScheduled = research.IsEnabled
+            && configuration.GetValue("Prices:AutoRefresh", false);
+        var listingsScheduled = listings.IsEnabled
+            && (configuration.GetValue("Prices:ListingAutoRefresh", false)
+                || configuration.GetValue("Prices:AutoRefresh", false));
+
+        if (!researchScheduled && !listingsScheduled)
         {
             logger.LogInformation(
-                "Price refresh is idle — scheduled runs are off (set Prices:AutoRefresh=true to enable). "
+                "Price refresh is idle — scheduled runs are off (Prices:ListingAutoRefresh "
+                + "schedules listing collection alone; Prices:AutoRefresh schedules everything). "
                 + "Research single breeds via POST /api/admin/price-research while calibrating.");
             return;
         }
 
-        // Breed prices move on the scale of years. Monthly keeps the data fresh without
-        // churning the number the fraud check measures against.
-        var interval = TimeSpan.FromDays(configuration.GetValue("Prices:RefreshDays", 30));
-        using var timer = new PeriodicTimer(interval);
+        // Research runs on process uptime, first pass one full interval away — a restart
+        // must never trigger a paid sweep. Breed prices move on the scale of years, so
+        // monthly keeps that data fresh without churning the number the check measures.
+        var researchInterval = TimeSpan.FromDays(configuration.GetValue("Prices:RefreshDays", 30));
+        var nextResearchAt = DateTimeOffset.UtcNow + researchInterval;
+
+        // Listing collection runs on the age of the data, read from the run table — not on
+        // process uptime. The uptime timer this replaces had a real failure mode: every
+        // restart reset the countdown, so on a machine that reboots weekly the first run
+        // never arrived, and the 90-day window emptied with the schedule "on" the whole
+        // time. Measuring from the last completed run makes restarts free in both
+        // directions: a run that already happened isn't repeated, and a run that is
+        // overdue happens at the next check regardless of when the process started.
+        //
+        // Default 60 days, not the window's 90: at 90 the cadence and the expiry coincide,
+        // so one failed or missed run withdraws every listing range at once. At 60 a
+        // failure leaves a 30-day cushion of retries (every tick below) before anything
+        // expires.
+        var listingCadence = TimeSpan.FromDays(
+            Math.Clamp(configuration.GetValue("Prices:ListingRefreshDays", 60), 1, 365));
+
         logger.LogInformation(
-            "Price refresh is scheduled every {Days} day(s) — listings: {Listings}, research: {Research}. "
-            + "First run is one interval away, not at startup.",
-            interval.TotalDays,
-            listings.IsEnabled ? "on" : "off",
-            research.IsEnabled ? "on" : "off (no API key)");
+            "Price refresh is scheduled — listings: {Listings}, research: {Research}.",
+            listingsScheduled ? $"every {listingCadence.TotalDays:0} day(s), measured from the data"
+                : "off",
+            researchScheduled ? $"every {researchInterval.TotalDays:0} day(s) of uptime"
+                : "off (not opted in, or no API key)");
+
+        // The tick is how often schedules are *checked*, not how often anything runs.
+        using var timer = new PeriodicTimer(TimeSpan.FromHours(6));
         try
         {
-            // Wait for the first tick before the first run. Running at startup would mean
-            // every service restart triggers a full paid sweep — and restarts happen for
-            // reasons that have nothing to do with prices being stale.
             while (await timer.WaitForNextTickAsync(stoppingToken))
             {
-                // Each pass does whatever it currently can. Listings first: they are the
-                // primary source, they cost nothing but requests, and their 90-day window is
-                // what actually expires.
-                if (listings.IsEnabled)
+                // Listings first: they are the primary source, they cost nothing but
+                // requests, and their 90-day window is what actually expires.
+                if (listingsScheduled && ListingRunDue(
+                        await store.LastCompletedListingRunAsync(stoppingToken),
+                        DateTimeOffset.UtcNow,
+                        listingCadence))
                 {
                     await CollectListingsAsync(stoppingToken);
                 }
 
-                if (research.IsEnabled)
+                if (researchScheduled && DateTimeOffset.UtcNow >= nextResearchAt)
                 {
+                    nextResearchAt = DateTimeOffset.UtcNow + researchInterval;
                     await RunAsync(stoppingToken);
                 }
             }
@@ -130,6 +158,14 @@ public sealed class PriceRefreshJob(
             // normal shutdown
         }
     }
+
+    /// <summary>
+    /// Whether the listing data is old enough to collect again. Pure, so the schedule
+    /// decision is testable without a clock or a host.
+    /// </summary>
+    public static bool ListingRunDue(
+        DateTimeOffset? lastCompleted, DateTimeOffset now, TimeSpan cadence) =>
+        lastCompleted is null || now - lastCompleted.Value >= cadence;
 
     /// <summary>
     /// Collects live asking prices and re-derives the affected breeds.
@@ -147,7 +183,9 @@ public sealed class PriceRefreshJob(
         {
             return ListingCollectionSummary.Empty(
                 "Listing collection is disabled. Set Prices:ListingsEnabled=true to enable it — "
-                + "note the source's terms restrict automated collection (see docs/SOURCES.md).");
+                + "that reads keystonepuppies.com, which publishes no terms of use; puppies.com "
+                + "stays off unless Prices:PuppiesComEnabled=true as well, because its terms "
+                + "restrict automated collection (see docs/SOURCES.md).");
         }
 
         if (!await _runLock.WaitAsync(TimeSpan.Zero, ct))
@@ -160,13 +198,15 @@ public sealed class PriceRefreshJob(
             var thresholds = PriceThresholds.FromConfiguration(configuration);
             var runId = $"listings-{DateTimeOffset.UtcNow:yyyyMMdd-HHmmss}";
 
-            // Every breed the vendor is known to carry, not just the curated 25. Aliases like
-            // "Teacup Poodle" aren't breeds anywhere but here and 404 on the vendor, which read
-            // as five errors on the first run; LinkSlugOverride is the marker.
+            // Every breed some enabled source will answer for, not just the curated 25.
+            // Each source draws its own line (puppies.com: a measured carry-list, because a
+            // request there costs a page fetch; Keystone: everything, because its memoized
+            // grid makes an uncarried breed free). Aliases like "Teacup Poodle" aren't breeds
+            // anywhere but here and 404 on the vendor, which read as five errors on the first
+            // run; LinkSlugOverride is the marker.
             var targets = (await catalog.GetBreedsAsync(ct))
                 .Where(b => onlyBreedSlug is null
-                    ? b.LinkSlugOverride is null
-                        && (SiteCatalog.IsCurated(b.Slug) || ListingSources.IsKnownToVendor(b.Slug))
+                    ? b.LinkSlugOverride is null && listings.Carries(b.Slug)
                     : b.Slug.Equals(onlyBreedSlug, StringComparison.OrdinalIgnoreCase))
                 .ToList();
 

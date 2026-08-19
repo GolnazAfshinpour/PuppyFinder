@@ -7,6 +7,8 @@ const GOALS = ['adopt', 'buy', 'both']
 export const DEFAULT_GOAL = 'buy'
 const SIZES = ['Teacup', 'Small', 'Medium', 'Large']
 export const AGES = ['Puppy', 'Young', 'Adult', 'Senior']
+// The backend prefix-matches, so "Male" also finds "Male (neutered)".
+export const SEXES = ['Male', 'Female']
 // 'nearest' is only offered when a ZIP or geolocation supplied an origin, but it is accepted
 // here regardless: a shared URL carries the zip alongside it, and App.vue drops the sort if
 // the origin fails to resolve.
@@ -33,6 +35,7 @@ export function parseSearchUrl(search, usStates) {
     city: params.get('city') ?? '',
     size: match(SIZES, params.get('size')) ?? '',
     age: match(AGES, params.get('age')) ?? '',
+    sex: match(SEXES, params.get('sex')) ?? '',
     traits: (params.get('traits') ?? '').split(',').filter(Boolean),
     // Unknown values are dropped rather than passed through: this goes into a filter that
     // removes dogs, and a typo in a shared link should not silently narrow someone's search.
@@ -52,13 +55,14 @@ export function parseSearchUrl(search, usStates) {
   }
 }
 
-export function buildSearchQuery({ breed, state, city, size, age, traits, goodWith, goal, sort, dog, zip, radius }) {
+export function buildSearchQuery({ breed, state, city, size, age, sex, traits, goodWith, goal, sort, dog, zip, radius }) {
   const params = new URLSearchParams()
   if (breed) params.set('breed', breed)
   if (state) params.set('state', state)
   if (city.trim() && state) params.set('city', city.trim())
   if (size) params.set('size', size)
   if (age) params.set('age', age)
+  if (sex) params.set('sex', sex)
   if (traits.length) params.set('traits', traits.join(','))
   // Canonical order, so two searches for the same thing produce the same URL.
   if (goodWith?.length) params.set('goodWith', GOOD_WITH.filter((w) => goodWith.includes(w)).join(','))

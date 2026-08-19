@@ -54,7 +54,19 @@ public record Listing(
     /// </summary>
     bool? GoodWithKids = null,
     bool? GoodWithDogs = null,
-    bool? GoodWithCats = null)
+    bool? GoodWithCats = null,
+    /// <summary>
+    /// Every photo the source published, in its order; <see cref="ImageUrl"/> is the first.
+    /// RescueGroups sends them all under one relationship the provider was already fetching —
+    /// it paid for the include and kept one picture. Null when the source has none (the county
+    /// feeds publish a single image), so the field never claims a gallery that isn't there.
+    /// </summary>
+    IReadOnlyList<string>? Photos = null,
+    /// <summary>
+    /// The rescue or shelter that actually has the dog. <see cref="Source"/> is the feed
+    /// ("RescueGroups"); this is who to call. Null when the feed doesn't name one.
+    /// </summary>
+    string? OrgName = null)
 {
     /// <summary>Derived from the free-text <see cref="Age"/> so the UI can filter and
     /// sort on it. Serialized to JSON automatically — the frontend never re-parses ages.</summary>

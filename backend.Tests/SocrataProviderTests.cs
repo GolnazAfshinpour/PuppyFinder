@@ -130,4 +130,34 @@ public class SocrataProviderTests
     [InlineData("Shelter", "!!!", "shelter-unknown")]
     public void BuildId_ProducesUrlSafeIds(string source, string name, string expected) =>
         Assert.Equal(expected, SocrataProvider.BuildId(source, null, name));
+
+    // ---- adoption fee out of the memo ----
+
+    [Fact]
+    public void FeeFromMemo_ReadsTheFeeCleanMemoStrips()
+    {
+        // King County's shape: metadata blocks, then the bio. CleanMemo deletes the fee block —
+        // this reads it first, so the one field adopters rank most important stops being null
+        // for 100% of this feed by construction.
+        const string memo =
+            "Received on: 07/12/2026</p>Age: 2 years</p>Adoption Fee: $250.00</p>"
+            + "Current Location: Kent</p>Meet Biscuit, a lovely boy.";
+
+        Assert.Equal("$250", SocrataProvider.FeeFromMemo(memo));
+        // And the bio stays exactly what it was.
+        Assert.Equal("Meet Biscuit, a lovely boy.", SocrataProvider.CleanMemo(memo));
+    }
+
+    [Fact]
+    public void FeeFromMemo_SurvivesMarkupAroundThePrefix() =>
+        Assert.Equal("$150", SocrataProvider.FeeFromMemo("<p>Adoption Fee: 150.00</p><p>Bio.</p>"));
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("Just a bio with no metadata blocks at all.")]
+    // A hand-typed blank stays null — same rule the RescueGroups fee follows.
+    [InlineData("Adoption Fee: TBD</p>Bio.")]
+    public void FeeFromMemo_ReturnsNullWhenNothingIsStated(string? memo) =>
+        Assert.Null(SocrataProvider.FeeFromMemo(memo));
 }

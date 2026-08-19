@@ -12,6 +12,7 @@ const props = defineProps({
   city: { type: String, default: '' },
   size: { type: String, default: '' },
   age: { type: String, default: '' },
+  sex: { type: String, default: '' }, // Male | Female — prefix-matched server-side
   traits: { type: Array, default: () => [] },
   // Filters the dogs, from each rescue's own listing. `traits` above prunes the breed list.
   goodWith: { type: Array, default: () => [] },
@@ -38,8 +39,8 @@ const RADIUS_OPTIONS = [
 ]
 
 const emit = defineEmits([
-  'update:breed', 'update:state', 'update:city', 'update:size', 'update:age', 'update:traits',
-  'update:goodWith', 'update:goal', 'update:zip', 'update:radius',
+  'update:breed', 'update:state', 'update:city', 'update:size', 'update:age', 'update:sex',
+  'update:traits', 'update:goodWith', 'update:goal', 'update:zip', 'update:radius',
   'open-quiz', 'clear', 'near-me',
 ])
 
@@ -58,7 +59,7 @@ const GOOD_WITH = [
 // nothing visible.
 const anyFilterActive = computed(
   () =>
-    props.breed || props.state || props.city.trim() || props.size || props.age ||
+    props.breed || props.state || props.city.trim() || props.size || props.age || props.sex ||
     props.traits.length > 0 || props.goodWith.length > 0 || props.goal !== DEFAULT_GOAL ||
     props.zip.trim(),
 )
@@ -280,6 +281,38 @@ function toggleTrait(key) {
             {{ s }}
           </button>
         </div>
+      </div>
+
+      <!-- Filters the dogs, so hidden in buy mode like good-with. Prefix-matched server-side,
+           which is what keeps "Male (neutered)" — most shelter dogs — inside "Male". -->
+      <div v-if="goal !== 'buy'">
+        <span class="label-text mb-1 block text-xs font-bold tracking-wide uppercase opacity-60">Sex</span>
+        <div class="flex flex-wrap gap-1.5">
+          <button
+            type="button"
+            class="btn btn-sm"
+            :class="sex === '' ? 'btn-primary' : 'btn-outline'"
+            :aria-pressed="sex === ''"
+            @click="emit('update:sex', '')"
+          >
+            Any
+          </button>
+          <button
+            v-for="s in ['Male', 'Female']"
+            :key="s"
+            type="button"
+            class="btn btn-sm"
+            :class="sex === s ? 'btn-primary' : 'btn-outline'"
+            :aria-pressed="sex === s"
+            @click="emit('update:sex', s)"
+          >
+            {{ s }}
+          </button>
+        </div>
+        <!-- Same rule as size and age, said where the control is: blanks stay in, labelled. -->
+        <p v-if="sex" class="mt-1 text-xs opacity-60">
+          Dogs whose listing records no sex are kept and labelled.
+        </p>
       </div>
 
       <!--

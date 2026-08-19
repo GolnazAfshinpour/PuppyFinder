@@ -60,7 +60,7 @@ What they do require:
 | Refresh cached data at least weekly, daily preferred | ✅ `ListingAggregator.CacheTtl` is 10 minutes |
 | Remove an organisation's data within 1 business day on request | ✅ nothing is persisted; cache is in-memory |
 | Delete all copies, including backups, if access ends | ✅ same — there is no copy to delete |
-| Don't flood the API; 429 is a documented response | ✅ 100 per page, 3 pages max, behind a 10-minute cache |
+| Don't flood the API; 429 is a documented response | ✅ 250 per page (their documented max), 8 pages by default (3 concurrent), behind a 10-minute cache — fewer, larger requests replace the old 3 × 100 |
 | Don't share the data with another service, or reuse the key for one | ⚠️ one key, one app — a second app needs its own |
 | **Pet Adoption Tracker image on every pet detail page** | ❌ **not implemented — required only for public-facing use** |
 | Key status must be `Public` if the service shows data publicly | ⚠️ currently `Private`, which is accurate: localhost only |
@@ -90,6 +90,31 @@ real responses, and each has a matching guard in `RescueGroupsProvider`:
 - **Canadian provinces appear** (`ON` is Ontario). RescueGroups covers North America, while the
   filter is labelled "Anywhere in the US". Left as-is — an Ontario dog is a real adoptable dog —
   but the copy and the data disagree, and that is a product decision rather than a bug.
+
+#### The window was the integration, not the source (August 2026)
+
+The provider fetched 3 pages × 100 records with no server-side filters, so every search ran over
+an arbitrary 300-dog window of the source. Measured on the first run of the widened fetch: **the
+API reports ~31,000 adoptable dogs across 124 pages**, so the window held under 1% of what the
+key already had access to. Now: 250 per page (their documented maximum — fewer, larger requests
+are *less* load than more smaller ones), 8 pages by default, pages 2+ fetched 3 at a time so the
+refresh stays near 10 seconds, paging driven by the response's own `meta.pages` rather than the
+short-page heuristic (which a silently-capped limit would break), and pages deduped by id because
+an adoption mid-walk shifts page boundaries. Coverage went from 345 dogs in 34 states to ~2,000
+in 48. `RescueGroups:PageSize` / `RescueGroups:MaxPages` tune it; every run logs fetched-vs-
+available, which is the Phase-1 "measure coverage" task. Holding *all* 31,000 would need either
+~2 minutes of paging per refresh or per-query server-side filters (a different architecture than
+the shared 10-minute cache) — a decision for later, now with the numbers attached.
+
+The same fetch also stopped discarding fields it had already paid for: **every picture** (not
+just the first — 70% of dogs carry 2+, shown as a gallery on the detail view), **the rescue's
+name and email** (the contact box used to name only the feed), and King County's **adoption fee**,
+which was published inside the memo text and deleted by the metadata stripper.
+
+**Checked and rejected (August 2026):** Sonoma County's "Current Animals in Shelter" dataset is
+intake inventory — strays in kennels, no adoptable flag, no photos, some rows unnamed — not
+adoption listings; Bloomington is historical intake/outcome. Both confirm the Phase-4 rule:
+no more Socrata feeds.
 
 ### Geocoding
 
@@ -320,6 +345,64 @@ corrected by running the research by hand before writing the code:
   only in tables or headings, with no sentence containing the number (Hepper on German
   Shepherd and Golden Retriever, Dogster on Beagle and Poodle). Those are skipped rather
   than quoted from an adjacent sentence that doesn't support the figure.
+
+### A second listing source with no terms conflict: keystonepuppies.com (August 2026)
+
+Researched as a replacement for the paused Puppies.com collection, after the owner declined
+to ask Puppies.com for permission. Verified by probing, not assumed:
+
+- **No terms of use exists on the site** — the legal footer is a disclaimer and a privacy
+  policy. There is no scraping clause because there is no visitor contract at all.
+- **robots.txt is permissive** and asks only `Crawl-delay: 2`; the collector never goes
+  below 2 s between requests to this host, whatever `Prices:ListingDelayMs` says.
+- **Prices are in schema.org `Product`/`Offer` ld+json on every puppy detail page**, with
+  the breed in `brand.name` — so the "structured data only" rule survives intact. Their
+  JSON carries raw newlines inside strings (technically invalid); the parser repairs
+  control characters before giving up rather than losing a price to the description beside
+  it. Their `<script>` tags also single-quote the type attribute where Puppies.com
+  double-quotes it, which the block regex now tolerates — requiring one style silently
+  read the other site as having no structured data.
+- **The whole inventory (~400 puppies) is one grid page** whose detail URLs carry the
+  breed slug, so the grid is fetched once per run and an uncarried breed costs nothing.
+
+**Collection is now per-source.** `Prices:ListingsEnabled` is the master switch; under it,
+Keystone (`Prices:KeystoneEnabled`, default true) runs whenever collection does, and
+**Puppies.com additionally requires `Prices:PuppiesComEnabled=true`, default false** — so
+turning collection back on for the clean source can never silently resume the one whose
+terms forbid it. That second flag is the "fresh decision" the pause note below demands.
+
+Sandbox-verified end to end (19 Aug 2026, temp DB): French Bulldog — 10 of 10 details
+parsed, refused at "10 listings, 20 required" (the floor working); Cavapoo — 25 of 25,
+published $600–$795 from the middle half, median $795.
+
+**First live run (19 Aug 2026, `listings-20260819-214039` + a 3-breed recovery pass):**
+169 breeds checked in ~8 minutes, 23 with Keystone inventory, samples blended beside the
+existing puppies.com rows — cavapoo now derives from 103 listings across both hosts. The
+floor guard refused Keystone's cheap tail four times (German Shepherd's $625 p25 against
+the verified editorial $2,000–$4,000, plus Cavalier, Pembroke and Husky against seeds),
+and the brand-name gate silently dropped every Yorkie ("Yorkie") and Mini Poodle
+("Mini Poodles") until the names were read off live pages and mapped — the same
+fail-safe-then-map process the puppies.com titles needed. `Prices:ListingsEnabled` lives
+in **user-secrets** (it recorded the Aug 6 pause) and overrides appsettings — flipped to
+true there, with puppies.com still off behind `Prices:PuppiesComEnabled`.
+
+**Scheduled, so the window can't empty again (owner decision, 19 Aug 2026).**
+`Prices:ListingAutoRefresh=true` (set in the untracked appsettings.Development.json)
+collects every `Prices:ListingRefreshDays` (60) — measured from the last completed run in
+the run table rather than from process uptime, because the uptime timer reset on every
+restart and would never have fired on a machine that reboots weekly. 60 rather than the
+window's 90 so one failed run leaves a 30-day retry cushion instead of coinciding with
+the expiry it exists to prevent.
+
+**Two caveats, stated before anyone flips the switch.** Keystone is one Lancaster-PA
+broker network, so its absolute prices skew below coastal metros — a *low* skew errs in
+the safe direction for a scam floor (it under-flags rather than accusing honest breeders),
+but for a breed with no editorial or seed anchor the floor guard has nothing to check the
+sample against, and the published range simply is the PA market. And inventory is the
+ceiling again: only a handful of breeds clear 20 listings on this host alone (measured:
+cavapoo 58, mini-goldendoodle 45, german-shepherd 22, cockapoo 21 — french-bulldog 10).
+Both are why the editorial research job matters: its anchors are the guard every listing
+source is checked against.
 
 ### Listing prices are now the primary source (August 2026)
 

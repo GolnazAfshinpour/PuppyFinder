@@ -117,4 +117,18 @@ public class RescueGroupsProviderTests
         // "Waived"; an unedited numeric field defaulting to zero is the likelier explanation, and
         // null sends the reader to the "ask what it covers" prompt, which is true either way.
         Assert.Null(RescueGroupsProvider.NormalizeFee(raw));
+
+    // ---- contact line ----
+
+    [Theory]
+    // Phone and email are both worth showing, joined the way the meta line joins its parts;
+    // either alone stands by itself, and neither means null rather than an empty string.
+    [InlineData("(555) 123-4567", "paws@example.org", "(555) 123-4567 · paws@example.org")]
+    [InlineData("(555) 123-4567", null, "(555) 123-4567")]
+    [InlineData(null, "paws@example.org", "paws@example.org")]
+    [InlineData(null, null, null)]
+    [InlineData("  ", "", null)]
+    public void JoinsWhateverContactDetailsTheRescuePublished(
+        string? phone, string? email, string? expected) =>
+        Assert.Equal(expected, RescueGroupsProvider.ContactLine(phone, email));
 }

@@ -49,6 +49,12 @@ builder.Services.AddSingleton<BreedCatalogService>();
 // The research job gathers cited figures; it never decides confidence. Aggregation is a
 // pure function over stored observations, so thresholds can be re-tuned for free.
 builder.Services.AddSingleton<PriceResearchService>();
+// Listing prices come from per-source collectors behind one fan-out provider. Each source
+// gates itself: keystonepuppies.com (no terms of use exists — verified Aug 2026) is on
+// whenever collection is, puppies.com needs its own opt-in on top because its terms forbid
+// automated collection. See docs/SOURCES.md.
+builder.Services.AddSingleton<IListingPriceSource, KeystoneListingSource>();
+builder.Services.AddSingleton<IListingPriceSource, PuppiesComListingSource>();
 builder.Services.AddSingleton<ListingPriceProvider>();
 builder.Services.AddSingleton<PriceRefreshJob>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<PriceRefreshJob>());
@@ -129,7 +135,7 @@ await app.Services.GetRequiredService<PriceStore>().SeedFromCatalogAsync(Cancell
 // radius comes with it. Both are useful separately — "nearest first across the state" is a real
 // request, and a radius that quietly dropped dogs would be the worse default.
 app.MapGet("/api/listings", async (string? breed, string? state, string? city, string? size,
-    string? age, string? sort, bool? includeUnlisted, string? goodWith,
+    string? age, string? sex, string? sort, bool? includeUnlisted, string? goodWith,
     double? lat, double? lon, int? radius,
     ListingAggregator aggregator, BreedCatalogService catalog, CancellationToken ct) =>
 {
@@ -146,6 +152,7 @@ app.MapGet("/api/listings", async (string? breed, string? state, string? city, s
         City: city,
         Size: size,
         AgeGroup: age,
+        Sex: sex,
         IncludeUnlisted: includeUnlisted ?? true,
         Latitude: lat,
         Longitude: lon,

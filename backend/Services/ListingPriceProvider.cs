@@ -1,4 +1,3 @@
-using System.Net;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using PuppyFinder.Api.Data;
@@ -18,198 +17,139 @@ public record ListingFetchResult(
 }
 
 /// <summary>
-/// Reads asking prices out of the schema.org structured data on a marketplace's listing
-/// pages.
-///
-/// <para>
-/// Parses the published <c>ld+json</c> rather than scraping rendered markup. That is both
-/// more honest about what we're reading — a block the site publishes for machine
-/// consumption — and far more stable than matching on CSS classes or a bare
-/// <c>"price":N</c> regex, which would silently drift the day their markup changes and
-/// leave us aggregating whatever numbers happened to match.
-/// </para>
-///
-/// <para>See <see cref="ListingSources"/> for the terms caveat and the two standing
-/// limits: structured data only, and never work around an access control.</para>
+/// One marketplace we read asking prices from. Each source carries its own enablement,
+/// because the sites' positions differ: puppies.com's terms forbid automated collection
+/// (its flag defaults off and stays off), while keystonepuppies.com publishes no terms of
+/// use at all and its robots.txt welcomes crawlers.
 /// </summary>
-public sealed partial class ListingPriceProvider(
-    IHttpClientFactory httpClientFactory,
-    IConfiguration configuration,
-    ILogger<ListingPriceProvider> logger)
+public interface IListingPriceSource
 {
-    /// <summary>Off unless explicitly enabled — see the terms note in <see cref="ListingSources"/>.</summary>
-    public bool IsEnabled => configuration.GetValue("Prices:ListingsEnabled", false);
+    /// <summary>The host this source reads — recorded on every price row it produces.</summary>
+    string Host { get; }
 
-    private int PagesPerBreed => Math.Clamp(configuration.GetValue("Prices:ListingPages", 4), 1, 12);
-
-    private TimeSpan Delay =>
-        TimeSpan.FromMilliseconds(Math.Max(250, configuration.GetValue("Prices:ListingDelayMs", 1500)));
-
-    [GeneratedRegex(
-        """<script[^>]*type="application/ld\+json"[^>]*>(.*?)</script>""",
-        RegexOptions.Singleline | RegexOptions.IgnoreCase)]
-    private static partial Regex LdJsonBlock();
-
-    public async Task<ListingFetchResult> FetchAsync(
-        Breed breed, string runId, CancellationToken ct)
-    {
-        if (!IsEnabled)
-        {
-            return new ListingFetchResult(breed.Slug, [], 0, 0,
-                "Listing prices are disabled (set Prices:ListingsEnabled=true).");
-        }
-
-        var vendorSlug = ListingSources.VendorSlug(breed.Slug);
-        var client = httpClientFactory.CreateClient("listings");
-        List<ListingPrice> prices = [];
-        int seen = 0, mixes = 0;
-
-        for (var page = 1; page <= PagesPerBreed; page++)
-        {
-            ct.ThrowIfCancellationRequested();
-
-            string html;
-            try
-            {
-                using var response = await client.GetAsync(ListingSources.PageUrl(vendorSlug, page), ct);
-
-                // A 404 on page 1 means the slug is wrong — worth reporting, because it
-                // would otherwise look like "this breed has no listings". On a later page
-                // it just means we've run out of results.
-                if (response.StatusCode == HttpStatusCode.NotFound)
-                {
-                    return page == 1
-                        ? new ListingFetchResult(breed.Slug, [], 0, 0,
-                            $"no listing page for '{vendorSlug}' — slug mismatch?")
-                        : Done(breed.Slug, prices, seen, mixes);
-                }
-
-                // Anything else non-success: stop rather than retry harder. We do not
-                // escalate against a site that is declining to serve us.
-                if (!response.IsSuccessStatusCode)
-                {
-                    return prices.Count > 0
-                        ? Done(breed.Slug, prices, seen, mixes)
-                        : new ListingFetchResult(breed.Slug, [], seen, mixes,
-                            $"{(int)response.StatusCode} from {ListingSources.Host}");
-                }
-
-                html = await response.Content.ReadAsStringAsync(ct);
-            }
-            catch (Exception ex) when (ex is not OperationCanceledException)
-            {
-                return prices.Count > 0
-                    ? Done(breed.Slug, prices, seen, mixes)
-                    : new ListingFetchResult(breed.Slug, [], seen, mixes, ex.Message);
-            }
-
-            var found = Extract(html, breed, runId).ToList();
-            seen += found.Count;
-
-            var expectedName = ListingSources.VendorName(breed.Slug, breed.DisplayName);
-            var purebred = found
-                .Where(l => ListingSources.IsPurebredTitle(l.ListingName, expectedName))
-                .ToList();
-            mixes += found.Count - purebred.Count;
-            prices.AddRange(purebred);
-
-            // An empty page means the end of the results, not a failure.
-            if (found.Count == 0)
-            {
-                break;
-            }
-
-            if (page < PagesPerBreed)
-            {
-                await Task.Delay(Delay, ct);
-            }
-        }
-
-        return Done(breed.Slug, prices, seen, mixes);
-    }
-
-    private ListingFetchResult Done(string slug, List<ListingPrice> prices, int seen, int mixes)
-    {
-        logger.LogInformation(
-            "Listings for {Breed}: {Kept} purebred prices from {Seen} results ({Mixes} crossbreeds dropped)",
-            slug, prices.Count, seen, mixes);
-        return new ListingFetchResult(slug, prices, seen, mixes, null);
-    }
+    bool IsEnabled { get; }
 
     /// <summary>
-    /// Pulls Product/Offer prices out of every ld+json block on the page. Malformed blocks
-    /// are skipped rather than failing the fetch — one bad block must not lose a page.
+    /// Whether this source is worth asking about a breed at all. Sources whose marginal
+    /// request cost per breed is zero (a memoized site-wide index) return true and let the
+    /// data answer; sources that pay a request per breed limit themselves to breeds the
+    /// vendor was measured to carry.
     /// </summary>
-    private static IEnumerable<ListingPrice> Extract(string html, Breed breed, string runId)
-    {
-        var now = DateTimeOffset.UtcNow;
+    bool Carries(string breedSlug);
 
-        foreach (var match in LdJsonBlock().Matches(html).Cast<Match>())
+    Task<ListingFetchResult> FetchAsync(Breed breed, string runId, CancellationToken ct);
+}
+
+/// <summary>
+/// Fans one breed's listing-price fetch out to every enabled source and merges the
+/// samples. Multiple hosts per breed is deliberately better than one: cross-host
+/// corroboration is the property the editorial pipeline requires of its sources, and the
+/// original single-host design never had it.
+///
+/// <para>
+/// Parses only the published <c>ld+json</c> on every source (see <see cref="LdJson"/>) —
+/// a block the site publishes for machine consumption, and far more stable than matching
+/// CSS classes, which would silently drift the day the markup changes.
+/// </para>
+/// </summary>
+public sealed class ListingPriceProvider(IEnumerable<IListingPriceSource> sources)
+{
+    public bool IsEnabled => sources.Any(s => s.IsEnabled);
+
+    public bool Carries(string breedSlug) => sources.Any(s => s.IsEnabled && s.Carries(breedSlug));
+
+    public async Task<ListingFetchResult> FetchAsync(Breed breed, string runId, CancellationToken ct)
+    {
+        var active = sources.Where(s => s.IsEnabled && s.Carries(breed.Slug)).ToList();
+        if (active.Count == 0)
         {
-            JsonDocument document;
+            return new ListingFetchResult(breed.Slug, [], 0, 0,
+                "no enabled listing source carries this breed");
+        }
+
+        List<ListingPrice> prices = [];
+        List<string> errors = [];
+        int seen = 0, mixes = 0;
+
+        foreach (var source in active)
+        {
+            ct.ThrowIfCancellationRequested();
+            var result = await source.FetchAsync(breed, runId, ct);
+            seen += result.SeenTotal;
+            mixes += result.DroppedMixes;
+            if (result.Succeeded)
+            {
+                prices.AddRange(result.Prices);
+            }
+            else
+            {
+                errors.Add($"{source.Host}: {result.Error}");
+            }
+        }
+
+        // One host failing must not discard another's sample; only a run where every host
+        // failed reports as an error, naming each host's reason.
+        return errors.Count == active.Count
+            ? new ListingFetchResult(breed.Slug, [], seen, mixes, string.Join("; ", errors))
+            : new ListingFetchResult(breed.Slug, prices, seen, mixes, null);
+    }
+}
+
+/// <summary>
+/// Shared ld+json plumbing for the listing sources: find the blocks, flatten the shapes,
+/// read the fields. Tolerates the malformation observed in the wild — keystonepuppies.com
+/// leaves raw newlines inside JSON strings, which is invalid JSON a strict parse rejects
+/// wholesale, losing a price over a formatting quirk in the description beside it.
+/// </summary>
+public static partial class LdJson
+{
+    // The type attribute's quoting varies by site: puppies.com double-quotes it,
+    // keystonepuppies.com single-quotes it — and requiring one style silently read the
+    // other's pages as having no structured data at all.
+    [GeneratedRegex(
+        """<script[^>]*type\s*=\s*["']application/ld\+json["'][^>]*>(.*?)</script>""",
+        RegexOptions.Singleline | RegexOptions.IgnoreCase)]
+    private static partial Regex Block();
+
+    /// <summary>Every parseable ld+json document on the page; malformed blocks are repaired
+    /// where possible and skipped where not — one bad block must not lose a page.</summary>
+    public static IEnumerable<JsonDocument> Documents(string html)
+    {
+        foreach (var match in Block().Matches(html).Cast<Match>())
+        {
+            JsonDocument? document = null;
             try
             {
                 document = JsonDocument.Parse(match.Groups[1].Value);
             }
             catch (JsonException)
             {
-                continue;
+                // Second attempt with control characters collapsed to spaces: legal JSON
+                // never needs them outside strings, and inside strings they are the
+                // malformation this repairs. Anything still unparseable is skipped.
+                try
+                {
+                    document = JsonDocument.Parse(
+                        ControlCharacters().Replace(match.Groups[1].Value, " "));
+                }
+                catch (JsonException)
+                {
+                    // skip this block
+                }
             }
 
-            using (document)
+            if (document is not null)
             {
-                foreach (var node in Nodes(document.RootElement))
-                {
-                    if (Text(node, "@type") != "ItemList"
-                        || !node.TryGetProperty("itemListElement", out var elements)
-                        || elements.ValueKind != JsonValueKind.Array)
-                    {
-                        continue;
-                    }
-
-                    foreach (var element in elements.EnumerateArray())
-                    {
-                        if (!element.TryGetProperty("item", out var item)
-                            || !item.TryGetProperty("offers", out var offer)
-                            || !offer.TryGetProperty("price", out var price)
-                            || !price.TryGetInt32(out var amount))
-                        {
-                            continue;
-                        }
-
-                        // Guard against a non-USD listing being read as dollars.
-                        if (Text(offer, "priceCurrency") is { } currency
-                            && !currency.Equals("USD", StringComparison.OrdinalIgnoreCase))
-                        {
-                            continue;
-                        }
-
-                        var reference = Text(element, "url")
-                            ?? Text(item, "@id")
-                            ?? Text(item, "image");
-                        if (reference is null)
-                        {
-                            // Without an identity we can't dedupe, and a price counted
-                            // twice is worse than one not counted at all.
-                            continue;
-                        }
-
-                        yield return new ListingPrice(
-                            BreedSlug: breed.Slug,
-                            Price: amount,
-                            SourceHost: ListingSources.Host,
-                            ListingRef: reference,
-                            ListingName: Text(item, "name") ?? "",
-                            RetrievedAt: now,
-                            RunId: runId);
-                    }
-                }
+                yield return document;
             }
         }
     }
 
+    [GeneratedRegex(@"[\u0000-\u001F]")]
+    private static partial Regex ControlCharacters();
+
     /// <summary>ld+json is a bare object, an array, or an @graph. Flatten all three.</summary>
-    private static IEnumerable<JsonElement> Nodes(JsonElement root)
+    public static IEnumerable<JsonElement> Nodes(JsonElement root)
     {
         if (root.ValueKind == JsonValueKind.Array)
         {
@@ -242,8 +182,46 @@ public sealed partial class ListingPriceProvider(
         }
     }
 
-    private static string? Text(JsonElement element, string property) =>
+    public static string? Text(JsonElement element, string property) =>
         element.TryGetProperty(property, out var value) && value.ValueKind == JsonValueKind.String
             ? value.GetString()
             : null;
+
+    /// <summary>Whether a node's @type is (or includes) the given schema.org type.</summary>
+    public static bool IsType(JsonElement node, string type)
+    {
+        if (!node.TryGetProperty("@type", out var t))
+        {
+            return false;
+        }
+
+        return t.ValueKind switch
+        {
+            JsonValueKind.String => type.Equals(t.GetString(), StringComparison.OrdinalIgnoreCase),
+            JsonValueKind.Array => t.EnumerateArray().Any(x =>
+                x.ValueKind == JsonValueKind.String
+                && type.Equals(x.GetString(), StringComparison.OrdinalIgnoreCase)),
+            _ => false,
+        };
+    }
+
+    /// <summary>A whole-dollar price, tolerating the number and string forms ("1200.00").</summary>
+    public static int? Price(JsonElement offer)
+    {
+        if (!offer.TryGetProperty("price", out var value))
+        {
+            return null;
+        }
+
+        return value.ValueKind switch
+        {
+            JsonValueKind.Number when value.TryGetDecimal(out var d) => (int)Math.Round(d),
+            JsonValueKind.String when decimal.TryParse(
+                value.GetString(),
+                System.Globalization.NumberStyles.AllowDecimalPoint | System.Globalization.NumberStyles.AllowThousands,
+                System.Globalization.CultureInfo.InvariantCulture,
+                out var parsed) => (int)Math.Round(parsed),
+            _ => null,
+        };
+    }
 }

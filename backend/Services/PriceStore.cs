@@ -584,6 +584,26 @@ public sealed class PriceStore(PriceDb db, ILogger<PriceStore> logger)
     }
 
     /// <summary>
+    /// When the last listing collection that actually processed a breed started, or null if
+    /// none ever has. This is what the scheduler measures its cadence from — the age of the
+    /// data, not the age of the process, so a service restart can neither skip a due run nor
+    /// trigger an extra one. A run that finished with every breed in error has
+    /// accepted + pending = 0 and deliberately doesn't count: the next tick retries it.
+    /// </summary>
+    public async Task<DateTimeOffset?> LastCompletedListingRunAsync(CancellationToken ct)
+    {
+        await using var connection = await db.OpenAsync(ct);
+        await using var command = connection.CreateCommand();
+        command.CommandText = """
+            SELECT MAX(started_at) FROM price_run
+            WHERE id LIKE 'listings-%' AND finished_at IS NOT NULL AND accepted + pending > 0;
+            """;
+        return await command.ExecuteScalarAsync(ct) is string value
+            ? DateTimeOffset.Parse(value, System.Globalization.CultureInfo.InvariantCulture)
+            : null;
+    }
+
+    /// <summary>
     /// One-time import of the prices that were hardcoded in <see cref="SiteCatalog"/>.
     ///
     /// They land as <see cref="PriceConfidence.Unverified"/> with an observation whose

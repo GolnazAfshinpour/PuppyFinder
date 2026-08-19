@@ -195,6 +195,48 @@ public class ListingQueryTests
         Assert.False(ListingQuery.Unconfirmed(GoodWith("Unknown"), new ListingFilter()));
     }
 
+    // ---- sex ----
+
+    [Fact]
+    public void SexMatchesOnThePrefixSoAlteredDogsAreNotHidden()
+    {
+        // The county feeds publish "Male (neutered)" / "Female (spayed)"; an equality test
+        // would hide every altered dog from the filter most adopters combine with it.
+        Listing[] dogs =
+        [
+            Dog("Rex") with { Sex = "Male" },
+            Dog("Buddy") with { Sex = "Male (neutered)" },
+            Dog("Daisy") with { Sex = "Female (spayed)" },
+        ];
+
+        var males = ListingQuery.Filter(dogs, new ListingFilter(Sex: "Male")).Select(l => l.Name);
+        Assert.Equal(["Rex", "Buddy"], males);
+
+        var females = ListingQuery.Filter(dogs, new ListingFilter(Sex: "Female")).Select(l => l.Name);
+        Assert.Equal(["Daisy"], females);
+    }
+
+    [Fact]
+    public void SexTreatsMissingDataAsUnknownNotNo()
+    {
+        Listing[] dogs =
+        [
+            Dog("Daisy") with { Sex = "Female (spayed)" },
+            Dog("Mystery") with { Sex = null },
+        ];
+        var filter = new ListingFilter(Sex: "Female");
+
+        // Kept and labelled, the same rule size and age follow...
+        Assert.Equal(["Daisy", "Mystery"],
+            ListingQuery.Filter(dogs, filter).Select(l => l.Name));
+        Assert.True(ListingQuery.Unconfirmed(Dog("Mystery") with { Sex = null }, filter));
+        Assert.False(ListingQuery.Unconfirmed(dogs[0], filter));
+
+        // ...and strict mode is the opt-out.
+        Assert.Equal(["Daisy"],
+            ListingQuery.Filter(dogs, filter with { IncludeUnlisted = false }).Select(l => l.Name));
+    }
+
     [Fact]
     public void ConfirmedGoodWithMatchesSortAboveUnrecordedOnes()
     {

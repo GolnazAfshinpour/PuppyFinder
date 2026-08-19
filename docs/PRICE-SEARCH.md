@@ -151,14 +151,22 @@ not something to erase.
 
 ## Search design 2 — real asking prices
 
-Run by `ListingPriceProvider` via `POST /api/admin/listing-prices`. **Off unless
-`Prices:ListingsEnabled=true`** — the source's terms restrict automated collection, so this
-must be a deliberate act by the operator and can never start on its own.
+Run by `ListingPriceProvider` — since August 2026 a fan-out over per-source collectors —
+via `POST /api/admin/listing-prices` or the schedule below. **Off unless
+`Prices:ListingsEnabled=true`**, and each source then gates itself, because the sites'
+positions differ:
 
-> **Terms caveat.** Puppies.com's terms forbid systematic collection "including through bots,
-> spiders, automated scripts, or AI-assisted tools" without written permission, and restrict
-> commercial use. This runs at the product owner's direction and on their risk. The full
-> analysis, including AKC's broader prohibition, is in [SOURCES.md](SOURCES.md).
+- **keystonepuppies.com** (`Prices:KeystoneEnabled`, default on): publishes **no terms of
+  use at all** (verified Aug 2026 — a disclaimer and a privacy policy are the whole legal
+  footer), robots.txt asks only `Crawl-delay: 2`, which the collector honors as a hard
+  floor. Prices come from the schema.org `Product`/`Offer` block on each puppy detail
+  page, breed confirmed against `brand.name`.
+- **puppies.com** (`Prices:PuppiesComEnabled`, default **off**): its terms forbid
+  systematic collection "including through bots, spiders, automated scripts, or
+  AI-assisted tools" without written permission, and restrict commercial use. Collection
+  there was paused 6 Aug 2026 and stays off; the separate flag exists so enabling the
+  clean source can never silently resume this one. The full analysis, including AKC's
+  broader prohibition, is in [SOURCES.md](SOURCES.md).
 
 ### Two limits that should not be relaxed
 
@@ -355,10 +363,18 @@ re-collecting the samples age out and the next re-aggregation withdraws every li
 once — a withdrawn range being the right answer to an empty sample. The ranges don't decay
 gradually, they vanish together.
 
-Each pass now does whatever it currently can: collect listings if `Prices:ListingsEnabled`,
-research if a key exists, re-aggregate either way. The startup log names both states
-("listings: on, research: off (no API key)") because a single "dormant" line misreported a
-half-configured app.
+**Since 19 Aug 2026 that expiry is prevented by design.** Listing collection schedules on
+the **age of the data**, not on process uptime: the job reads the last completed listing
+run from the run table and collects again `Prices:ListingRefreshDays` (default 60) after
+it, checking every 6 hours. The uptime timer it replaced reset its countdown on every
+restart, so on a machine that reboots weekly the run never arrived. 60 rather than the
+window's 90 means one failed run leaves a 30-day retry cushion instead of coinciding with
+the expiry; a run whose every breed errored doesn't count as fresh data, so the next check
+retries it. Research keeps its stricter uptime semantics — a restart must never trigger a
+paid sweep.
+
+The startup log names both states ("listings: every 60 day(s), measured from the data,
+research: off") because a single "dormant" line misreported a half-configured app.
 
 The collection loop lives on `PriceRefreshJob.CollectListingsAsync` rather than in the admin
 endpoint, which is now a 24-line manual trigger for it. Two copies of the vendor-dedup,
@@ -367,9 +383,13 @@ behaviour the endpoint had grown.
 
 | Setting | Effect |
 |---|---|
-| `Prices:AutoRefresh` | Master switch, default **off**. Nothing is scheduled without it. |
-| `Prices:RefreshDays` | Interval, default 30. |
-| `Prices:ListingsEnabled` | Listing collection. Needs **no** model key. |
+| `Prices:AutoRefresh` | Schedules everything (listings + research), default **off**. |
+| `Prices:ListingAutoRefresh` | Schedules **listing collection alone** — arms no paid research. Default off; on for this instance (owner decision 19 Aug 2026, in the untracked appsettings.Development.json). |
+| `Prices:RefreshDays` | Research interval, default 30, measured from process start. |
+| `Prices:ListingRefreshDays` | Listing cadence, default 60, measured from the last completed run in the DB. |
+| `Prices:ListingsEnabled` | Listing collection master switch. Needs **no** model key. **Lives in user-secrets** — it recorded the Aug 6 pause, and user-secrets override the config files, which is exactly how a well-meaning appsettings edit failed to enable it. |
+| `Prices:KeystoneEnabled` / `Prices:PuppiesComEnabled` | Per-source gates; see Search design 2. |
+| `Prices:ListingDetailsPerBreed` | Detail pages fetched per breed on Keystone, default 25. |
 | `Anthropic:ApiKey` | Editorial research only. Absent = that half is skipped, not the whole job. |
 
 ## What the schedule will not do
@@ -381,8 +401,12 @@ Two guards, because each would spend money or change data without being asked:
   because the job originally inherited `AlertChecker`'s run-immediately loop, and adding an
   API key triggered a full 179-breed paid sweep on the next restart — against a prompt nobody
   had validated.
-- **No run at startup, ever.** Even opted in, the first pass is one full interval away.
-  Services restart for reasons unrelated to prices going stale.
+- **No paid run at startup, ever.** Even opted in, the first research pass is one full
+  interval away — services restart for reasons unrelated to prices going stale. Listing
+  collection is the deliberate exception: it costs nothing but polite requests, and its
+  data-age schedule already makes restarts free in both directions (a completed run inside
+  the cadence is never repeated; an overdue one happens at the next 6-hour check whether
+  the process is young or old).
 
 ## Running it
 
@@ -424,7 +448,9 @@ and that correlation is permanent. The breeds that *do* qualify are the most-sea
 coverage of actual traffic is much better than the raw fraction suggests.
 
 Where it landed after two collection passes: **53 of 175 breeds screening** — 52 from
-listings, one (German Shepherd) from published sources.
+listings, one (German Shepherd) from published sources. (By 19 Aug 2026, after the window
+tightened and the Keystone runs landed: **50 verified** — 49 from listings, now blending
+both hosts where Keystone carries the breed, plus German Shepherd from published sources.)
 
 Pooling is what got there. The second pass added no new breeds to the target list, only more
 samples, and seven breeds crossed the 20-listing floor on that alone. 4,958 individual asking

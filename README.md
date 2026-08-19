@@ -12,15 +12,18 @@ The remaining 116 return `Unavailable` rather than screen against a number we ca
 
 - **Price ranges that label their own reliability** — every range carries a `confidence` derived from its sources, so the UI never claims more than the data supports. Ranges live in SQLite with provenance (source URL, verbatim quote, retrieval date); the original hardcoded numbers are imported as `unverified` because no source was ever recorded for them. See [docs/SOURCES.md](docs/SOURCES.md)
 - **Price scam check — on for sourced breeds only** (`GET /api/price-check`). Returns `Unavailable` for any breed whose range isn't `verified`. Owner decision: don't run fraud detection on numbers we can't attribute. It enables per breed automatically as each range gets sourced — there is no flag to flip. Live for 50 breeds
-- **Ranges from real asking prices** — the middle half of the live listings for a breed, not a journalist's estimate. Crossbreeds are excluded (up to 15 in 50 results), and a range is refused when its middle half falls far below what publishers report — a classifieds site's cheap tail is what the check exists to flag, so it must not become the benchmark. Every range records which kind of evidence produced it (`basis`), and the UI says "the middle half of 49 puppies listed for sale" rather than crediting an article that didn't produce the number. See [docs/SOURCES.md](docs/SOURCES.md) for the terms caveat
+- **Ranges from real asking prices** — the middle half of the live listings for a breed, not a journalist's estimate. Crossbreeds are excluded (up to 15 in 50 results), and a range is refused when its middle half falls far below what publishers report — a classifieds site's cheap tail is what the check exists to flag, so it must not become the benchmark. Every range records which kind of evidence produced it (`basis`), and the UI says "the middle half of 49 puppies listed for sale" rather than crediting an article that didn't produce the number. Collection now reads schema.org structured data from keystonepuppies.com (which publishes no terms of use — verified Aug 2026) with puppies.com behind its own off-by-default flag; see [docs/SOURCES.md](docs/SOURCES.md) for both sites' terms positions
 - **Honest marketplace guide** — 7 breeder sites rated on vetting, price, delivery and documented cautions; no breeder marketplace publishes a data feed, and the UI says so rather than faking listings
-- **Dogs first (adoption path)** — searching returns actual listings (photo, age, size, shelter phone number), filtered by breed / age / state / city / size and sortable by age. Currently ~345 dogs across 34 states, from two county open-data feeds plus RescueGroups
+- **Dogs first (adoption path)** — searching returns actual listings (photo, age, size, shelter phone number), filtered by breed / age / state / city / size / sex and sortable by age. Currently ~2,000 dogs across 48 states, from two county open-data feeds plus RescueGroups. The source reports ~31,000 available; how much of it to hold is tunable (`RescueGroups:MaxPages`, default 8 × 250 per page) — see docs/SOURCES.md
 - **Distance search** — a ZIP and a radius, or one tap of "Use my location". Every card shows how far away the dog is, and `sort=nearest` orders by it. Distance is the filter adopters use most, so it leads the location group; a dog whose rescue recorded no location stays in the results rather than vanishing over a blank field
 - **Age filter** — Puppy (under 1 yr) / Young / Adult / Senior, parsed out of the free-text ages the feeds publish (`AgeParser`)
 - **In-app dog detail view** — full bio, shelter phone number and the animal ID to quote, with one outbound "start the adoption" link. Addressable as `?dog=<id>`, so a single dog is shareable; a dog that has since been adopted says so rather than erroring
 - **Honest coverage** — the UI states where our feeds do and don't reach instead of showing an empty grid, and recommends **one** national site that carries your filters rather than opening fourteen tabs
 - **Adoption fee and good-with-kids/dogs/cats on the listing** — the two fields adopters act on most, mapped from RescueGroups (`adoptionFeeString`, `isKidsOk`, `isDogsOk`, `isCatsOk`). Both are sparse in the feed — fee 24%, dogs 41%, kids 25%, cats 21% — so they are three-state, never two: yes, no, or *the rescue didn't say*. A blank never renders as "no", negatives are stated plainly, and a dog with no published fee gets "ask what it is and what it covers" instead of a silent gap. Fees are normalised for display ("175.00" → "$175") while non-numeric answers ("Varies", "$300-$450") pass through verbatim
 - **Good-with filter** (`GET /api/listings?goodWith=kids,dogs,cats`) — narrows to dogs the rescue recorded as good with kids, other dogs or cats. Unknowns are kept and labelled, the way size and age already work; a dog the rescue marked **not** suitable is dropped unconditionally and `includeUnlisted=false` cannot bring it back. Live: `goodWith=cats` takes 350 dogs to 287 (63 explicit noes removed, 253 unrecorded kept), and strict mode to 34. Shown only when adopting; the breed-list narrower was renamed "Kid-friendly breeds" so the two controls can't produce identical chips
+- **Sex filter** (`GET /api/listings?sex=Male|Female`) — prefix-matched, so "Male" includes "Male (neutered)", which is most shelter dogs. Follows the unknown-is-not-no rule: a dog whose listing records no sex is kept and labelled
+- **Photo gallery on the detail view** — every picture the rescue published, not just the first (70% of RescueGroups dogs carry 2+). The card keeps one photo; the gallery is where the decision happens
+- **The rescue's own name and email on the listing** — "Source: RescueGroups" names the feed; the contact box now names who actually has the dog. King County's adoption fee is parsed out of the memo text it was published in, instead of being deleted with the metadata around it
 - **Missing data is "unknown", not "no"** — shelters leave size and age blank constantly, so those dogs stay in the results, labelled, ranked below confirmed matches, with a "show only confirmed matches" escape hatch
 - **Breed typeahead** — the breed control matches anywhere in the name, so "retriever" finds Golden and Labrador and "shepherd" finds Australian and German. A native `<select>` only jumps to names beginning with what you type, which is why 174 options in a dropdown was the wrong control. Keyboard operable throughout, clears in one click, and says so when nothing matches
 - **Breed finder quiz** — six lifestyle questions score against a breed-traits table and recommend your top 3 breeds (`POST /api/quiz`)
@@ -86,7 +89,7 @@ into a log or a shared terminal. Use `dotnet user-secrets list --json | jq 'keys
 
 | Endpoint | Description |
 |---|---|
-| `GET /api/listings?breed=&state=&city=&size=&age=&goodWith=&sort=&includeUnlisted=&lat=&lon=&radius=` | Aggregated real dog listings, filtered and sorted. Each result carries derived `ageMonths` / `ageGroup` and an `unconfirmed` flag (matched only because a field was blank). Supplying `lat`/`lon` adds `distanceMiles` to every result and enables `sort=nearest`; adding `radius` (miles) also filters. |
+| `GET /api/listings?breed=&state=&city=&size=&age=&sex=&goodWith=&sort=&includeUnlisted=&lat=&lon=&radius=` | Aggregated real dog listings, filtered and sorted. Each result carries derived `ageMonths` / `ageGroup`, an `unconfirmed` flag (matched only because a field was blank), every published `photos[]` and the rescue's `orgName`. Supplying `lat`/`lon` adds `distanceMiles` to every result and enables `sort=nearest`; adding `radius` (miles) also filters. |
 | `GET /api/listings/{id}` | One dog, so a shared `?dog=` link opens regardless of the visitor's filters. 404 = adopted or pulled from the feed. |
 | `GET /api/coverage` | Where live dogs exist right now: `[{ state, count, cities }]` |
 | `GET /api/sources` | Per-source status: enabled, count, last error, and `lastFetchedAt` (null = never asked, which is not the same as a source that returned nothing) |
@@ -106,7 +109,7 @@ Disabled unless `Prices:AdminSecret` is set; all require an `X-Admin-Secret` hea
 |---|---|
 | `POST /api/admin/price-research?breed=` | Research one breed (or all, if omitted). Writes observations only — never sets confidence. Needs an Anthropic key. |
 | `POST /api/admin/price-observations` | Record observations gathered by hand, for when no key exists. Same payload shape as the model emits, same validator, same rules — only the provenance differs (`model = "manual"`). Body: `[{ "breed": "...", "observations": [...] }]` |
-| `POST /api/admin/listing-prices?breed=` | Collect live asking prices for one breed (or every curated breed) and publish the middle half when it clears the floor guard. Requires `Prices:ListingsEnabled=true`; off by default because the source's terms restrict automated collection |
+| `POST /api/admin/listing-prices?breed=` | Collect live asking prices for one breed (or every breed a source carries) and publish the middle half when it clears the floor guard. Requires `Prices:ListingsEnabled=true` (off by default). Sources gate individually: keystonepuppies.com (no terms of use exists — verified Aug 2026) runs whenever collection does; puppies.com additionally needs `Prices:PuppiesComEnabled=true` because its terms forbid automated collection. See docs/SOURCES.md |
 | `POST /api/admin/price-reaggregate` | Re-derive every breed's confidence from stored observations. Free and idempotent: this is how a threshold change is applied. |
 | `GET /api/admin/price-report` | Confidence distribution plus a what-if column per candidate threshold. Read-only — pick the bar from evidence. |
 | `GET /api/admin/price-holds` | Price changes waiting on approval, each with the range it would replace and how far it moved. |
@@ -143,6 +146,28 @@ Moving off an unsourced seed range is never gated: that is the system working, n
    [docs/SOURCES.md](docs/SOURCES.md) for the measured distribution.
 5. **Only then** set `Prices:AutoRefresh=true` to start the scheduled job
    (`Prices:RefreshDays`, default 30).
+
+### Keeping the listing ranges fresh (the 90-day window)
+
+Listing-derived ranges only trust prices collected in the last `Prices:ListingWindowDays`
+(90), so without re-collection they all expire together. `Prices:ListingAutoRefresh=true`
+schedules listing collection **alone** — no API key involved, no research spend armed. Three
+properties matter:
+
+- **Cadence is measured from the data, not the process.** The job reads the last completed
+  collection from the run table and collects again `Prices:ListingRefreshDays` (default 60)
+  after it. The uptime timer this replaced reset its countdown on every restart, so on a
+  machine that reboots weekly the run never came and the window emptied with the schedule
+  "on".
+- **60, not 90, on purpose:** at 90 the cadence and the expiry coincide, so one failed run
+  withdraws every listing range at once. At 60, a failure leaves a 30-day cushion — the
+  schedule rechecks every 6 hours and a totally-failed run doesn't count as fresh data.
+- **New data combines, never blindly overwrites**: samples append beside the existing rows,
+  ranges re-derive through the same floor guard and sample minimums, and a sharp move
+  against a `verified` range still parks in the hold queue for a person.
+
+Enable it in the untracked `appsettings.Development.json` (this instance has it on, owner
+decision 19 Aug 2026). `Prices:AutoRefresh` still schedules everything at once, as before.
 
 Two things the schedule deliberately will not do, because each would spend money you
 didn't ask to spend:

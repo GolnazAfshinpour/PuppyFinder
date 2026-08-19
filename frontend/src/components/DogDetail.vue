@@ -22,6 +22,21 @@ const dog = computed(() => props.listing ?? fetched.value)
 const imageFailed = ref(false)
 const closeButton = ref(null)
 
+// Every photo the source published; the single imageUrl is the fallback for saved-dog
+// snapshots and the county feeds, which carry one. Adopters consistently want more than one
+// photo before committing, and RescueGroups was already sending them all.
+const photos = computed(() => {
+  if (!dog.value) return []
+  if (dog.value.photos?.length) return dog.value.photos
+  return dog.value.imageUrl ? [dog.value.imageUrl] : []
+})
+const photoIndex = ref(0)
+const currentPhoto = computed(() => photos.value[photoIndex.value] ?? photos.value[0] ?? null)
+function showPhoto(index) {
+  photoIndex.value = index
+  imageFailed.value = false // a broken photo shouldn't blank the ones that load
+}
+
 const metaLine = computed(() => {
   if (!dog.value) return ''
   const sex = dog.value.sex?.replace(/\s*\(.*\)\s*$/, '')
@@ -107,8 +122,8 @@ onMounted(async () => {
              base reads as deliberate; a decapitated dog does not. -->
         <figure class="bg-base-300 relative flex h-72 w-full items-center justify-center sm:h-80">
           <img
-            v-if="dog.imageUrl && !imageFailed"
-            :src="dog.imageUrl"
+            v-if="currentPhoto && !imageFailed"
+            :src="currentPhoto"
             :alt="dog.name"
             class="max-h-full max-w-full object-contain"
             referrerpolicy="no-referrer"
@@ -116,6 +131,28 @@ onMounted(async () => {
           />
           <span v-else class="grid h-full w-full place-items-center text-6xl" aria-hidden="true">🐶</span>
         </figure>
+
+        <!-- Only when there is a real choice — one photo needs no picker. -->
+        <div v-if="photos.length > 1" class="bg-base-300/50 flex gap-2 overflow-x-auto px-4 py-2">
+          <button
+            v-for="(photo, i) in photos"
+            :key="photo"
+            type="button"
+            class="h-14 w-14 shrink-0 overflow-hidden rounded-lg transition-opacity"
+            :class="i === photoIndex ? 'ring-primary ring-2' : 'opacity-70 hover:opacity-100'"
+            :aria-label="`Photo ${i + 1} of ${photos.length} of ${dog.name}`"
+            :aria-pressed="i === photoIndex"
+            @click="showPhoto(i)"
+          >
+            <img
+              :src="photo"
+              alt=""
+              class="h-full w-full object-cover"
+              loading="lazy"
+              referrerpolicy="no-referrer"
+            />
+          </button>
+        </div>
 
         <div class="card-body gap-3">
           <div class="flex flex-wrap items-start justify-between gap-2">
@@ -184,9 +221,12 @@ onMounted(async () => {
           <!-- The single most useful thing on this screen: who to call, and what to
                say. PetHarbor buries both, which is why visitors reported "no contact
                info" after clicking through. -->
-          <div v-if="dog.contactInfo" class="border-base-300 bg-base-200 rounded-box border p-3">
+          <div v-if="dog.contactInfo || dog.orgName" class="border-base-300 bg-base-200 rounded-box border p-3">
             <p class="text-xs font-bold tracking-wide uppercase opacity-60">Contact the shelter</p>
-            <p class="mt-1 text-sm font-medium">{{ dog.contactInfo }}</p>
+            <!-- The rescue that actually has the dog. "Source: RescueGroups" names the feed;
+                 this names who picks up the phone. -->
+            <p v-if="dog.orgName" class="mt-1 text-sm font-semibold">{{ dog.orgName }}</p>
+            <p v-if="dog.contactInfo" class="mt-1 text-sm font-medium">{{ dog.contactInfo }}</p>
             <p v-if="dog.animalRef" class="mt-1 text-sm">
               Mention animal ID <strong>{{ dog.animalRef }}</strong> so they know which dog you mean.
             </p>

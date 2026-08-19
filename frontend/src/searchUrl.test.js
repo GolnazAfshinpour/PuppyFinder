@@ -4,7 +4,7 @@ import { buildSearchQuery, parseSearchUrl } from './searchUrl.js'
 const US_STATES = ['TX', 'NY', 'CA', 'ME']
 
 const defaults = {
-  breed: '', state: '', city: '', size: '', age: '', traits: [], goodWith: [], goal: 'buy',
+  breed: '', state: '', city: '', size: '', age: '', sex: '', traits: [], goodWith: [], goal: 'buy',
   sort: '', zip: '', radius: '', dog: '',
 }
 
@@ -16,7 +16,7 @@ describe('parseSearchUrl', () => {
   it('restores a full search', () => {
     expect(
       parseSearchUrl(
-        '?breed=golden-retriever&state=TX&city=Houston&size=Large&age=Puppy&traits=kids,lowshed'
+        '?breed=golden-retriever&state=TX&city=Houston&size=Large&age=Puppy&sex=Female&traits=kids,lowshed'
           + '&goal=buy&sort=youngest&zip=77002&radius=50',
         US_STATES,
       ),
@@ -26,6 +26,7 @@ describe('parseSearchUrl', () => {
       city: 'Houston',
       size: 'Large',
       age: 'Puppy',
+      sex: 'Female',
       traits: ['kids', 'lowshed'],
       goodWith: [],
       goal: 'buy',
@@ -36,11 +37,17 @@ describe('parseSearchUrl', () => {
     })
   })
 
-  it('normalizes case for state, size and age', () => {
-    const parsed = parseSearchUrl('?state=tx&size=large&age=SENIOR', US_STATES)
+  it('normalizes case for state, size, age and sex', () => {
+    const parsed = parseSearchUrl('?state=tx&size=large&age=SENIOR&sex=female', US_STATES)
     expect(parsed.state).toBe('TX')
     expect(parsed.size).toBe('Large')
     expect(parsed.age).toBe('Senior')
+    expect(parsed.sex).toBe('Female')
+  })
+
+  it('only accepts a sex the filter actually offers', () => {
+    // This value removes dogs, so a typo in a shared link must not silently narrow the search.
+    expect(parseSearchUrl('?sex=neutered', US_STATES).sex).toBe('')
   })
 
   it('drops values that fail validation instead of erroring', () => {
@@ -139,6 +146,7 @@ describe('buildSearchQuery', () => {
       city: 'New York',
       size: 'Small',
       age: 'Young',
+      sex: 'Female',
       traits: ['apartment'],
       goodWith: ['kids', 'cats'],
       goal: 'adopt',
