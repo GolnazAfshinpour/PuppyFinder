@@ -39,6 +39,9 @@ const selectedCity = ref(fromUrl.city)
 const selectedSize = ref(fromUrl.size)
 const selectedAge = ref(fromUrl.age) // Puppy | Young | Adult | Senior
 const traits = ref(fromUrl.traits)
+// Filters the dogs themselves, unlike `traits` above which prunes the breed list. Two controls
+// that sound alike and do different jobs, so both are labelled for what they actually do.
+const goodWith = ref(fromUrl.goodWith)
 const goal = ref(fromUrl.goal)
 const sort = ref(fromUrl.sort)
 const openDogId = ref(fromUrl.dog) // '' = no detail view open
@@ -148,18 +151,34 @@ function unconfirmedNote(listing) {
     selectedSize.value && !listing.size && 'size',
     selectedAge.value && !listing.ageGroup && 'age',
   ].filter(Boolean)
+  // Phrased separately: "didn't list a good with cats" doesn't parse, and this is the caveat
+  // most worth getting right — the reader asked precisely because they have a cat.
+  const unrecorded = goodWith.value
+    .filter((w) => listing[`goodWith${w[0].toUpperCase()}${w.slice(1)}`] === null
+      || listing[`goodWith${w[0].toUpperCase()}${w.slice(1)}`] === undefined)
+  if (unrecorded.length) {
+    const fields = unrecorded.join(unrecorded.length === 2 ? ' or ' : ', ')
+    const rest = missing.length ? ` They also didn't list a ${missing.join(' or ')}.` : ''
+    return `This rescue didn't record how they are with ${fields} — shown so you don't miss them, but ask.${rest}`
+  }
   if (!missing.length) return ''
   return `This shelter didn't list a ${missing.join(' or ')} — shown so you don't miss them.`
 }
 
 // Active filters as removable chips above the results (table-stakes search UX).
-const TRAIT_LABELS = { kids: 'Good with kids', apartment: 'Apartment-friendly', lowshed: 'Low-shedding' }
+// Chip labels for the breed-list narrowers. "Breeds" is load-bearing on the first one — see
+// TRAITS in breedFilters.js.
+const TRAIT_LABELS = { kids: 'Kid-friendly breeds', apartment: 'Apartment-friendly', lowshed: 'Low-shedding' }
+const GOOD_WITH_LABELS = { kids: 'Good with kids', dogs: 'Good with dogs', cats: 'Good with cats' }
 const activeChips = computed(() => {
   const chips = []
   if (selectedAge.value) chips.push({ key: 'age', label: selectedAge.value, clear: () => (selectedAge.value = '') })
   if (selectedSize.value) chips.push({ key: 'size', label: `Size: ${selectedSize.value}`, clear: () => (selectedSize.value = '') })
   for (const t of traits.value) {
     chips.push({ key: `trait-${t}`, label: TRAIT_LABELS[t] ?? t, clear: () => (traits.value = traits.value.filter((x) => x !== t)) })
+  }
+  for (const w of goodWith.value) {
+    chips.push({ key: `goodwith-${w}`, label: GOOD_WITH_LABELS[w] ?? w, clear: () => (goodWith.value = goodWith.value.filter((x) => x !== w)) })
   }
   if (selectedBreed.value) chips.push({ key: 'breed', label: selectedBreedName.value || selectedBreed.value, clear: () => (selectedBreed.value = '') })
   if (selectedState.value) chips.push({ key: 'state', label: selectedState.value, clear: () => (selectedState.value = '') })
@@ -173,6 +192,7 @@ function clearAllFilters() {
   selectedSize.value = ''
   selectedAge.value = ''
   traits.value = []
+  goodWith.value = []
 }
 
 // The search card's "Clear filters" is a full reset — back to the buying default.
@@ -187,6 +207,19 @@ function resetSearch() {
 // it only appears when there's actually something to refine.
 const strictMatch = ref(false)
 const unconfirmedCount = computed(() => rankedListings.value.filter((l) => l.unconfirmed).length)
+
+// What the rescue left blank, named from the filters actually in play. It used to be hardcoded
+// to size and age with age as the fallback, so filtering on "good with cats" alone produced
+// "didn't have a age listed" — wrong field and wrong grammar, on the banner whose whole job is
+// explaining why these dogs are in the list.
+const unconfirmedReason = computed(() => {
+  const parts = []
+  if (selectedSize.value) parts.push('a size')
+  if (selectedAge.value) parts.push('an age')
+  for (const w of goodWith.value) parts.push(`whether they're good with ${w}`)
+  if (parts.length <= 1) return parts[0] ?? 'that'
+  return `${parts.slice(0, -1).join(', ')} or ${parts[parts.length - 1]}`
+})
 
 // Reveal in pages rather than dumping every dog into one scroll: 53 cards measured 10,539px,
 // about ten screens, with no way to tell how far in you were. The full count stays in the
@@ -417,6 +450,7 @@ function listingParams(overrides = {}) {
     age: selectedAge.value,
     sort: sort.value,
     includeUnlisted: strictMatch.value ? 'false' : '',
+    goodWith: goodWith.value.join(','),
     // Only ever sent together: a radius with no origin cannot mean anything, and the backend
     // ignores it anyway.
     lat: zipResolved.value ? String(originLat.value) : '',
@@ -446,9 +480,14 @@ async function broadenSearch() {
     { overrides: { city: '' }, note: `outside ${selectedCity.value.trim()} (all of ${selectedState.value})`, applies: () => selectedCity.value.trim() && selectedState.value },
     { overrides: { size: '' }, note: 'of any size', applies: () => selectedSize.value },
     { overrides: { age: '' }, note: 'of any age', applies: () => selectedAge.value },
+    {
+      overrides: { goodWith: '' },
+      note: `without the "${goodWith.value.map((w) => GOOD_WITH_LABELS[w].toLowerCase()).join('", "')}" filter`,
+      applies: () => goodWith.value.length,
+    },
     { overrides: { breed: '' }, note: 'of any breed', applies: () => selectedBreed.value },
     { overrides: { state: '', city: '' }, note: 'across all states with live feeds', applies: () => selectedState.value },
-    { overrides: { breed: '', state: '', city: '', size: '', age: '' }, note: 'available right now (all filters relaxed)', applies: () => true },
+    { overrides: { breed: '', state: '', city: '', size: '', age: '', goodWith: '' }, note: 'available right now (all filters relaxed)', applies: () => true },
   ]
   for (const relaxation of relaxations) {
     if (!relaxation.applies()) continue
@@ -507,7 +546,7 @@ function pickQuizBreed(slug) {
 }
 
 watch([selectedBreed, selectedState], loadSites)
-watch([selectedBreed, selectedState, selectedSize, selectedAge, sort, strictMatch, originLat, radius], loadListings)
+watch([selectedBreed, selectedState, selectedSize, selectedAge, goodWith, sort, strictMatch, originLat, radius], loadListings)
 
 // Keep the address bar in sync, and make Back/Forward actually work.
 //
@@ -524,6 +563,7 @@ const currentQuery = () => buildSearchQuery({
   size: selectedSize.value,
   age: selectedAge.value,
   traits: traits.value,
+  goodWith: goodWith.value,
   goal: goal.value,
   sort: sort.value,
   zip: zip.value.trim(),
@@ -535,7 +575,7 @@ const currentQuery = () => buildSearchQuery({
 // entry for a change that *came from* history — the classic popstate feedback loop.
 let applyingHistory = false
 
-watch([selectedBreed, selectedState, selectedCity, selectedSize, selectedAge, traits, goal, sort, zip, radius, openDogId], () => {
+watch([selectedBreed, selectedState, selectedCity, selectedSize, selectedAge, traits, goodWith, goal, sort, zip, radius, openDogId], () => {
   if (applyingHistory) return
 
   const query = currentQuery()
@@ -557,6 +597,7 @@ window.addEventListener('popstate', () => {
   selectedSize.value = from.size
   selectedAge.value = from.age
   traits.value = from.traits
+  goodWith.value = from.goodWith
   goal.value = from.goal
   sort.value = from.sort
   // Restored so Back and Forward return to the same circle, not a silently wider search.
@@ -722,6 +763,7 @@ onMounted(() => {
           v-model:size="selectedSize"
           v-model:age="selectedAge"
           v-model:traits="traits"
+          v-model:good-with="goodWith"
           v-model:goal="goal"
           :breeds="breeds"
           :us-states="US_STATES"
@@ -921,10 +963,9 @@ onMounted(() => {
             class="alert alert-soft mb-4 flex flex-wrap items-center justify-between gap-2 py-2 text-sm"
           >
             <span v-if="unconfirmedCount">
-              {{ unconfirmedCount }} of these
-              {{ rankedListings.length }} didn't have a
-              {{ selectedSize && selectedAge ? 'size or age' : selectedSize ? 'size' : 'age' }}
-              listed by the shelter. They're included so you don't miss them.
+              {{ unconfirmedCount }} of these {{ rankedListings.length }} are unconfirmed — the
+              rescue didn't record {{ unconfirmedReason }}. They're included so you don't miss
+              them.
             </span>
             <span v-else>Showing only dogs the shelter explicitly listed — some may be hidden.</span>
             <button type="button" class="link whitespace-nowrap" @click="strictMatch = !strictMatch">

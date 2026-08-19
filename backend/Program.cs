@@ -129,11 +129,16 @@ await app.Services.GetRequiredService<PriceStore>().SeedFromCatalogAsync(Cancell
 // radius comes with it. Both are useful separately — "nearest first across the state" is a real
 // request, and a radius that quietly dropped dogs would be the worse default.
 app.MapGet("/api/listings", async (string? breed, string? state, string? city, string? size,
-    string? age, string? sort, bool? includeUnlisted,
+    string? age, string? sort, bool? includeUnlisted, string? goodWith,
     double? lat, double? lon, int? radius,
     ListingAggregator aggregator, BreedCatalogService catalog, CancellationToken ct) =>
 {
     var listings = (await aggregator.GetListingsAsync(ct)).AsEnumerable();
+
+    // "kids,dogs,cats" — a list rather than three flags, so the query string reads as one filter.
+    var wants = (goodWith ?? string.Empty)
+        .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+        .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
     var filter = new ListingFilter(
         BreedSearchText: await ResolveBreedTextAsync(breed, catalog, ct),
@@ -144,7 +149,10 @@ app.MapGet("/api/listings", async (string? breed, string? state, string? city, s
         IncludeUnlisted: includeUnlisted ?? true,
         Latitude: lat,
         Longitude: lon,
-        RadiusMiles: radius);
+        RadiusMiles: radius,
+        GoodWithKids: wants.Contains("kids"),
+        GoodWithDogs: wants.Contains("dogs"),
+        GoodWithCats: wants.Contains("cats"));
 
     var matches = ListingQuery.Filter(listings, filter)
         .Select(l => l with

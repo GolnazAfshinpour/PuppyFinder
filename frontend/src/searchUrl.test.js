@@ -4,8 +4,8 @@ import { buildSearchQuery, parseSearchUrl } from './searchUrl.js'
 const US_STATES = ['TX', 'NY', 'CA', 'ME']
 
 const defaults = {
-  breed: '', state: '', city: '', size: '', age: '', traits: [], goal: 'buy', sort: '',
-  zip: '', radius: '', dog: '',
+  breed: '', state: '', city: '', size: '', age: '', traits: [], goodWith: [], goal: 'buy',
+  sort: '', zip: '', radius: '', dog: '',
 }
 
 describe('parseSearchUrl', () => {
@@ -27,6 +27,7 @@ describe('parseSearchUrl', () => {
       size: 'Large',
       age: 'Puppy',
       traits: ['kids', 'lowshed'],
+      goodWith: [],
       goal: 'buy',
       sort: 'youngest',
       zip: '77002',
@@ -105,6 +106,24 @@ describe('buildSearchQuery', () => {
     expect(parseSearchUrl('?goal=nonsense', US_STATES).goal).toBe('buy')
   })
 
+  it('keeps only the good-with values it knows', () => {
+    // This one narrows the results, so a typo in a shared link must not silently remove dogs.
+    expect(parseSearchUrl('?goodWith=kids,horses,cats', US_STATES).goodWith).toEqual(['kids', 'cats'])
+    expect(parseSearchUrl('?goodWith=', US_STATES).goodWith).toEqual([])
+    // Not a substring match: "kid" is not "kids".
+    expect(parseSearchUrl('?goodWith=kid', US_STATES).goodWith).toEqual([])
+  })
+
+  it('writes good-with in a fixed order, so one search is one URL', () => {
+    // Two people who picked the same filters in a different order should share the same link.
+    expect(buildSearchQuery({ ...defaults, goodWith: ['cats', 'kids'] })).toBe('goodWith=kids%2Ccats')
+    expect(buildSearchQuery({ ...defaults, goodWith: ['kids', 'cats'] })).toBe('goodWith=kids%2Ccats')
+  })
+
+  it('omits good-with entirely when nothing is selected', () => {
+    expect(buildSearchQuery(defaults)).toBe('')
+  })
+
   it('round-trips through parseSearchUrl', () => {
     const state = {
       breed: 'french-bulldog',
@@ -113,6 +132,7 @@ describe('buildSearchQuery', () => {
       size: 'Small',
       age: 'Young',
       traits: ['apartment'],
+      goodWith: ['kids', 'cats'],
       goal: 'adopt',
       sort: 'nearest',
       zip: '11238',

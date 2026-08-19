@@ -104,4 +104,110 @@ public class ListingQueryTests
 
         Assert.Equal(["Ace"], labs.Select(l => l.Name));
     }
+
+    // ---- good with kids / dogs / cats ----
+    //
+    // Only 21-41% of listings record these, so the unknown-is-not-no rule matters more here than
+    // anywhere else — and the explicit "no" matters more than anywhere else too.
+
+    private static Listing GoodWith(string name, bool? kids = null, bool? dogs = null, bool? cats = null) =>
+        Dog(name) with { GoodWithKids = kids, GoodWithDogs = dogs, GoodWithCats = cats };
+
+    [Fact]
+    public void GoodWithKeepsConfirmedMatchesAndUnrecordedDogs()
+    {
+        var listings = new[]
+        {
+            GoodWith("Yes", kids: true),
+            GoodWith("Unknown"),
+            GoodWith("No", kids: false),
+        };
+
+        var matches = ListingQuery.Filter(listings, new ListingFilter(GoodWithKids: true)).ToList();
+
+        Assert.Equal(["Yes", "Unknown"], matches.Select(l => l.Name));
+    }
+
+    [Fact]
+    public void AnExplicitNoIsNeverShownEvenWhenUnlistedDogsAreIncluded()
+    {
+        // The one asymmetry in the whole filter. Someone asking for "good with kids" has a child
+        // in the house; a rescue that wrote down "no" is the single fact here that a convenience
+        // toggle must not be able to override.
+        var listings = new[] { GoodWith("No", kids: false) };
+
+        Assert.Empty(ListingQuery.Filter(listings, new ListingFilter(GoodWithKids: true, IncludeUnlisted: true)));
+        Assert.Empty(ListingQuery.Filter(listings, new ListingFilter(GoodWithKids: true, IncludeUnlisted: false)));
+    }
+
+    [Fact]
+    public void StrictMatchDropsTheUnrecordedOnesOnly()
+    {
+        var listings = new[] { GoodWith("Yes", cats: true), GoodWith("Unknown") };
+
+        var strict = ListingQuery.Filter(
+            listings, new ListingFilter(GoodWithCats: true, IncludeUnlisted: false)).ToList();
+
+        Assert.Equal(["Yes"], strict.Select(l => l.Name));
+    }
+
+    [Fact]
+    public void EachGoodWithFieldIsIndependent()
+    {
+        // A dog good with dogs but not cats must survive a dogs search and fail a cats one.
+        var dog = GoodWith("Rex", dogs: true, cats: false);
+
+        Assert.Single(ListingQuery.Filter([dog], new ListingFilter(GoodWithDogs: true)));
+        Assert.Empty(ListingQuery.Filter([dog], new ListingFilter(GoodWithCats: true)));
+    }
+
+    [Fact]
+    public void AskingForSeveralRequiresAllOfThem()
+    {
+        var listings = new[]
+        {
+            GoodWith("Both", kids: true, dogs: true),
+            GoodWith("OnlyKids", kids: true, dogs: false),
+        };
+
+        var matches = ListingQuery.Filter(
+            listings, new ListingFilter(GoodWithKids: true, GoodWithDogs: true)).ToList();
+
+        Assert.Equal(["Both"], matches.Select(l => l.Name));
+    }
+
+    [Fact]
+    public void NotAskingAboutGoodWithChangesNothing()
+    {
+        var listings = new[] { GoodWith("No", kids: false, dogs: false, cats: false) };
+
+        Assert.Single(ListingQuery.Filter(listings, new ListingFilter()));
+    }
+
+    [Fact]
+    public void ADogKeptOnlyByABlankFieldIsMarkedUnconfirmed()
+    {
+        var filter = new ListingFilter(GoodWithKids: true);
+
+        Assert.True(ListingQuery.Unconfirmed(GoodWith("Unknown"), filter));
+        Assert.False(ListingQuery.Unconfirmed(GoodWith("Yes", kids: true), filter));
+        // Not asked about, so a blank is not a caveat.
+        Assert.False(ListingQuery.Unconfirmed(GoodWith("Unknown"), new ListingFilter()));
+    }
+
+    [Fact]
+    public void ConfirmedGoodWithMatchesSortAboveUnrecordedOnes()
+    {
+        var listings = new[] { GoodWith("Aaa"), GoodWith("Zzz", kids: true) };
+        var filter = new ListingFilter(GoodWithKids: true);
+
+        var sorted = ListingQuery.Sort(
+            ListingQuery.Filter(listings, filter)
+                .Select(l => l with { Unconfirmed = ListingQuery.Unconfirmed(l, filter) }),
+            null,
+            filter).ToList();
+
+        // Alphabetically "Aaa" wins; the confirmed match still comes first.
+        Assert.Equal(["Zzz", "Aaa"], sorted.Select(l => l.Name));
+    }
 }

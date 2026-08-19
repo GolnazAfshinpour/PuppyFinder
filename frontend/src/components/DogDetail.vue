@@ -190,12 +190,20 @@ onMounted(async () => {
             <p v-if="dog.animalRef" class="mt-1 text-sm">
               Mention animal ID <strong>{{ dog.animalRef }}</strong> so they know which dog you mean.
             </p>
-            <p v-if="!dog.adoptionFee" class="mt-1 text-sm opacity-70">
-              They haven't listed an adoption fee — ask what it is and what it covers. Shelter
-              and rescue fees usually run $50–$500 and include vaccinations, microchip and
-              often spay or neuter.
-            </p>
           </div>
+
+          <!--
+            Its own block, not a line inside the contact box. Nested there it only rendered for
+            dogs that also published a phone number, so the dogs with the least information —
+            exactly the ones whose reader most needs prompting — silently got nothing. Caught by
+            an e2e check that had been passing only because the sampled dog happened to have a
+            number.
+          -->
+          <p v-if="!dog.adoptionFee" class="max-w-prose text-sm opacity-70">
+            This rescue hasn't listed an adoption fee — ask what it is and what it covers.
+            Shelter and rescue fees usually run $50–$500 and include vaccinations, microchip and
+            often spay or neuter.
+          </p>
 
           <a
             class="btn btn-primary btn-block"

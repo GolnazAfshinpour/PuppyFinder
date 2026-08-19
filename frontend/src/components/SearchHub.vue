@@ -12,6 +12,8 @@ const props = defineProps({
   size: { type: String, default: '' },
   age: { type: String, default: '' },
   traits: { type: Array, default: () => [] },
+  // Filters the dogs, from each rescue's own listing. `traits` above prunes the breed list.
+  goodWith: { type: Array, default: () => [] },
   goal: { type: String, default: 'both' },
   coverage: { type: Array, default: () => [] }, // [{ state, count, cities }] — live dogs right now
   locating: { type: Boolean, default: false }, // geolocation lookup in flight
@@ -36,14 +38,24 @@ const RADIUS_OPTIONS = [
 
 const emit = defineEmits([
   'update:breed', 'update:state', 'update:city', 'update:size', 'update:age', 'update:traits',
-  'update:goal', 'update:zip', 'update:radius',
+  'update:goodWith', 'update:goal', 'update:zip', 'update:radius',
   'open-quiz', 'clear', 'near-me',
 ])
+
+// Real per-dog data, not breed temperament: RescueGroups publishes isKidsOk / isDogsOk /
+// isCatsOk and the rescue caring for the dog fills them in. Offered only when the page is
+// showing dogs — in buy mode there are no listings to narrow, and the breed-list narrowers
+// below are the only thing that can do any work.
+const GOOD_WITH = [
+  { key: 'kids', label: 'Kids' },
+  { key: 'dogs', label: 'Other dogs' },
+  { key: 'cats', label: 'Cats' },
+]
 
 const anyFilterActive = computed(
   () =>
     props.breed || props.state || props.city.trim() || props.size || props.age ||
-    props.traits.length > 0 || props.goal !== 'both' || props.zip.trim(),
+    props.traits.length > 0 || props.goodWith.length > 0 || props.goal !== 'both' || props.zip.trim(),
 )
 
 // Goal leads the panel because it isn't a refiner — it decides whether the page
@@ -76,6 +88,13 @@ const filteredBreeds = computed(() =>
 )
 
 const narrowed = computed(() => props.size || props.traits.length > 0)
+
+function toggleGoodWith(key) {
+  emit(
+    'update:goodWith',
+    props.goodWith.includes(key) ? props.goodWith.filter((w) => w !== key) : [...props.goodWith, key],
+  )
+}
 
 function toggleTrait(key) {
   emit(
@@ -259,11 +278,43 @@ function toggleTrait(key) {
         </div>
       </div>
 
+      <!--
+        Two controls that sound alike and do different jobs, so each says which. This one
+        filters the dogs: the rescue caring for the animal recorded how it does with kids,
+        other dogs and cats, and that is a fact about this dog rather than about its breed.
+        Hidden in buy mode, where there are no listings for it to narrow.
+      -->
+      <div v-if="goal !== 'buy'">
+        <span class="label-text block text-xs font-bold tracking-wide uppercase opacity-60">
+          Good with
+        </span>
+        <p class="mb-1 text-xs opacity-60">From each rescue's own listing.</p>
+        <div class="flex flex-wrap gap-1.5">
+          <button
+            v-for="g in GOOD_WITH"
+            :key="g.key"
+            type="button"
+            class="btn btn-xs"
+            :class="goodWith.includes(g.key) ? 'btn-primary' : 'btn-outline'"
+            :aria-pressed="goodWith.includes(g.key)"
+            @click="toggleGoodWith(g.key)"
+          >
+            {{ g.label }}
+          </button>
+        </div>
+        <!-- Said out loud, because it changes how to read the result: most rescues leave these
+             blank, and those dogs are kept rather than dropped. -->
+        <p v-if="goodWith.length" class="mt-1 text-xs opacity-60">
+          Dogs a rescue marked as <em>not</em> suitable are always excluded. Dogs with nothing
+          recorded are kept and labelled — ask when you call.
+        </p>
+      </div>
+
       <div>
-        <!-- Named for what it actually does. These score against our breed table,
-             so they prune the breed list above — shelter feeds carry no temperament
-             data, and a filter that quietly does nothing to the results is worse
-             than no filter. -->
+        <!-- Named for what it actually does. These score against our breed table, so they prune
+             the breed list above rather than the results. The per-dog version is the "Good with"
+             group above; keeping the labels distinct is the whole point, since a filter that
+             quietly does something other than it says is worse than no filter. -->
         <span class="label-text mb-1 block text-xs font-bold tracking-wide uppercase opacity-60">
           Narrow the breed list
         </span>

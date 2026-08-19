@@ -294,6 +294,26 @@ Honesty beats marketing — cautions and coverage limits are stated plainly.
   are real answers a number cannot hold. Hand-typed blanks ("n/a", "none", "TBD") and a bare
   zero become null: "Adoption fee $0" is a claim on the rescue's behalf we cannot back, and an
   unedited numeric field defaulting to zero is the likelier explanation.
+- **Good-with filters the dogs; the breed narrowers filter the breed list.** Two controls that
+  sound alike doing different jobs, so each says which: "Good with — from each rescue's own
+  listing" sits above "Narrow the breed list", and the breed one was renamed to **"Kid-friendly
+  breeds"**. That rename is not cosmetic — with both set, the removable chips above the results
+  read "Good with kids" twice, meaning two different things. The good-with group is hidden in buy
+  mode, where there are no listings for it to narrow, which keeps "a filter must filter the
+  results" true in both modes.
+- **One asymmetry, and it is deliberate: `false` is not `unknown`.** Every other filter treats a
+  blank as "keep it, label it" and lets `includeUnlisted=false` opt out. Good-with keeps that for
+  blanks — it has to, since 59-79% of listings record nothing and a hard filter would delete most
+  of the inventory — but a rescue that wrote down **"not good with kids" is dropped
+  unconditionally**, and the strict/loose toggle cannot reach it. Someone filtering on this has a
+  child or a cat in the house; that one recorded fact is the thing in this dataset a convenience
+  toggle must never override. Measured live: "good with cats" takes 350 dogs to 287 by removing
+  63 explicit noes, keeps 253 unrecorded ones labelled, and strict mode lands on 34 confirmed. A
+  naive hard filter would have shown 34.
+- **The unconfirmed banner names the field it actually filtered on.** It was hardcoded to
+  size/age with age as the fallback, so filtering on "good with cats" alone produced "didn't have
+  a age listed" — wrong field and wrong grammar on the one sentence whose whole job is explaining
+  why those dogs are in the list.
 - Known gaps (documented, not yet built): breed typeahead instead of a 179-option
-  `<select>`, per-option result counts, filtering on the good-with fields now that
-  they exist (they display but don't narrow), and a compare view for saved dogs.
+  `<select>`, per-option result counts, good-with in saved-search alerts (the filter
+  is search-only), and a compare view for saved dogs.

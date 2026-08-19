@@ -395,6 +395,55 @@ const feeApiNeedsNoBreed = await fees.evaluate(async () => {
   return res.ok && body.level === 'StopPaying'
 })
 await fees.close()
+// Filtering on good-with. The display landed first; this is the filter, and it is the one place
+// in the app where "unknown is not no" and "no really means no" have to hold at the same time.
+const gw = await browser.newPage()
+const gwCount = async (query) => {
+  const dogs = await gw.evaluate(async (q) => (await (await fetch(`/api/listings${q}`)).json()), query)
+  return {
+    total: dogs.length,
+    // The hard requirement: a rescue that wrote "not good with cats" must never be overridden.
+    explicitNos: dogs.filter((d) => d.goodWithCats === false).length,
+    unconfirmed: dogs.filter((d) => d.unconfirmed).length,
+  }
+}
+await gw.goto(BASE + '/?goal=adopt')
+await gw.waitForSelector('[data-testid="dog-results"] > li', { timeout: 20000 })
+
+const gwAll = await gwCount('')
+const gwCats = await gwCount('?goodWith=cats')
+const gwCatsStrict = await gwCount('?goodWith=cats&includeUnlisted=false')
+// Narrows, rather than being a control that quietly does nothing.
+const goodWithNarrows = gwCats.total < gwAll.total && gwCats.total > 0
+// The asymmetry: unknowns survive, explicit noes do not, and `includeUnlisted` cannot reach them.
+const noExplicitNoSurvives = gwCats.explicitNos === 0 && gwCatsStrict.explicitNos === 0
+const unknownsAreKeptAndLabelled = gwCats.unconfirmed > 0
+const strictDropsOnlyTheUnrecorded = gwCatsStrict.total > 0
+  && gwCatsStrict.total === gwCats.total - gwCats.unconfirmed
+
+// Offered only where it can do something: buy mode has no listings to narrow.
+const gwGroupWhenAdopting = await gw.locator("text=From each rescue's own listing").count()
+await gw.goto(BASE + '/')
+await gw.waitForTimeout(2000)
+const gwGroupWhenBuying = await gw.locator("text=From each rescue's own listing").count()
+
+// Two controls that sound alike must not produce two identical chips.
+await gw.goto(BASE + '/?goal=adopt&goodWith=kids&traits=kids')
+await gw.waitForTimeout(2500)
+const chipLabels = await gw.locator('.badge-primary.badge-soft').allInnerTexts()
+const chipsAreDistinguishable = new Set(chipLabels.map((c) => c.trim())).size === chipLabels.length
+
+// The banner explaining why unconfirmed dogs are in the list has to name the right field.
+await gw.goto(BASE + '/?goal=adopt&goodWith=cats')
+await gw.waitForTimeout(2500)
+const caveat = await gw.locator('.alert:has-text("unconfirmed")').first().innerText().catch(() => '')
+const caveatNamesTheRightField = /good with cats/i.test(caveat)
+await gw.close()
+console.log('good-with filter — all:', gwAll.total, '| cats:', gwCats.total,
+  '(', gwCats.unconfirmed, 'unconfirmed )', '| strict:', gwCatsStrict.total,
+  '| explicit noes surviving:', gwCats.explicitNos,
+  '| chips:', JSON.stringify(chipLabels))
+
 // Adoption fee and good-with-kids/dogs/cats: the two fields DESIGN.md named as the biggest
 // listing gaps. Both are sparse in the feed (fee ~24%, good-with 21-41%), so the checks are
 // about honesty as much as presence — a blank must never render as "no".
@@ -416,7 +465,9 @@ const sample = await profiles.evaluate(async () => {
       && (d.goodWithKids === true || d.goodWithDogs === true || d.goodWithCats === true))?.id,
     withNegative: dogs.find((d) => d.goodWithKids === false
       || d.goodWithDogs === false || d.goodWithCats === false)?.id,
-    noFee: dogs.find((d) => !d.adoptionFee)?.id,
+    // Deliberately a dog with no phone number either: the prompt used to live inside the
+    // contact box, so the dogs carrying the least information got no prompt at all.
+    noFee: (dogs.find((d) => !d.adoptionFee && !d.contactInfo) ?? dogs.find((d) => !d.adoptionFee))?.id,
     // The three-state rule, checked on the wire rather than in the UI: absent must arrive as
     // null, not false, or the whole "unknown is not no" contract is broken at the source.
     nullNotFalse: dogs.some((d) => d.goodWithCats === null),
@@ -427,7 +478,7 @@ const someFeesPublished = sample.withFee > 0
 
 const badgesFor = async (id) => {
   await profiles.goto(`${BASE}/?dog=${encodeURIComponent(id)}`)
-  await profiles.waitForSelector('.modal-box .badge')
+  await profiles.waitForSelector('#dog-detail-name')
   return (await profiles.locator('.modal-box .badge').allInnerTexts()).join(' | ')
 }
 
@@ -441,8 +492,12 @@ const negativeBadges = await badgesFor(sample.withNegative)
 const detailStatesNegatives = /Not good with/.test(negativeBadges)
 
 await profiles.goto(`${BASE}/?dog=${encodeURIComponent(sample.noFee)}`)
-await profiles.waitForSelector('.modal-box')
-const noFeeAsksInstead = (await profiles.locator("text=haven't listed an adoption fee").count()) === 1
+// The name, not the box. `.modal-box` is present during the loading skeleton too, so counting
+// against it raced the fetch — and passed for months only because the dogs sampled before
+// happened to already be in the loaded grid and rendered instantly.
+await profiles.waitForSelector('#dog-detail-name')
+// Pinned to a dog with no contact info too, since that was the case the prompt used to miss.
+const noFeeAsksInstead = (await profiles.locator("text=hasn't listed an adoption fee").count()) === 1
 await profiles.close()
 console.log('listing profiles — total:', sample.total, '| with a fee:', sample.withFee,
   '| malformed fees:', sample.badFees.length,
@@ -768,6 +823,15 @@ const checks = {
   // The contract the whole feature rests on: the feed omits null attributes, so an unrecorded
   // field must arrive as null. Coercing it to false would rule dogs out over a blank.
   'an unrecorded good-with field arrives as null, not false': sample.nullNotFalse,
+  // The filter, and the asymmetry at the heart of it.
+  'the good-with filter actually narrows the results': goodWithNarrows,
+  'a dog the rescue marked unsuitable is never shown, even in loose mode': noExplicitNoSurvives,
+  'dogs with nothing recorded are kept and labelled': unknownsAreKeptAndLabelled,
+  'strict match drops only the unrecorded ones': strictDropsOnlyTheUnrecorded,
+  'the good-with filter is offered when adopting': gwGroupWhenAdopting === 1,
+  'and hidden when buying, where there are no dogs to narrow': gwGroupWhenBuying === 0,
+  'the breed narrower and the dog filter make distinguishable chips': chipsAreDistinguishable,
+  'the unconfirmed banner names the field actually filtered on': caveatNamesTheRightField,
   'detail view opens in-app': detailOpen === 1 && detailAddressable,
   'detail view closes on Escape': detailClosed,
   'shared dog link resolves': sharedResolves,

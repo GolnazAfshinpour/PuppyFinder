@@ -23,8 +23,21 @@ public record ListingFilter(
     // for the filter to apply at all — a radius with no origin is meaningless.
     double? Latitude = null,
     double? Longitude = null,
-    int? RadiusMiles = null)
+    int? RadiusMiles = null,
+    // Requested from the rescue's own listing, not from the breed. False means "not asked for",
+    // never "must not be good with kids" — nobody searches for that.
+    bool GoodWithKids = false,
+    bool GoodWithDogs = false,
+    bool GoodWithCats = false)
 {
+    /// <summary>The good-with fields this search asked about, paired with how to read each dog.</summary>
+    public IEnumerable<(bool Wanted, Func<Listing, bool?> Value)> GoodWith =>
+    [
+        (GoodWithKids, l => l.GoodWithKids),
+        (GoodWithDogs, l => l.GoodWithDogs),
+        (GoodWithCats, l => l.GoodWithCats),
+    ];
+
     /// <summary>True when this filter can actually measure distance.</summary>
     public bool HasOrigin =>
         Latitude is { } lat && Longitude is { } lon && GeoDistance.IsPlausible(lat, lon);
@@ -95,6 +108,28 @@ public static class ListingQuery
                 : wantedAge.Equals(l.AgeGroup, StringComparison.OrdinalIgnoreCase));
         }
 
+        // Good-with follows the same unknown-is-not-no rule, and has to: only 21-41% of listings
+        // record these, so a hard filter would delete most of the inventory over blank fields.
+        //
+        // The one asymmetry in this whole file. An explicit `false` is dropped unconditionally —
+        // `IncludeUnlisted` does not reach it, because it is not unlisted. Someone filtering
+        // "good with kids" has a child in the house, and a rescue that wrote down "no" is the one
+        // fact in this dataset that must never be overridden by a convenience toggle.
+        foreach (var (wanted, value) in filter.GoodWith)
+        {
+            if (!wanted)
+            {
+                continue;
+            }
+
+            listings = listings.Where(l => value(l) switch
+            {
+                true => true,
+                false => false,
+                null => filter.IncludeUnlisted,
+            });
+        }
+
         return listings;
     }
 
@@ -125,5 +160,6 @@ public static class ListingQuery
     /// <summary>True when this listing matched only because the shelter left a filtered field blank.</summary>
     public static bool Unconfirmed(Listing listing, ListingFilter filter) =>
         (!string.IsNullOrWhiteSpace(filter.Size) && listing.Size is null)
-        || (AgeParser.IsGroup(filter.AgeGroup) && listing.AgeGroup is null);
+        || (AgeParser.IsGroup(filter.AgeGroup) && listing.AgeGroup is null)
+        || filter.GoodWith.Any(g => g.Wanted && g.Value(listing) is null);
 }

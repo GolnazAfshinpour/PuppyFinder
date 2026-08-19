@@ -5,7 +5,10 @@
 // trait filter is active — same behavior the Size filter already has.
 
 export const TRAITS = [
-  { key: 'kids', label: '🧒 Good with kids', matches: (b) => b.kidFriendly >= 4 },
+  // "Breeds" is doing real work in this label. There is now a per-dog "Good with kids" filter
+  // fed by the rescues' own listings, and two controls reading "Good with kids" would have
+  // produced two identical removable chips above the results meaning different things.
+  { key: 'kids', label: '🧒 Kid-friendly breeds', matches: (b) => b.kidFriendly >= 4 },
   { key: 'apartment', label: '🏢 Apartment-friendly', matches: (b) => b.apartmentFriendly >= 4 },
   { key: 'lowshed', label: '🧥 Low-shedding', matches: (b) => b.shedding !== null && b.shedding <= 2 },
 ]

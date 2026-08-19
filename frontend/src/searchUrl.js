@@ -12,6 +12,10 @@ export const AGES = ['Puppy', 'Young', 'Adult', 'Senior']
 // the origin fails to resolve.
 const SORTS = ['nearest', 'youngest', 'oldest']
 
+// From the rescue's own listing, not from the breed table — see SearchHub for why the two are
+// separate controls. Order is fixed so the URL and the chips read the same way every time.
+export const GOOD_WITH = ['kids', 'dogs', 'cats']
+
 // Radii the UI offers. Anything else in a URL is ignored rather than trusted — this value
 // goes straight into a distance comparison.
 const RADII = ['25', '50', '100', '250']
@@ -30,6 +34,9 @@ export function parseSearchUrl(search, usStates) {
     size: match(SIZES, params.get('size')) ?? '',
     age: match(AGES, params.get('age')) ?? '',
     traits: (params.get('traits') ?? '').split(',').filter(Boolean),
+    // Unknown values are dropped rather than passed through: this goes into a filter that
+    // removes dogs, and a typo in a shared link should not silently narrow someone's search.
+    goodWith: GOOD_WITH.filter((w) => (params.get('goodWith') ?? '').split(',').includes(w)),
     goal: GOALS.includes(goal) ? goal : DEFAULT_GOAL,
     sort: match(SORTS, params.get('sort')) ?? '',
     // Five digits or nothing. A malformed ZIP would fail the lookup anyway, but rejecting it
@@ -42,7 +49,7 @@ export function parseSearchUrl(search, usStates) {
   }
 }
 
-export function buildSearchQuery({ breed, state, city, size, age, traits, goal, sort, dog, zip, radius }) {
+export function buildSearchQuery({ breed, state, city, size, age, traits, goodWith, goal, sort, dog, zip, radius }) {
   const params = new URLSearchParams()
   if (breed) params.set('breed', breed)
   if (state) params.set('state', state)
@@ -50,6 +57,8 @@ export function buildSearchQuery({ breed, state, city, size, age, traits, goal, 
   if (size) params.set('size', size)
   if (age) params.set('age', age)
   if (traits.length) params.set('traits', traits.join(','))
+  // Canonical order, so two searches for the same thing produce the same URL.
+  if (goodWith?.length) params.set('goodWith', GOOD_WITH.filter((w) => goodWith.includes(w)).join(','))
   if (goal !== DEFAULT_GOAL) params.set('goal', goal)
   if (sort) params.set('sort', sort)
   if (zip) params.set('zip', zip)
