@@ -395,6 +395,52 @@ const feeApiNeedsNoBreed = await fees.evaluate(async () => {
   return res.ok && body.level === 'StopPaying'
 })
 await fees.close()
+// The seller check: the only thing in the app that ends in a public database rather than in
+// advice. Under the Animal Welfare Act a breeder needs a USDA licence when they keep more than
+// four breeding females AND sell sight-unseen, and a puppy shipped to a buyer is not a
+// face-to-face sale — so the exemption a shipper claims can only be the four-females one.
+const seller = await browser.newPage()
+const askSeller = async (delivery, licence) => {
+  const card = seller.locator('[data-testid="seller-check"]').first()
+  await card.locator(`button:has-text("${delivery}")`).click()
+  await seller.waitForTimeout(150)
+  if (licence) await card.locator(`button:has-text("${licence}")`).click()
+  await card.locator('button:has-text("What does that mean?")').click()
+  await seller.waitForSelector('[data-testid="seller-verdict"]')
+  const verdict = card.locator('[data-testid="seller-verdict"]')
+  return {
+    text: await verdict.innerText(),
+    warning: ((await verdict.getAttribute('class')) ?? '').includes('alert-error'),
+  }
+}
+await seller.goto(BASE)
+await seller.waitForSelector('[data-testid="seller-check"]', { timeout: 20000 })
+
+const SHIPS = "They'd ship it to me"
+const IN_PERSON = "I'd see the puppy first"
+// The one branch that warns, and the reason it does: both answers are trivially easy to give.
+const sellerRefuses = await askSeller(SHIPS, "They won't say")
+// A number is something to check, not something to trust — it can be copied off another site.
+const sellerGaveNumber = await askSeller(SHIPS, 'They gave me a number')
+// The line that does the work.
+const sellerClaimsExempt = await askSeller(SHIPS, "They say they don't need one")
+// The other direction: most good hobby breeders are legitimately exempt, and saying "this check
+// doesn't apply" is worth more than manufacturing a warning that points buyers away from them.
+const sellerInPerson = await askSeller(IN_PERSON, null)
+
+// The licence question is only asked where the answer means something.
+await seller.locator(`button:has-text("${IN_PERSON}")`).first().click()
+await seller.waitForTimeout(300)
+const licenceAskedInPerson = await seller.locator('text=USDA licence number?').count()
+await seller.goto(BASE + '/safe#vet-a-breeder')
+await seller.waitForTimeout(1200)
+const sellerCheckInGuide = await seller.locator('#vet-a-breeder [data-testid="seller-check"]').count()
+await seller.close()
+console.log('seller check — refuses:', JSON.stringify(sellerRefuses.text.split('\n')[0]),
+  '| in person:', JSON.stringify(sellerInPerson.text.split('\n')[0]),
+  '| licence asked in person:', licenceAskedInPerson,
+  '| in guide:', sellerCheckInGuide)
+
 // Filtering on good-with. The display landed first; this is the filter, and it is the one place
 // in the app where "unknown is not no" and "no really means no" have to hold at the same time.
 const gw = await browser.newPage()
@@ -832,6 +878,18 @@ const checks = {
   'and hidden when buying, where there are no dogs to narrow': gwGroupWhenBuying === 0,
   'the breed narrower and the dog filter make distinguishable chips': chipsAreDistinguishable,
   'the unconfirmed banner names the field actually filtered on': caveatNamesTheRightField,
+  // The seller check. A licence is a floor, never an endorsement — and its absence is only
+  // meaningful for a sight-unseen sale.
+  'a shipper who will not produce a licence number is the one warning': sellerRefuses.warning
+    && /no innocent silence/i.test(sellerRefuses.text),
+  'a licence number is something to verify, not to trust': !sellerGaveNumber.warning
+    && /name and address match/i.test(sellerGaveNumber.text),
+  'holding a licence is never presented as an endorsement': /floor/i.test(sellerGaveNumber.text),
+  'a shipped puppy cannot be a face-to-face sale': /not a face-to-face sale/i.test(sellerClaimsExempt.text),
+  'seeing the puppy in person takes licensing off the table': !sellerInPerson.warning
+    && /proves nothing/i.test(sellerInPerson.text),
+  'the licence question is only asked when it could matter': licenceAskedInPerson === 0,
+  'the seller check is on the buying path and in the vetting section': sellerCheckInGuide === 1,
   'detail view opens in-app': detailOpen === 1 && detailAddressable,
   'detail view closes on Escape': detailClosed,
   'shared dog link resolves': sharedResolves,

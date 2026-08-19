@@ -231,6 +231,27 @@ Honesty beats marketing — cautions and coverage limits are stated plainly.
 - **"We don't recognise it" must not read as "it's fine".** The catalog lists fees people have
   already reported, and a scammer renames one for free. Once money has moved, an unrecognised
   fee still warns — the sequence decides, not the name.
+- **One check ends in a database rather than in advice, and it is worth more than the rest.**
+  Everything else here tells a buyer what to look for; the seller check tells them a fact they can
+  verify against USDA APHIS. A licence is required when a breeder keeps more than four breeding
+  females *and* sells sight-unseen, and the load-bearing line is that **a puppy shipped to you is
+  not a face-to-face sale** — so a shipper's exemption claim can only be the four-females one,
+  which is testable against their own advertising. Only the sight-unseen-and-won't-answer pairing
+  warns, because both honest answers take one sentence to give and there is no innocent silence.
+- **A licence is a floor, and its absence is not an accusation.** Both errors are stated in the
+  verdicts rather than left to inference: holding one means minimum standards enforced by
+  unannounced inspection and says nothing about quality, while a small breeder selling
+  face-to-face needs none at all — that is most good hobby breeders, and a warning there would
+  push buyers away from exactly the sellers this app wants them using. The in-person branch says
+  plainly that the check doesn't apply and redirects to what does (the mother, the conditions,
+  health tests on paper).
+- **A per-breed scam risk score was researched and rejected.** BBB's "Yorkies, Dachshunds and
+  French Bulldogs are ~30% of puppy scams" is 2022 data, and their 2025 update drops Yorkies for
+  German Shepherds and reports raw counts with no denominator. Without a popularity baseline the
+  figure mostly restates which breeds are in demand, over 40 breeds appear in reports, and a
+  badge on three breeds would function as an all-clear on the other 172 — which BBB explicitly
+  contradicts. Not built; the bait breeds stay as guidance in the red-flags section, where they
+  are context rather than a per-breed verdict.
 - **A safety check must not read as an all-clear.** The price check says out loud that
   a believable price proves nothing, because scammers price realistically. Warnings
   use `alert-error`; everything else stays calm, since a page that alarms at every

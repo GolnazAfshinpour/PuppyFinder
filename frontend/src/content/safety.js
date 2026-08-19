@@ -222,6 +222,7 @@ export const SAFETY_SECTIONS = [
       'Ask for the parents\' health-test results (OFA, PennHIP, Embark), not just "vet checked". Reputable breeders volunteer these.',
       'Expect the breeder to interview YOU. Good breeders care where their puppies go; no questions asked is a bad sign.',
       'Get a written contract with a health guarantee and a take-back clause — responsible breeders take their dogs back at any age, no questions.',
+      'Ask for their USDA licence number if they are shipping the puppy to you. A breeder with more than four breeding females who sells sight-unseen is required by federal law to hold one, and it is verifiable in APHIS\'s public search tool — check the name and address match, and read the inspection reports attached to the record. A licence is a floor, not a recommendation; equally, a small breeder selling face-to-face needs none, so its absence there proves nothing.',
       'Verify registration claims: AKC-registered litters can be confirmed with the AKC. "Registration papers available for extra cost" is a red flag.',
       'Ask for references — their vet, and families from previous litters — and actually call them.',
     ],

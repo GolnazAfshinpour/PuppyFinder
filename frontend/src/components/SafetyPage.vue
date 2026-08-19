@@ -2,6 +2,7 @@
 import { onMounted } from 'vue'
 import FeeCheck from './FeeCheck.vue'
 import PuppyLogo from './PuppyLogo.vue'
+import SellerCheck from './SellerCheck.vue'
 import {
   DISCLAIMER,
   GUIDE_META,
@@ -135,6 +136,9 @@ function setMeta(attr, key, content) {
         good; typing it in and being told is better.
       -->
       <FeeCheck v-if="s.slug === 'escalating-fees'" class="mt-5" />
+      <!-- Same reasoning as the fee check above: the section explains how to vet a breeder, and
+           this is the one part of it that ends in a public database rather than in advice. -->
+      <SellerCheck v-if="s.slug === 'vet-a-breeder'" class="mt-5" />
     </article>
 
     <p class="mx-auto mt-8 max-w-prose text-center text-xs opacity-60">{{ DISCLAIMER }}</p>

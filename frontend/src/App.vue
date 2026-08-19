@@ -13,6 +13,7 @@ import ListingCard from './components/ListingCard.vue'
 import DogDetail from './components/DogDetail.vue'
 import BreedCost from './components/BreedCost.vue'
 import FeeCheck from './components/FeeCheck.vue'
+import SellerCheck from './components/SellerCheck.vue'
 import AlertSignup from './components/AlertSignup.vue'
 import BreedQuiz from './components/BreedQuiz.vue'
 import SourcedPrices from './components/SourcedPrices.vue'
@@ -835,6 +836,12 @@ onMounted(() => {
               @open-quiz="quizOpen = true"
               @open-prices="pricesOpen = true"
             />
+            <!--
+              The buying path in the order the decision happens: what should it cost, is this
+              seller real, and only then what to do when they ask for more money. Vetting comes
+              before the fee check because it happens before there is a fee to question.
+            -->
+            <SellerCheck />
             <!--
               Straight after "is this quote sane", because it is the same question one step
               later: the quote was fine and now they want $350 more. It needs no price range,

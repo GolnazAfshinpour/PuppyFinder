@@ -23,8 +23,15 @@ public enum FeeAsker
     TransporterIBooked,
 }
 
-/// <summary>One thing the reader can do next. Concrete and checkable, never "be careful".</summary>
-public record FeeAction(string Text, string? Href = null);
+/// <summary>
+/// One thing the reader can do next. Concrete and checkable, never "be careful".
+///
+/// <para>
+/// Shared with <see cref="SellerCheck"/>: both answer "what do I do now", and duplicating the
+/// type would let the two drift into rendering differently for no reason.
+/// </para>
+/// </summary>
+public record SafetyAction(string Text, string? Href = null);
 
 /// <summary>What a seller's request for money means.</summary>
 /// <param name="Level">StopPaying | Invented | Handoff | Papers | Real | Unrecognised</param>
@@ -38,7 +45,7 @@ public record FeeVerdict(
     string? Matched = null,
     int? Amount = null,
     bool Refundable = false,
-    IReadOnlyList<FeeAction>? Actions = null);
+    IReadOnlyList<SafetyAction>? Actions = null);
 
 /// <summary>
 /// Screens what a seller is asking money for, without needing a price range.
@@ -114,7 +121,7 @@ public static class FeeCheck
     /// to fly or drive and pick the animal up — a seller who will not arrange that has told you
     /// what you needed to know, without any analysis of the fee.
     /// </summary>
-    private static readonly FeeAction PickupTest = new(
+    private static readonly SafetyAction PickupTest = new(
         "Offer to collect the dog yourself — say you will fly or drive to them this week and take "
         + "it home in your own car. A real puppy can be picked up. This ends the conversation "
         + "faster than arguing about the fee.");
@@ -123,18 +130,18 @@ public static class FeeCheck
     /// Fake transport sites are real ones with the company name swapped, so their own words are
     /// the thing that gives them away.
     /// </summary>
-    private static readonly FeeAction CopiedTextTest = new(
+    private static readonly SafetyAction CopiedTextTest = new(
         "Paste a full sentence from their email or website into a search engine. These companies "
         + "are built by copying a real transporter's site and changing the name, so their own "
         + "words usually turn up on somebody else's page.");
 
-    private static readonly FeeAction VerifyWithIpata = new(
+    private static readonly SafetyAction VerifyWithIpata = new(
         "Look the company up in IPATA's member directory, not through any link they sent you. "
         + "Real pet shippers are members, scammers copy the IPATA logo — and no genuine shipping "
         + "company has \"IPATA\" in its own name.",
         "https://www.ipata.org/");
 
-    private static readonly FeeAction UnrecoverableRails = new(
+    private static readonly SafetyAction UnrecoverableRails = new(
         "Send nothing by wire, Western Union, MoneyGram, gift card, Zelle, Cash App or crypto. "
         + "Those are chosen because they cannot be reversed, not because they are convenient.");
 

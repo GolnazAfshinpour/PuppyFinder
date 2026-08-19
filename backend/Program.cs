@@ -227,6 +227,16 @@ app.MapGet("/api/fee-check", (string? fee, bool? paid, string? asker) =>
     Results.Ok(FeeCheck.Evaluate(fee, paid ?? false, FeeCheck.ParseAsker(asker))))
 .WithName("CheckFee");
 
+// Whether this seller is legally required to hold a USDA licence, and what their answer means.
+// The only check here that ends in a public database rather than in advice: under the Animal
+// Welfare Act a breeder needs one when they keep more than four breeding females AND sell
+// sight-unseen, and a puppy shipped to a buyer is not a face-to-face sale.
+app.MapGet("/api/seller-check", (string? delivery, string? licence) =>
+    Results.Ok(SellerCheck.Evaluate(
+        SellerCheck.ParseDelivery(delivery),
+        SellerCheck.ParseLicence(licence))))
+.WithName("CheckSeller");
+
 // The sources behind a breed's range — what the UI cites instead of asserting
 // "verified" on its own.
 app.MapGet("/api/price-sources", async (string breed, PriceStore prices, IConfiguration config, CancellationToken ct) =>
