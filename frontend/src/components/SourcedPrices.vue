@@ -9,7 +9,9 @@ const props = defineProps({
 
 const emit = defineEmits(['close', 'pick-breed'])
 
-useModal(() => emit('close'))
+const box = ref(null)
+const closeButton = ref(null)
+useModal(() => emit('close'), closeButton, box)
 
 // The gap this closes: the hero advertised "50 sourced price ranges" as plain text, and the
 // only way to see any of them was to guess a breed in the dropdown, or read the card's six
@@ -65,10 +67,10 @@ function pick(slug) {
 
 <template>
   <div class="modal modal-open" @click.self="$emit('close')">
-    <div class="modal-box max-w-3xl">
+    <div ref="box" class="modal-box max-w-3xl" role="dialog" aria-modal="true" aria-labelledby="sourced-prices-title">
       <div class="flex items-start justify-between gap-4">
         <div>
-          <h2 class="font-display text-2xl font-semibold">
+          <h2 id="sourced-prices-title" class="font-display text-2xl font-semibold">
             {{ sourced.length }} breeds with a sourced price range
           </h2>
           <p class="mt-1 max-w-prose text-sm opacity-70">
@@ -76,7 +78,7 @@ function pick(slug) {
             sources — never our own estimate. Pick a breed to check a quote against it.
           </p>
         </div>
-        <button type="button" class="btn btn-sm btn-circle btn-ghost" aria-label="Close" @click="$emit('close')">
+        <button ref="closeButton" type="button" class="btn btn-sm btn-circle btn-ghost" aria-label="Close" @click="$emit('close')">
           ✕
         </button>
       </div>

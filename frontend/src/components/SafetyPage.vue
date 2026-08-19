@@ -1,8 +1,11 @@
 <script setup>
-import { onMounted } from 'vue'
+import { onMounted, ref } from 'vue'
+import { loadFavorites, loadRecent, toggleFavorite } from '../favorites.js'
 import FeeCheck from './FeeCheck.vue'
 import PuppyLogo from './PuppyLogo.vue'
+import SavedDogs from './SavedDogs.vue'
 import SellerCheck from './SellerCheck.vue'
+import ThemePicker from './ThemePicker.vue'
 import {
   DISCLAIMER,
   GUIDE_META,
@@ -39,6 +42,28 @@ onMounted(() => {
   document.getElementById(slug)?.scrollIntoView()
 })
 
+// The guide used to be a one-way door: its nav had no theme toggle and no way back to a
+// saved dog, so a reader who arrived from the app lost both until they left. Favorites live
+// in localStorage, so this page can serve them without the app's state; opening one
+// navigates back into the app, which owns the detail view.
+// Loaded on mount, not at setup: this page prerenders at build time, where localStorage
+// doesn't exist — and a crawler shouldn't see a "Your dogs" button anyway.
+const favorites = ref([])
+const recent = ref([])
+const savedOpen = ref(false)
+onMounted(() => {
+  favorites.value = loadFavorites()
+  recent.value = loadRecent()
+})
+
+function openDog(id) {
+  window.location.href = `/?dog=${encodeURIComponent(id)}`
+}
+
+function unsave(listing) {
+  favorites.value = toggleFavorite(listing)
+}
+
 function setMeta(attr, key, content) {
   let tag = document.head.querySelector(`meta[${attr}="${key}"]`)
   if (!tag) {
@@ -51,17 +76,38 @@ function setMeta(attr, key, content) {
 </script>
 
 <template>
+  <a
+    href="#main"
+    class="btn btn-primary btn-sm sr-only focus:not-sr-only focus:fixed focus:top-2 focus:left-2 focus:z-50"
+  >
+    Skip to content
+  </a>
+
   <nav class="bg-base-200/80 sticky top-0 z-40 backdrop-blur-md">
     <div class="mx-auto flex max-w-3xl items-center justify-between gap-3 px-4 py-2 sm:px-6">
       <a href="/" class="flex items-center gap-2 no-underline">
         <PuppyLogo class="h-9 w-9 shrink-0" />
         <span class="font-display text-xl font-semibold tracking-tight">PuppyFinder</span>
       </a>
-      <a href="/" class="btn btn-ghost btn-sm">🔎 <span class="hidden sm:inline">Find a puppy</span></a>
+      <div class="flex items-center gap-1">
+        <button
+          v-if="favorites.length || recent.length"
+          type="button"
+          class="btn btn-ghost btn-sm"
+          :aria-label="`Your dogs — ${favorites.length} saved`"
+          @click="savedOpen = true"
+        >
+          ❤️
+          <span v-if="favorites.length" class="badge badge-primary badge-sm">{{ favorites.length }}</span>
+          <span class="hidden sm:inline">Your dogs</span>
+        </button>
+        <a href="/" class="btn btn-ghost btn-sm">🔎 <span class="hidden sm:inline">Find a puppy</span></a>
+        <ThemePicker />
+      </div>
     </div>
   </nav>
 
-  <main class="mx-auto max-w-3xl px-4 pt-8 pb-16 sm:px-6">
+  <main id="main" class="mx-auto max-w-3xl px-4 pt-8 pb-16 sm:px-6">
     <header class="mb-6">
       <h1 class="font-display text-3xl leading-[1.1] font-semibold tracking-tight sm:text-4xl">
         {{ GUIDE_META.heading }}
@@ -143,4 +189,13 @@ function setMeta(attr, key, content) {
 
     <p class="mx-auto mt-8 max-w-prose text-center text-xs opacity-60">{{ DISCLAIMER }}</p>
   </main>
+
+  <SavedDogs
+    v-if="savedOpen"
+    :favorites="favorites"
+    :recent="recent"
+    @close="savedOpen = false"
+    @open-dog="openDog"
+    @unsave="unsave"
+  />
 </template>

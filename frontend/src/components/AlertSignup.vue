@@ -133,8 +133,8 @@ async function save() {
           Alert me
         </button>
       </form>
-      <p v-if="savedFor" class="text-success max-w-prose text-xs">✓ Alert saved — we'll email you about new dogs ({{ savedFor }}).</p>
-      <p v-if="error" class="text-error text-xs">{{ error }}</p>
+      <p v-if="savedFor" role="status" class="text-success max-w-prose text-xs">✓ Alert saved — we'll email you about new dogs ({{ savedFor }}).</p>
+      <p v-if="error" role="alert" class="text-error text-xs">{{ error }}</p>
 
       <button
         v-if="myAlerts === null"

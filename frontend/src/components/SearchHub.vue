@@ -41,7 +41,7 @@ const RADIUS_OPTIONS = [
 const emit = defineEmits([
   'update:breed', 'update:state', 'update:city', 'update:size', 'update:age', 'update:sex',
   'update:traits', 'update:goodWith', 'update:goal', 'update:zip', 'update:radius',
-  'open-quiz', 'clear', 'near-me',
+  'open-quiz', 'clear', 'near-me', 'close',
 ])
 
 // Real per-dog data, not breed temperament: RescueGroups publishes isKidsOk / isDogsOk /
@@ -125,8 +125,11 @@ function toggleTrait(key) {
         </button>
       </div>
 
-      <div>
-        <span class="label-text mb-1 block text-xs font-bold tracking-wide uppercase opacity-60">I want to…</span>
+      <!-- role="group" + aria-pressed on every toggle cluster in this panel: selected state
+           used to be colour alone (btn-primary vs btn-outline), invisible to assistive tech
+           and a WCAG 1.4.1 miss. The heading spans get ids so each group announces its name. -->
+      <div role="group" aria-labelledby="filter-goal-label">
+        <span id="filter-goal-label" class="label-text mb-1 block text-xs font-bold tracking-wide uppercase opacity-60">I want to…</span>
         <div class="join join-vertical w-full">
           <button
             v-for="g in GOALS"
@@ -134,6 +137,7 @@ function toggleTrait(key) {
             type="button"
             class="btn join-item justify-start"
             :class="goal === g.value ? 'btn-primary' : 'btn-outline'"
+            :aria-pressed="goal === g.value"
             @click="emit('update:goal', g.value)"
           >
             {{ g.label }}
@@ -155,13 +159,14 @@ function toggleTrait(key) {
         </p>
       </div>
 
-      <div v-if="goal !== 'buy'">
-        <span class="label-text mb-1 block text-xs font-bold tracking-wide uppercase opacity-60">Age</span>
+      <div v-if="goal !== 'buy'" role="group" aria-labelledby="filter-age-label">
+        <span id="filter-age-label" class="label-text mb-1 block text-xs font-bold tracking-wide uppercase opacity-60">Age</span>
         <div class="flex flex-wrap gap-1.5">
           <button
             type="button"
             class="btn btn-sm"
             :class="age === '' ? 'btn-primary' : 'btn-outline'"
+            :aria-pressed="age === ''"
             @click="emit('update:age', '')"
           >
             Any age
@@ -172,6 +177,7 @@ function toggleTrait(key) {
             type="button"
             class="btn btn-sm"
             :class="age === a ? 'btn-primary' : 'btn-outline'"
+            :aria-pressed="age === a"
             :title="AGE_HINTS[a]"
             @click="emit('update:age', a)"
           >
@@ -259,23 +265,27 @@ function toggleTrait(key) {
         />
       </label>
 
-      <div>
-        <span class="label-text mb-1 block text-xs font-bold tracking-wide uppercase opacity-60">Size</span>
-        <div class="join w-full">
+      <!-- Wrapping chips like Age, not a five-across join: five joined segments in a 320px
+           rail crushed "Teacup" and "Medium" into clipped text on small phones. -->
+      <div role="group" aria-labelledby="filter-size-label">
+        <span id="filter-size-label" class="label-text mb-1 block text-xs font-bold tracking-wide uppercase opacity-60">Size</span>
+        <div class="flex flex-wrap gap-1.5">
           <button
             type="button"
-            class="btn join-item btn-sm flex-1"
+            class="btn btn-sm"
             :class="size === '' ? 'btn-primary' : 'btn-outline'"
+            :aria-pressed="size === ''"
             @click="emit('update:size', '')"
           >
-            Any
+            Any size
           </button>
           <button
             v-for="s in SIZES"
             :key="s"
             type="button"
-            class="btn join-item btn-sm flex-1 px-1"
+            class="btn btn-sm"
             :class="size === s ? 'btn-primary' : 'btn-outline'"
+            :aria-pressed="size === s"
             @click="emit('update:size', s)"
           >
             {{ s }}
@@ -285,8 +295,8 @@ function toggleTrait(key) {
 
       <!-- Filters the dogs, so hidden in buy mode like good-with. Prefix-matched server-side,
            which is what keeps "Male (neutered)" — most shelter dogs — inside "Male". -->
-      <div v-if="goal !== 'buy'">
-        <span class="label-text mb-1 block text-xs font-bold tracking-wide uppercase opacity-60">Sex</span>
+      <div v-if="goal !== 'buy'" role="group" aria-labelledby="filter-sex-label">
+        <span id="filter-sex-label" class="label-text mb-1 block text-xs font-bold tracking-wide uppercase opacity-60">Sex</span>
         <div class="flex flex-wrap gap-1.5">
           <button
             type="button"
@@ -321,8 +331,8 @@ function toggleTrait(key) {
         other dogs and cats, and that is a fact about this dog rather than about its breed.
         Hidden in buy mode, where there are no listings for it to narrow.
       -->
-      <div v-if="goal !== 'buy'">
-        <span class="label-text block text-xs font-bold tracking-wide uppercase opacity-60">
+      <div v-if="goal !== 'buy'" role="group" aria-labelledby="filter-goodwith-label">
+        <span id="filter-goodwith-label" class="label-text block text-xs font-bold tracking-wide uppercase opacity-60">
           Good with
         </span>
         <p class="mb-1 text-xs opacity-60">From each rescue's own listing.</p>
@@ -347,12 +357,12 @@ function toggleTrait(key) {
         </p>
       </div>
 
-      <div>
+      <div role="group" aria-labelledby="filter-traits-label">
         <!-- Named for what it actually does. These score against our breed table, so they prune
              the breed list above rather than the results. The per-dog version is the "Good with"
              group above; keeping the labels distinct is the whole point, since a filter that
              quietly does something other than it says is worse than no filter. -->
-        <span class="label-text mb-1 block text-xs font-bold tracking-wide uppercase opacity-60">
+        <span id="filter-traits-label" class="label-text mb-1 block text-xs font-bold tracking-wide uppercase opacity-60">
           Narrow the breed list
         </span>
         <div class="flex flex-wrap gap-1.5">
@@ -362,6 +372,7 @@ function toggleTrait(key) {
             type="button"
             class="btn btn-xs"
             :class="traits.includes(t.key) ? 'btn-primary' : 'btn-outline'"
+            :aria-pressed="traits.includes(t.key)"
             @click="toggleTrait(t.key)"
           >
             {{ t.label }}
@@ -371,6 +382,12 @@ function toggleTrait(key) {
 
       <button type="button" class="btn btn-outline mt-1 w-full" @click="emit('open-quiz')">
         🐾 Not sure? Take the breed quiz
+      </button>
+
+      <!-- Mobile only: the panel sits above the results in DOM order, so after setting filters
+           in a ~10-section drawer the dogs are a long scroll away. One button ends the errand. -->
+      <button type="button" class="btn btn-primary w-full lg:hidden" @click="emit('close')">
+        Done — show the results
       </button>
     </div>
   </section>

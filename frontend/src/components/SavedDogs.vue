@@ -1,5 +1,5 @@
 <script setup>
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import { useModal } from '../useModal.js'
 
 const props = defineProps({
@@ -9,7 +9,9 @@ const props = defineProps({
 
 const emit = defineEmits(['close', 'open-dog', 'unsave'])
 
-useModal(() => emit('close'))
+const box = ref(null)
+const closeButton = ref(null)
+useModal(() => emit('close'), closeButton, box)
 
 // Recently-viewed minus anything already saved: seeing the same dog in both lists wastes the
 // space and makes the saved list look padded.
@@ -30,16 +32,16 @@ function open(dog) {
 
 <template>
   <div class="modal modal-open" @click.self="$emit('close')">
-    <div class="modal-box max-w-2xl">
+    <div ref="box" class="modal-box max-w-2xl" role="dialog" aria-modal="true" aria-labelledby="saved-dogs-title">
       <div class="flex items-start justify-between gap-4">
         <div>
-          <h2 class="font-display text-2xl font-semibold">Your dogs</h2>
+          <h2 id="saved-dogs-title" class="font-display text-2xl font-semibold">Your dogs</h2>
           <p class="mt-1 max-w-prose text-sm opacity-70">
             Saved on this device — no account, nothing sent anywhere. Shelters remove a dog
             from their feed once it is adopted, so a saved card can outlive the listing.
           </p>
         </div>
-        <button type="button" class="btn btn-sm btn-circle btn-ghost" aria-label="Close" @click="$emit('close')">
+        <button ref="closeButton" type="button" class="btn btn-sm btn-circle btn-ghost" aria-label="Close" @click="$emit('close')">
           ✕
         </button>
       </div>

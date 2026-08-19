@@ -27,7 +27,9 @@ const FIELD_ROWS = [
   <li class="card card-lift bg-base-100">
     <div class="card-body gap-3">
       <div class="flex flex-wrap items-center justify-between gap-2">
-        <h2 class="font-display card-title text-xl font-semibold">{{ site.name }}</h2>
+        <!-- h4, not h2: these render inside ResultsFallback's h2 section, under its h3
+             "Our pick" card, and a jumped level breaks the outline AT users navigate by. -->
+        <h4 class="font-display card-title text-xl font-semibold">{{ site.name }}</h4>
         <span class="badge badge-soft" :class="site.kind === 'Adopt' ? 'badge-accent' : 'badge-secondary'">
           {{ site.kind }}
         </span>

@@ -5,7 +5,10 @@ import { ref } from 'vue'
 const DARK = 'goldenhour-dark'
 const LIGHT = 'goldenhour'
 
-const isDark = ref(document.documentElement.dataset.theme === DARK)
+// Guarded for the prerender: /safe renders at build time, where no document exists.
+const isDark = ref(
+  typeof document !== 'undefined' && document.documentElement.dataset.theme === DARK,
+)
 
 function toggle() {
   isDark.value = !isDark.value
@@ -16,12 +19,15 @@ function toggle() {
 </script>
 
 <template>
+  <!-- aria-label as well as title: with emoji content, the accessible name was "☀️",
+       which a screen reader speaks as "sun" with no hint that it's a control. -->
   <button
     type="button"
     class="btn btn-ghost btn-sm btn-circle text-base"
     :title="isDark ? 'Switch to light mode' : 'Switch to dark mode'"
+    :aria-label="isDark ? 'Switch to light mode' : 'Switch to dark mode'"
     @click="toggle"
   >
-    {{ isDark ? '🌙' : '☀️' }}
+    <span aria-hidden="true">{{ isDark ? '🌙' : '☀️' }}</span>
   </button>
 </template>

@@ -7,7 +7,9 @@ import { useModal } from '../useModal.js'
 
 const emit = defineEmits(['close', 'select', 'profile-saved'])
 
-useModal(() => emit('close'))
+const box = ref(null)
+const closeButton = ref(null)
+useModal(() => emit('close'), closeButton, box)
 
 const QUESTIONS = [
   {
@@ -136,10 +138,12 @@ function reset() {
 
 <template>
   <div class="modal modal-open" @click.self="emit('close')">
-    <div class="modal-box max-w-xl">
+    <div ref="box" class="modal-box max-w-xl" role="dialog" aria-modal="true" aria-label="Breed quiz">
       <button
+        ref="closeButton"
         type="button"
         class="btn btn-sm btn-circle btn-ghost absolute top-3 right-3"
+        aria-label="Close"
         @click="emit('close')"
       >
         ✕
@@ -174,7 +178,7 @@ function reset() {
           </div>
         </fieldset>
 
-        <p v-if="error" class="text-error text-sm">{{ error }}</p>
+        <p v-if="error" role="alert" class="text-error text-sm">{{ error }}</p>
         <p class="mb-2 text-center text-xs opacity-60">
           {{ answered }} of {{ REQUIRED.length }} answered · budget is optional
         </p>
@@ -210,7 +214,12 @@ function reset() {
                     <span class="card-title text-base">{{ i === 0 ? '🏆 ' : '' }}{{ m.displayName }}</span>
                     <span class="badge badge-primary badge-soft font-bold">{{ m.matchPercent }}% match</span>
                   </div>
-                  <progress class="progress progress-primary w-full" :value="m.matchPercent" max="100" />
+                  <progress
+                    class="progress progress-primary w-full"
+                    :value="m.matchPercent"
+                    max="100"
+                    :aria-label="`${m.displayName} fit: ${m.matchPercent}%`"
+                  />
                 </div>
               </div>
               <p class="text-sm">{{ m.blurb }}</p>

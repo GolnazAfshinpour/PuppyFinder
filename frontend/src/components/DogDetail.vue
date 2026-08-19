@@ -21,6 +21,7 @@ const dog = computed(() => props.listing ?? fetched.value)
 
 const imageFailed = ref(false)
 const closeButton = ref(null)
+const box = ref(null)
 
 // Every photo the source published; the single imageUrl is the fallback for saved-dog
 // snapshots and the county feeds, which carry one. Adopters consistently want more than one
@@ -55,9 +56,9 @@ const temperament = computed(() => (dog.value ? goodWithBadges(dog.value) : []))
 // the answer is no.
 const unrecorded = computed(() => (dog.value ? splitGoodWith(dog.value).unknown : []))
 
-// Escape, scroll lock and initial focus now come from the shared composable — this was the
-// only dialog that had them, and the other three each needed the same three behaviours.
-useModal(() => emit('close'), closeButton)
+// Escape, scroll lock, initial focus, the focus trap and focus restoration all come from the
+// shared composable — this was the only dialog that had even the first three.
+useModal(() => emit('close'), closeButton, box)
 
 onMounted(async () => {
   if (!props.listing && props.listingId) {
@@ -80,12 +81,15 @@ onMounted(async () => {
 
 <template>
   <div class="modal modal-open" @click.self="emit('close')">
+    <!-- aria-label only when there is no name to point at: setting both makes the label win
+         and the dog's actual name lose, per the accName computation order. -->
     <div
+      ref="box"
       class="modal-box max-w-3xl p-0"
       role="dialog"
       aria-modal="true"
       :aria-labelledby="dog ? 'dog-detail-name' : undefined"
-      aria-label="Dog details"
+      :aria-label="dog ? undefined : 'Dog details'"
     >
       <button
         ref="closeButton"

@@ -252,6 +252,17 @@ const unconfirmedReason = computed(() => {
   return `${parts.slice(0, -1).join(', ')} or ${parts[parts.length - 1]}`
 })
 
+// Spoken to screen readers when a search settles (see the role="status" node in the
+// template). Updated only when loading finishes, so rapid filter changes don't queue a
+// backlog of announcements for results that were already replaced.
+const resultsAnnouncement = ref('')
+watch(loadingListings, (loading) => {
+  if (loading) return
+  resultsAnnouncement.value = listingsError.value
+    ? 'Loading the dogs failed.'
+    : `${resultsHeading.value}${selectedBreedName.value ? ` — ${selectedBreedName.value}s` : ''}`
+})
+
 // Reveal in pages rather than dumping every dog into one scroll: 53 cards measured 10,539px,
 // about ten screens, with no way to tell how far in you were. The full count stays in the
 // heading, so this shortens the page without hiding how many dogs there are — the honest-
@@ -689,6 +700,15 @@ onMounted(() => {
 </script>
 
 <template>
+  <!-- Visually hidden until focused: the first Tab stop skips the nav and hero for keyboard
+       and screen-reader users, who otherwise walk every chip to reach the dogs. -->
+  <a
+    href="#main"
+    class="btn btn-primary btn-sm sr-only focus:not-sr-only focus:fixed focus:top-2 focus:left-2 focus:z-50"
+  >
+    Skip to content
+  </a>
+
   <!-- Glass sticky nav: identity + global actions, nothing else. -->
   <nav class="bg-base-200/80 sticky top-0 z-40 backdrop-blur-md">
     <div class="mx-auto flex max-w-6xl items-center justify-between gap-3 px-4 py-2 sm:px-6">
@@ -724,7 +744,11 @@ onMounted(() => {
     </div>
   </nav>
 
-  <main class="mx-auto max-w-6xl px-4 pt-6 pb-16 sm:px-6">
+  <main id="main" class="mx-auto max-w-6xl px-4 pt-6 pb-16 sm:px-6">
+    <!-- The one place a filter change is *announced*. Sighted users watch the grid repaint;
+         a screen reader heard nothing at all — no busy state, no new count, nothing. -->
+    <p role="status" aria-live="polite" class="sr-only">{{ resultsAnnouncement }}</p>
+
     <!--
       Editorial hero: one headline doing the brand work, numeric trust under it.
 
@@ -807,13 +831,20 @@ onMounted(() => {
 
     <!-- Mobile: filters live behind a toggle so dogs stay above the fold. -->
     <div class="mb-4 lg:hidden">
-      <button type="button" class="btn btn-outline btn-block" @click="filtersOpen = !filtersOpen">
+      <button
+        type="button"
+        class="btn btn-outline btn-block"
+        :aria-expanded="filtersOpen"
+        aria-controls="search-filters"
+        @click="filtersOpen = !filtersOpen"
+      >
         {{ filtersOpen ? '✕ Hide filters' : `⚙︎ Filters${activeChips.length ? ` (${activeChips.length})` : ''}` }}
       </button>
     </div>
 
     <div class="lg:grid lg:grid-cols-[320px_minmax(0,1fr)] lg:items-start lg:gap-8">
       <aside
+        id="search-filters"
         class="mb-8 lg:sticky lg:top-16 lg:mb-0 lg:max-h-[calc(100vh-5rem)] lg:overflow-y-auto"
         :class="filtersOpen ? 'block' : 'hidden lg:block'"
       >
@@ -838,6 +869,7 @@ onMounted(() => {
           @open-quiz="quizOpen = true"
           @clear="resetSearch"
           @near-me="locateMe"
+          @close="filtersOpen = false"
         />
       </aside>
 
@@ -864,15 +896,18 @@ onMounted(() => {
         <div v-else class="mb-3" />
 
         <div v-if="activeChips.length" class="mb-4 flex flex-wrap items-center gap-1.5">
+          <!-- The action lives in the accessible name, not only in a title tooltip: "Beagle ✕"
+               announced bare reads as a state, not as the remove button it is. -->
           <button
             v-for="chip in activeChips"
             :key="chip.key"
             type="button"
             class="badge badge-primary badge-soft gap-1 py-3"
             :title="`Remove ${chip.label}`"
+            :aria-label="`Remove filter: ${chip.label}`"
             @click="chip.clear()"
           >
-            {{ chip.label }} ✕
+            {{ chip.label }} <span aria-hidden="true">✕</span>
           </button>
           <button type="button" class="link text-xs opacity-60" @click="clearAllFilters">Clear all</button>
         </div>
@@ -927,7 +962,7 @@ onMounted(() => {
           <!-- In both mode the adopt section below renders the one directory, with both kinds
                of site in it — two directories a scroll apart would each look like all there is. -->
           <template v-if="goal === 'buy'">
-            <div v-if="error" class="alert alert-error mt-6">{{ error }}</div>
+            <div v-if="error" role="alert" class="alert alert-error mt-6">{{ error }}</div>
             <ResultsFallback
               v-else
               :sites="sites"
@@ -1058,7 +1093,7 @@ onMounted(() => {
               </div>
             </li>
           </ul>
-          <div v-else-if="listingsError" class="alert alert-error flex flex-wrap items-center justify-between gap-2">
+          <div v-else-if="listingsError" role="alert" class="alert alert-error flex flex-wrap items-center justify-between gap-2">
             <span>{{ listingsError }}</span>
             <button type="button" class="btn btn-sm" @click="loadListings">Try again</button>
           </div>
@@ -1125,7 +1160,7 @@ onMounted(() => {
           </div>
 
 
-          <div v-if="error" class="alert alert-error mt-6">{{ error }}</div>
+          <div v-if="error" role="alert" class="alert alert-error mt-6">{{ error }}</div>
           <ResultsFallback
             v-else
             :sites="sites"
