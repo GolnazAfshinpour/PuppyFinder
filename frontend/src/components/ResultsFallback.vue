@@ -76,7 +76,7 @@ const filterSummary = computed(() =>
 <template>
   <section :class="flush ? '' : 'border-base-300 mt-12 border-t pt-8'">
     <template v-if="buying">
-      <h2 class="mb-1 text-2xl font-bold">Puppies from breeders</h2>
+      <h2 class="font-display mb-1 text-2xl font-semibold tracking-tight">Puppies from breeders</h2>
       <p class="text-base-content/70 mb-5 max-w-prose text-sm">
         We don't list breeder puppies directly — no breeder marketplace offers a legitimate
         data feed. What we can do is tell you which ones actually vet their breeders and
@@ -84,7 +84,7 @@ const filterSummary = computed(() =>
       </p>
     </template>
     <template v-else>
-      <h2 class="mb-1 text-2xl font-bold">
+      <h2 class="font-display mb-1 text-2xl font-semibold tracking-tight">
         {{ resultCount ? 'Want to search wider?' : 'Where to look instead' }}
       </h2>
       <p class="text-base-content/70 mb-5 max-w-prose text-sm">{{ coverageLine }}</p>

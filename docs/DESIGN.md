@@ -34,16 +34,17 @@ Honey and sage support; they never compete.
 
 | Level | Font | Class recipe | Usage |
 |---|---|---|---|
-| Hero (one per page) | Fraunces 600 | `font-display text-3xl sm:text-5xl leading-[1.1] tracking-tight` | the single headline |
+| Hero (one per page) | Fraunces 600 | `font-display text-4xl sm:text-6xl leading-[1.1] tracking-tight` | the single headline (content pages step down to `text-3xl sm:text-4xl`) |
 | Wordmark | Fraunces 600 | `font-display text-xl` | nav only |
-| Section heading | Nunito Sans 700 | `text-2xl font-bold` | "Adoptable dogs right now" |
+| Section heading | Fraunces 600 | `font-display text-2xl font-semibold tracking-tight` | "Adoptable dogs right now" |
 | Card title | Fraunces 600 | `font-display text-xl font-semibold` | dog names, site names |
 | Body | Nunito Sans 400 | `text-sm` / `text-base` | everything else |
 | Micro label | Nunito Sans 700 | `text-xs font-bold uppercase tracking-wide opacity-60` | filter group labels |
 
-Fraunces = brand voice, used **only** for the hero, wordmark, and card titles.
-If Fraunces appears more than three levels deep on a screen, it stops being
-special. Never larger than `text-5xl` (3rem) — bigger reads as shouting.
+Fraunces = brand voice, used **only** for the hero, section headings, card
+titles, and the wordmark — body text, labels, and controls stay Nunito Sans,
+which is what keeps the serif special. Never larger than `text-6xl`
+(3.75rem), and only the hero gets that size.
 
 ## 3. Shape, depth, motion
 

@@ -6,6 +6,7 @@ import { loadFavorites, loadRecent, recordViewed, toggleFavorite } from './favor
 import { parseQuery } from './smartSearch.js'
 import { fetchBreedImage } from './dogImages.js'
 import { buildSearchQuery, parseSearchUrl } from './searchUrl.js'
+import { ARTICLES, articlePath } from './content/articles.js'
 import { SAFETY_SECTIONS, safetyPath } from './content/safety.js'
 import SearchHub from './components/SearchHub.vue'
 import ResultsFallback from './components/ResultsFallback.vue'
@@ -757,7 +758,7 @@ onMounted(() => {
       you were browsing shelters. The headline contradicted the page under it.
     -->
     <header class="mb-8 text-center">
-      <h1 class="font-display mx-auto max-w-2xl text-3xl leading-[1.1] font-semibold tracking-tight sm:text-5xl">
+      <h1 class="font-display mx-auto max-w-3xl text-4xl leading-[1.1] font-semibold tracking-tight sm:text-6xl">
         <template v-if="buying">
           Buy a puppy.
           <span class="text-primary">Don't get scammed.</span>
@@ -979,7 +980,7 @@ onMounted(() => {
 
         <template v-if="showAdopt">
           <div class="mb-1 flex flex-wrap items-end justify-between gap-3">
-            <h2 class="flex items-center gap-3 text-2xl font-bold">
+            <h2 class="font-display flex items-center gap-3 text-2xl font-semibold tracking-tight">
               <img
                 v-if="breedPhoto"
                 :src="breedPhoto"
@@ -1221,6 +1222,19 @@ onMounted(() => {
         <li v-for="s in SAFETY_SECTIONS" :key="s.slug">
           <a :href="safetyPath(s.slug)" class="link link-hover opacity-70">
             <span aria-hidden="true">{{ s.emoji }}</span> {{ s.title }}
+          </a>
+        </li>
+      </ul>
+      <!-- The scam-guide entrance pages. A page nothing links to is an orphan however good it
+           is — the same rule that put the safety anchors above into this footer. -->
+      <h2 class="mt-6 mb-3 text-xs font-bold tracking-wide uppercase opacity-60">Scam guides</h2>
+      <ul class="grid list-none gap-x-6 gap-y-1 p-0 text-sm sm:grid-cols-2 lg:grid-cols-4">
+        <li v-for="a in ARTICLES" :key="a.slug">
+          <a :href="articlePath(a.slug)" class="link link-hover opacity-70">{{ a.h1 }}</a>
+        </li>
+        <li>
+          <a href="/embed" class="link link-hover opacity-70">
+            For rescues: a free scam-check widget
           </a>
         </li>
       </ul>
