@@ -15,7 +15,8 @@
   --color-base-200: #faf6ef; /* page canvas */
   --color-base-300: #efe5d6;
   --color-base-content: #2d2117;
-  --color-primary: #c75b39; /* terracotta */
+  --color-primary: #b8512f; /* terracotta — darkened from #c75b39 so small primary text
+                               (4.86:1) and button labels (4.63:1) clear WCAG AA on cream */
   --color-primary-content: #fff6f0;
   --color-secondary: #e8a33d; /* honey */
   --color-secondary-content: #3a2a10;

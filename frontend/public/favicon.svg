@@ -13,7 +13,7 @@
   <circle cx="84" cy="74" r="2.4" fill="#a97c50" opacity="0.8" />
   <path d="M65 96 h10 l-5 6 z" fill="#3d2b1f" />
   <path d="M70 102 v4 M70 106 q-4 4 -8 1 M70 106 q4 4 8 1" stroke="#3d2b1f" stroke-width="1.8" fill="none" stroke-linecap="round" />
-  <path d="M44 111 Q70 126 96 111 L94 118 Q70 131 46 118 Z" fill="#c75b39" />
+  <path d="M44 111 Q70 126 96 111 L94 118 Q70 131 46 118 Z" fill="#b8512f" />
   <circle cx="70" cy="121" r="4.5" fill="#e8a33d" />
   <circle cx="70" cy="121" r="1.6" fill="#3a2a10" opacity="0.55" />
 </svg>

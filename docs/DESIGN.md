@@ -23,7 +23,7 @@ Defined once as the daisyUI themes `goldenhour` / `goldenhour-dark` in
 | `base-100` | `#FFFDF9` | `#2B211A` | card surfaces |
 | `base-300` | `#EFE5D6` | `#3A2D22` | borders, image placeholders |
 | `base-content` | `#2D2117` espresso ink | `#F2E8DC` | text (never pure black/white) |
-| `primary` | `#C75B39` terracotta | `#D97A55` | THE accent: CTAs, links, active states |
+| `primary` | `#B8512F` terracotta | `#D97A55` | THE accent: CTAs, links, active states. The light value is AA-checked both ways (text on cream 4.86:1, `primary-content` label on it 4.63:1) — don't lighten it without re-measuring |
 | `secondary` | `#E8A33D` honey | `#E3AA52` | highlights, "buy" badges, alert card |
 | `accent` | `#7C8B6F` sage | `#93A385` | "adopt" badges, quiet success |
 
