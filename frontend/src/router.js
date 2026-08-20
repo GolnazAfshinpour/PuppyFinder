@@ -13,7 +13,7 @@ const SAFE_PREFIX = '/safe'
 /**
  * @param {string} pathname e.g. "/safe", "/teacup-puppy-scam", "/widget/fee-check"
  * @returns {{name: 'app'} | {name: 'safety', anchor: string} | {name: 'article', slug: string}
- *   | {name: 'widget'} | {name: 'embed'}}
+ *   | {name: 'widget'} | {name: 'embed'} | {name: 'dog', id: string}}
  *
  * The guide is one page. `anchor` is only ever set by a /safe/<slug> URL from when it was
  * eight — those still work, and SafetyPage rewrites them to /safe#<slug> so there stays
@@ -36,6 +36,14 @@ export function parseRoute(pathname) {
 
   if (path === '/widget/fee-check') return { name: 'widget' }
   if (path === '/embed') return { name: 'embed' }
+
+  // A dog you can link to: /dog/<id> is the shareable page for one listing. The in-app
+  // dialog keeps its ?dog= query — this is the URL for everyone outside that search.
+  // A bare /dog falls through to the app like every other unknown path.
+  if (path.startsWith('/dog/')) {
+    const id = decodeURIComponent(path.slice('/dog/'.length))
+    if (id) return { name: 'dog', id }
+  }
 
   const article = findArticle(path.slice(1))
   if (article) return { name: 'article', slug: article.slug }

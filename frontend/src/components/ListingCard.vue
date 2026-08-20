@@ -15,9 +15,9 @@ const props = defineProps({
 defineEmits(['toggle-favorite', 'open'])
 
 // A real href so middle-click and "open in new tab" still work, but the click is
-// intercepted into the in-app detail view. Deliberately just ?dog= with no filters:
-// sharing a dog should open that dog, not the sender's search.
-const detailHref = computed(() => `?dog=${encodeURIComponent(props.listing.id)}`)
+// intercepted into the in-app detail view. It points at the dog's own page rather
+// than ?dog=: sharing a dog should open that dog, not the sender's search.
+const detailHref = computed(() => `/dog/${encodeURIComponent(props.listing.id)}`)
 
 const imageFailed = ref(false)
 

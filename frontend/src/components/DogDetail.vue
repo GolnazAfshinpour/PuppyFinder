@@ -9,9 +9,12 @@ const props = defineProps({
   listing: { type: Object, default: null },
   listingId: { type: String, default: '' },
   favorite: { type: Boolean, default: false },
+  // Standalone /dog/<id> page rather than the in-app dialog: same content, but no modal
+  // shell, no close button, no focus trap, and the name renders as the page's h1.
+  page: { type: Boolean, default: false },
 })
 
-const emit = defineEmits(['close', 'toggle-favorite', 'search-similar'])
+const emit = defineEmits(['close', 'toggle-favorite', 'search-similar', 'loaded'])
 
 const fetched = ref(null)
 const loading = ref(false)
@@ -57,8 +60,9 @@ const temperament = computed(() => (dog.value ? goodWithBadges(dog.value) : []))
 const unrecorded = computed(() => (dog.value ? splitGoodWith(dog.value).unknown : []))
 
 // Escape, scroll lock, initial focus, the focus trap and focus restoration all come from the
-// shared composable — this was the only dialog that had even the first three.
-useModal(() => emit('close'), closeButton, box)
+// shared composable — this was the only dialog that had even the first three. A page needs
+// none of that; `page` never changes for an instance, so the conditional call is safe.
+if (!props.page) useModal(() => emit('close'), closeButton, box)
 
 onMounted(async () => {
   if (!props.listing && props.listingId) {
@@ -66,7 +70,11 @@ onMounted(async () => {
     try {
       const res = await fetch(`/api/listings/${encodeURIComponent(props.listingId)}`)
       if (res.status === 404) gone.value = true
-      else if (res.ok) fetched.value = await res.json()
+      else if (res.ok) {
+        fetched.value = await res.json()
+        // The page shell titles the document from the dog — it has no listing of its own.
+        emit('loaded', fetched.value)
+      }
       else gone.value = true
     } catch {
       gone.value = true
@@ -80,18 +88,21 @@ onMounted(async () => {
 </script>
 
 <template>
-  <div class="modal modal-open" @click.self="emit('close')">
+  <div :class="page ? '' : 'modal modal-open'" @click.self="!page && emit('close')">
     <!-- aria-label only when there is no name to point at: setting both makes the label win
          and the dog's actual name lose, per the accName computation order. -->
     <div
       ref="box"
-      class="modal-box max-w-3xl p-0"
-      role="dialog"
-      aria-modal="true"
-      :aria-labelledby="dog ? 'dog-detail-name' : undefined"
-      :aria-label="dog ? undefined : 'Dog details'"
+      :class="page
+        ? 'border-base-300 bg-base-100 rounded-box overflow-hidden border shadow-md'
+        : 'modal-box max-w-3xl p-0'"
+      :role="page ? undefined : 'dialog'"
+      :aria-modal="page ? undefined : 'true'"
+      :aria-labelledby="!page && dog ? 'dog-detail-name' : undefined"
+      :aria-label="!page && !dog ? 'Dog details' : undefined"
     >
       <button
+        v-if="!page"
         ref="closeButton"
         type="button"
         class="btn btn-sm btn-circle bg-base-100/85 absolute top-3 right-3 z-20 border-none backdrop-blur-sm"
@@ -111,7 +122,9 @@ onMounted(async () => {
            rendering an error. -->
       <div v-else-if="gone || !dog" class="card-body items-center gap-3 text-center">
         <span class="text-4xl">🏡</span>
-        <h2 class="font-display text-2xl font-semibold">This dog is no longer listed</h2>
+        <component :is="page ? 'h1' : 'h2'" class="font-display text-2xl font-semibold">
+          This dog is no longer listed
+        </component>
         <p class="max-w-prose text-sm opacity-70">
           They may well have found a home. The shelters below get new dogs constantly.
         </p>
@@ -161,7 +174,9 @@ onMounted(async () => {
         <div class="card-body gap-3">
           <div class="flex flex-wrap items-start justify-between gap-2">
             <div>
-              <h2 id="dog-detail-name" class="font-display text-3xl font-semibold">{{ dog.name }}</h2>
+              <component :is="page ? 'h1' : 'h2'" id="dog-detail-name" class="font-display text-3xl font-semibold">
+                {{ dog.name }}
+              </component>
               <p v-if="metaLine" class="text-sm opacity-70">{{ metaLine }}</p>
             </div>
             <button

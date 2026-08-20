@@ -59,7 +59,7 @@ onMounted(() => {
 })
 
 function openDog(id) {
-  window.location.href = `/?dog=${encodeURIComponent(id)}`
+  window.location.href = `/dog/${encodeURIComponent(id)}`
 }
 
 function unsave(listing) {
