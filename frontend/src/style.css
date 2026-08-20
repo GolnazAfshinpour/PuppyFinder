@@ -83,6 +83,23 @@
   --font-display: 'Fraunces', 'Palatino', Georgia, serif;
 }
 
+/* Logo fur, tokenized like every other brand color (DESIGN.md §1: no raw hex in
+   components) — the pup dims with the theme instead of glowing against espresso. */
+:root {
+  --puppy-fur: #e8c99b;
+  --puppy-fur-deep: #a97c50;
+  --puppy-muzzle: #f8ecd7;
+  --puppy-ink: #3d2b1f;
+  --puppy-glint: #fff;
+}
+[data-theme='goldenhour-dark'] {
+  --puppy-fur: #cfae7e;
+  --puppy-fur-deep: #8f6a44;
+  --puppy-muzzle: #e6d2b0;
+  --puppy-ink: #33231a;
+  --puppy-glint: #f2e8dc;
+}
+
 body {
   -webkit-tap-highlight-color: transparent;
 }
