@@ -25,6 +25,9 @@ const props = defineProps({
   // resolved to nothing must not look like a working filter.
   zipResolved: { type: Boolean, default: false },
   zipError: { type: String, default: '' },
+  // Live dog count for the mobile sheet's close button, so "apply" says what it will show.
+  // null when there is no countable grid (buy mode, or a search still loading).
+  resultCount: { type: Number, default: null },
 })
 
 // Petfinder's default is 50 miles, which is a reasonable "my area" for most of the US. "Any
@@ -384,11 +387,15 @@ function toggleTrait(key) {
         🐾 Not sure? Take the breed quiz
       </button>
 
-      <!-- Mobile only: the panel sits above the results in DOM order, so after setting filters
-           in a ~10-section drawer the dogs are a long scroll away. One button ends the errand. -->
-      <button type="button" class="btn btn-primary w-full lg:hidden" @click="emit('close')">
-        Done — show the results
-      </button>
+      <!-- Mobile only: sticky at the sheet's bottom edge so the way out is always on screen,
+           and named with the live count so applying filters says what it will show. -->
+      <div class="bg-base-100/95 sticky bottom-0 z-10 -mx-6 -mb-6 rounded-b-[var(--radius-box)] px-6 py-3 backdrop-blur-sm lg:hidden">
+        <button type="button" class="btn btn-primary w-full" @click="emit('close')">
+          {{ resultCount === null
+            ? 'Done — show the results'
+            : `Show ${resultCount} ${resultCount === 1 ? 'dog' : 'dogs'}` }}
+        </button>
+      </div>
     </div>
   </section>
 </template>

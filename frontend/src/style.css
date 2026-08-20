@@ -133,6 +133,18 @@ body {
   transform: scale(1.04);
 }
 
+/* The mobile filter sheet settles in rather than popping. Entrance only: the exit is
+   instant because the element stays mounted and just loses these classes. */
+.drawer-sheet {
+  animation: drawer-in 0.25s ease;
+}
+@keyframes drawer-in {
+  from {
+    transform: translateY(2rem);
+    opacity: 0;
+  }
+}
+
 /* Vestibular safety: no lift, zoom, or shimmer for people who asked motion to stop.
    The shadow still deepens on hover, so cards keep a visible hover state. */
 @media (prefers-reduced-motion: reduce) {
@@ -146,7 +158,8 @@ body {
   .card-lift:hover figure img {
     transform: none;
   }
-  .skeleton {
+  .skeleton,
+  .drawer-sheet {
     animation: none;
   }
 }

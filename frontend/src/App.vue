@@ -4,6 +4,7 @@ import { TRAITS, breedMatches } from './breedFilters.js'
 import { clearProfile, loadProfile, rankListings } from './adopterProfile.js'
 import { loadFavorites, loadRecent, recordViewed, toggleFavorite } from './favorites.js'
 import { parseQuery } from './smartSearch.js'
+import { useDrawer } from './useModal.js'
 import { fetchBreedImage } from './dogImages.js'
 import { buildSearchQuery, parseSearchUrl } from './searchUrl.js'
 import { ARTICLES, articlePath } from './content/articles.js'
@@ -54,6 +55,17 @@ const pricesOpen = ref(false)
 const savedOpen = ref(false)
 const filtersOpen = ref(false) // mobile-only filter drawer state
 const error = ref('')
+
+// The open drawer is a dialog and owes the reader the standard contract: Escape closes,
+// the page behind stops scrolling, Tab stays inside, focus returns to the toggle button.
+const filtersPanel = ref(null)
+useDrawer(filtersOpen, () => (filtersOpen.value = false), filtersPanel)
+// Past the breakpoint the panel is a static sidebar again — release the drawer state so
+// a rotate-to-landscape doesn't leave the page scroll-locked behind an invisible dialog.
+const lgViewport = matchMedia('(min-width: 1024px)')
+lgViewport.addEventListener('change', () => {
+  if (lgViewport.matches) filtersOpen.value = false
+})
 
 // Real dogs are the page now — they load on arrival rather than behind a tab.
 // The site directory moved below them as the fallback for everywhere our feeds
@@ -847,10 +859,18 @@ onMounted(() => {
     </div>
 
     <div class="lg:grid lg:grid-cols-[320px_minmax(0,1fr)] lg:items-start lg:gap-8">
+      <!-- Mobile: a full-screen sheet rather than a class-toggled block pushing the page
+           down — it opens above the nav, scrolls on its own, and behaves as a dialog. -->
       <aside
         id="search-filters"
-        class="mb-8 lg:sticky lg:top-16 lg:mb-0 lg:max-h-[calc(100vh-5rem)] lg:overflow-y-auto"
-        :class="filtersOpen ? 'block' : 'hidden lg:block'"
+        ref="filtersPanel"
+        aria-label="Search filters"
+        :role="filtersOpen ? 'dialog' : undefined"
+        :aria-modal="filtersOpen ? 'true' : undefined"
+        class="lg:sticky lg:top-16 lg:max-h-[calc(100vh-5rem)] lg:overflow-y-auto"
+        :class="filtersOpen
+          ? 'drawer-sheet fixed inset-0 z-50 overflow-y-auto bg-base-200 p-4 lg:static lg:z-auto lg:bg-transparent lg:p-0'
+          : 'hidden lg:block'"
       >
         <SearchHub
           v-model:breed="selectedBreed"
@@ -870,6 +890,7 @@ onMounted(() => {
           v-model:radius="radius"
           :zip-resolved="zipResolved"
           :zip-error="zipError"
+          :result-count="showAdopt && !loadingListings ? rankedListings.length : null"
           @open-quiz="quizOpen = true"
           @clear="resetSearch"
           @near-me="locateMe"
