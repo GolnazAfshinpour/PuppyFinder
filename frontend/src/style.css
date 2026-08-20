@@ -101,6 +101,13 @@
   --puppy-glint: #f2e8dc;
 }
 
+/* Fraunces' wonk axis, for the hero ONLY: the quirky alternate glyphs are the typeface's
+   personality dialed up, right at display size where they read as craft rather than error.
+   Anywhere else it would read as a typo — headings and card titles stay at wonk 0. */
+.display-wonk {
+  font-variation-settings: 'WONK' 1;
+}
+
 body {
   -webkit-tap-highlight-color: transparent;
   min-height: 100vh;

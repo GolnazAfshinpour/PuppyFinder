@@ -44,7 +44,9 @@ Honey and sage support; they never compete.
 Fraunces = brand voice, used **only** for the hero, section headings, card
 titles, and the wordmark — body text, labels, and controls stay Nunito Sans,
 which is what keeps the serif special. Never larger than `text-6xl`
-(3.75rem), and only the hero gets that size.
+(3.75rem), and only the hero gets that size. The hero also gets Fraunces'
+wonk axis (`.display-wonk`, WONK 1) — quirky alternate glyphs that read as
+craft at display size and as a typo anywhere smaller, so nothing else does.
 
 ## 3. Shape, depth, motion
 

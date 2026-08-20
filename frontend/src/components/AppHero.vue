@@ -26,7 +26,7 @@ function toggleGoal() {
 
 <template>
   <header class="mb-8 text-center">
-    <h1 class="font-display mx-auto max-w-3xl text-4xl leading-[1.1] font-semibold tracking-tight sm:text-6xl">
+    <h1 class="font-display display-wonk mx-auto max-w-3xl text-4xl leading-[1.1] font-semibold tracking-tight sm:text-6xl">
       <template v-if="buying">
         Buy a puppy.
         <span class="text-primary">Don't get scammed.</span>
