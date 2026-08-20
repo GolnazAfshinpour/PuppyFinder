@@ -51,9 +51,14 @@ which is what keeps the serif special. Never larger than `text-6xl`
 - Radii come from theme tokens: cards/modals `--radius-box` (1rem), inputs and
   buttons `--radius-field` (0.75rem), badges `--radius-selector` (1rem).
 - Elevation: photo/content cards use `.card-lift` (warm-tinted shadow, 3px
-  hover lift, gentle photo zoom). Nothing else casts strong shadows.
+  hover lift, gentle photo zoom, hairline `base-300` border so edges survive
+  dark mode). Nothing else casts strong shadows.
+- The page canvas is `base-200`, painted on `body` in `style.css` with a faint
+  honey glow behind the hero — the one piece of texture the brand allows.
 - The sticky nav is glass: `bg-base-200/80 backdrop-blur-md`.
 - Motion is purposeful and short (≤ 0.4s ease); no bouncing, no parallax.
+  Every transform/shimmer is disabled under `prefers-reduced-motion: reduce`
+  (see the guard in `style.css`); hover states must still read without motion.
 
 ## 4. Iconography & imagery
 
