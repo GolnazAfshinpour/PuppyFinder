@@ -1,5 +1,6 @@
 <script setup>
 import { ref } from 'vue'
+import Icon from './Icon.vue'
 
 // One brand, two modes — the old 35-theme picker diluted the identity.
 const DARK = 'goldenhour-dark'
@@ -19,15 +20,14 @@ function toggle() {
 </script>
 
 <template>
-  <!-- aria-label as well as title: with emoji content, the accessible name was "☀️",
-       which a screen reader speaks as "sun" with no hint that it's a control. -->
+  <!-- The icon is decorative; the aria-label carries the control's whole name. -->
   <button
     type="button"
-    class="btn btn-ghost btn-sm btn-circle text-base"
+    class="btn btn-ghost btn-sm btn-circle"
     :title="isDark ? 'Switch to light mode' : 'Switch to dark mode'"
     :aria-label="isDark ? 'Switch to light mode' : 'Switch to dark mode'"
     @click="toggle"
   >
-    <span aria-hidden="true">{{ isDark ? '🌙' : '☀️' }}</span>
+    <Icon :name="isDark ? 'moon' : 'sun'" class="h-4.5 w-4.5" />
   </button>
 </template>

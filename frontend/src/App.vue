@@ -21,6 +21,7 @@ import SourcedPrices from './components/SourcedPrices.vue'
 import SavedDogs from './components/SavedDogs.vue'
 import ThemePicker from './components/ThemePicker.vue'
 import PuppyLogo from './components/PuppyLogo.vue'
+import Icon from './components/Icon.vue'
 
 const US_STATES = [
   'AL', 'AK', 'AZ', 'AR', 'CA', 'CO', 'CT', 'DE', 'FL', 'GA',
@@ -730,7 +731,7 @@ onMounted(() => {
           :aria-label="`Your dogs — ${favorites.length} saved`"
           @click="savedOpen = true"
         >
-          ❤️
+          <Icon name="heart" class="text-primary/80 h-4 w-4" />
           <span v-if="favorites.length" class="badge badge-primary badge-sm">{{ favorites.length }}</span>
           <span class="hidden sm:inline">Your dogs</span>
         </button>
@@ -738,7 +739,8 @@ onMounted(() => {
              protect by staying in place is entirely in the query string — Back restores the
              same search. See DESIGN.md. -->
         <a href="/safe" class="btn btn-ghost btn-sm">
-          🛡️ <span class="hidden sm:inline">Buy safely</span>
+          <Icon name="shield-check" class="text-primary/80 h-4 w-4" />
+          <span class="hidden sm:inline">Buy safely</span>
         </a>
         <ThemePicker />
       </div>
@@ -813,7 +815,7 @@ onMounted(() => {
           href="/safe"
           class="badge badge-lg badge-outline hover:badge-primary cursor-pointer underline decoration-dotted underline-offset-2"
         >
-          🛡️ Scam-safety checklist →
+          <Icon name="shield-check" class="h-3.5 w-3.5" /> Scam-safety checklist →
         </a>
         <!-- Underlined like the others because it is clickable; no arrow, because it toggles
              the view rather than opening something. Hidden in both mode, where each half of
@@ -839,7 +841,8 @@ onMounted(() => {
         aria-controls="search-filters"
         @click="filtersOpen = !filtersOpen"
       >
-        {{ filtersOpen ? '✕ Hide filters' : `⚙︎ Filters${activeChips.length ? ` (${activeChips.length})` : ''}` }}
+        <Icon :name="filtersOpen ? 'close' : 'funnel'" class="h-4 w-4" />
+        {{ filtersOpen ? 'Hide filters' : `Filters${activeChips.length ? ` (${activeChips.length})` : ''}` }}
       </button>
     </div>
 
@@ -877,11 +880,7 @@ onMounted(() => {
       <section>
         <form class="mb-2" @submit.prevent="runSmartSearch">
           <label class="input input-bordered flex w-full max-w-2xl items-center gap-2">
-            <svg class="h-4 w-4 opacity-50" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-              stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <circle cx="11" cy="11" r="7" />
-              <path d="m21 21-4.3-4.3" />
-            </svg>
+            <Icon name="search" class="h-4 w-4 opacity-50" />
             <input
               v-model="smartQuery"
               type="text"
@@ -893,7 +892,9 @@ onMounted(() => {
             <button type="submit" class="btn btn-primary btn-sm -mr-2">Search</button>
           </label>
         </form>
-        <p v-if="smartHint" class="text-base-content/60 mb-3 text-xs">ℹ️ {{ smartHint }}</p>
+        <p v-if="smartHint" class="text-base-content/60 mb-3 flex items-center gap-1 text-xs">
+          <Icon name="info" class="h-3.5 w-3.5 shrink-0" /> {{ smartHint }}
+        </p>
         <div v-else class="mb-3" />
 
         <div v-if="activeChips.length" class="mb-4 flex flex-wrap items-center gap-1.5">

@@ -1,7 +1,9 @@
 <script setup>
 import { onMounted, ref } from 'vue'
+import { ARTICLES, articlePath } from '../content/articles.js'
 import { loadFavorites, loadRecent, toggleFavorite } from '../favorites.js'
 import FeeCheck from './FeeCheck.vue'
+import Icon from './Icon.vue'
 import PuppyLogo from './PuppyLogo.vue'
 import SavedDogs from './SavedDogs.vue'
 import SellerCheck from './SellerCheck.vue'
@@ -97,11 +99,14 @@ function setMeta(attr, key, content) {
           :aria-label="`Your dogs — ${favorites.length} saved`"
           @click="savedOpen = true"
         >
-          ❤️
+          <Icon name="heart" class="text-primary/80 h-4 w-4" />
           <span v-if="favorites.length" class="badge badge-primary badge-sm">{{ favorites.length }}</span>
           <span class="hidden sm:inline">Your dogs</span>
         </button>
-        <a href="/" class="btn btn-ghost btn-sm">🔎 <span class="hidden sm:inline">Find a puppy</span></a>
+        <a href="/" class="btn btn-ghost btn-sm">
+          <Icon name="search" class="text-primary/80 h-4 w-4" />
+          <span class="hidden sm:inline">Find a puppy</span>
+        </a>
         <ThemePicker />
       </div>
     </div>
@@ -186,6 +191,24 @@ function setMeta(attr, key, content) {
            this is the one part of it that ends in a public database rather than in advice. -->
       <SellerCheck v-if="s.slug === 'vet-a-breeder'" class="mt-5" />
     </article>
+
+    <!-- The guide's exits: each article pairs one of these sections with the tool that
+         answers it, so the reader who wants to *check* something has somewhere to go. -->
+    <section class="border-base-300 mt-10 border-t pt-6">
+      <h2 class="mb-2 text-xs font-bold tracking-wide uppercase opacity-60">
+        Check something specific
+      </h2>
+      <ul class="list-none space-y-1 p-0 text-sm">
+        <li v-for="a in ARTICLES" :key="a.slug">
+          <a :href="articlePath(a.slug)" class="link">{{ a.h1 }}</a>
+        </li>
+        <li>
+          <a href="/embed" class="link opacity-80">
+            Run a rescue or shelter? Embed the scam check on your own site
+          </a>
+        </li>
+      </ul>
+    </section>
 
     <p class="mx-auto mt-8 max-w-prose text-center text-xs opacity-60">{{ DISCLAIMER }}</p>
   </main>
