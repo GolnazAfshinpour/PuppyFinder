@@ -1,6 +1,7 @@
 <script setup>
 import { computed, ref } from 'vue'
-import { goodWithLine } from '../goodWith.js'
+import { goodWith } from '../goodWith.js'
+import Icon from './Icon.vue'
 
 const props = defineProps({
   listing: { type: Object, required: true },
@@ -22,8 +23,16 @@ const imageFailed = ref(false)
 
 // Present on about 28% of listings, and the single item adopters rank most important on a
 // profile. Shown when the rescue published it and silent otherwise — the detail view is where
-// "they haven't listed one, ask when you call" belongs.
-const goodWith = computed(() => goodWithLine(props.listing))
+// "they haven't listed one, ask when you call" belongs. Chips, not prose: a family scanning
+// 24 cards for "good with kids" reads a checkmark faster than a sentence. Yes before no, and
+// the negative keeps a neutral icon — it's a fact about the dog, not an alarm.
+const compat = computed(() => {
+  const { yes, no } = goodWith(props.listing)
+  return [
+    ...yes.map((label) => ({ label, ok: true })),
+    ...no.map((label) => ({ label, ok: false })),
+  ]
+})
 
 // One muted metadata line instead of a pile of badges — evidence caps badges
 // at 1-2 per card, so the fit % keeps badge treatment and the rest is text.
@@ -95,8 +104,19 @@ const metaLine = computed(() => {
       <p v-if="unconfirmedNote" class="text-xs opacity-60 italic">{{ unconfirmedNote }}</p>
       <p class="text-sm font-medium">{{ listing.breed }}</p>
       <!-- Only rendered when the rescue actually recorded something. A "not recorded" line on
-           three quarters of the grid would be noise rather than honesty. -->
-      <p v-if="goodWith" class="text-xs opacity-70">{{ goodWith }}</p>
+           three quarters of the grid would be noise rather than honesty. The icon is shape as
+           well as color (check vs cross), and the sr-only text carries the full phrase. -->
+      <ul v-if="compat.length" class="m-0 flex list-none flex-wrap gap-x-3 gap-y-1 p-0 text-xs">
+        <li v-for="c in compat" :key="c.label" class="flex items-center gap-1 opacity-80">
+          <Icon
+            :name="c.ok ? 'check-circle' : 'x-circle'"
+            class="h-3.5 w-3.5 shrink-0"
+            :class="c.ok ? 'text-success' : 'opacity-60'"
+          />
+          <span class="sr-only">{{ c.ok ? 'Good with' : 'Not good with' }}</span>
+          <span class="capitalize">{{ c.label }}</span>
+        </li>
+      </ul>
       <!--
         Heroicons, not emoji. DESIGN.md §4 allows emoji only as content warmth and never as
         field icons, and 📍/📞 were doing exactly that. Inline paths rather than a dependency
