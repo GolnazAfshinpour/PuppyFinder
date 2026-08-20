@@ -3,10 +3,9 @@ import { computed, onMounted, ref } from 'vue'
 import { loadFavorites, loadRecent, recordViewed, toggleFavorite } from '../favorites.js'
 import { setMeta } from '../meta.js'
 import DogDetail from './DogDetail.vue'
-import Icon from './Icon.vue'
-import PuppyLogo from './PuppyLogo.vue'
 import SavedDogs from './SavedDogs.vue'
-import ThemePicker from './ThemePicker.vue'
+import SiteFooter from './SiteFooter.vue'
+import SiteHeader from './SiteHeader.vue'
 
 // A dog you can link to. The in-app detail stays a dialog (closing it returns to the same
 // search), but the same content deserves a real URL: a shared /dog/<id> opens as a page
@@ -63,39 +62,11 @@ function onLoaded(loaded) {
 </script>
 
 <template>
-  <a
-    href="#main"
-    class="btn btn-primary btn-sm sr-only focus:not-sr-only focus:fixed focus:top-2 focus:left-2 focus:z-50"
-  >
-    Skip to content
-  </a>
-
-  <nav class="bg-base-200/80 sticky top-0 z-40 backdrop-blur-md">
-    <div class="mx-auto flex max-w-3xl items-center justify-between gap-3 px-4 py-2 sm:px-6">
-      <a href="/" class="flex items-center gap-2 no-underline">
-        <PuppyLogo class="h-9 w-9 shrink-0" />
-        <span class="font-display text-xl font-semibold tracking-tight">PuppyFinder</span>
-      </a>
-      <div class="flex items-center gap-1">
-        <button
-          v-if="favorites.length || recent.length"
-          type="button"
-          class="btn btn-ghost btn-sm"
-          :aria-label="`Your dogs — ${favorites.length} saved`"
-          @click="savedOpen = true"
-        >
-          <Icon name="heart" class="text-primary/80 h-4 w-4" />
-          <span v-if="favorites.length" class="badge badge-primary badge-sm">{{ favorites.length }}</span>
-          <span class="hidden sm:inline">Your dogs</span>
-        </button>
-        <a href="/" class="btn btn-ghost btn-sm">
-          <Icon name="search" class="text-primary/80 h-4 w-4" />
-          <span class="hidden sm:inline">Find a puppy</span>
-        </a>
-        <ThemePicker />
-      </div>
-    </div>
-  </nav>
+  <SiteHeader
+    :show-saved="Boolean(favorites.length || recent.length)"
+    :saved-count="favorites.length"
+    @open-saved="savedOpen = true"
+  />
 
   <main id="main" class="mx-auto max-w-3xl px-4 pt-6 pb-16 sm:px-6">
     <p class="mb-4">
@@ -111,6 +82,8 @@ function onLoaded(loaded) {
       @search-similar="searchSimilar"
     />
   </main>
+
+  <SiteFooter />
 
   <SavedDogs
     v-if="savedOpen"

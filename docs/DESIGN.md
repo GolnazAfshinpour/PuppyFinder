@@ -72,6 +72,11 @@ which is what keeps the serif special. Never larger than `text-6xl`
 
 ## 5. Component conventions
 
+- **Page chrome:** every page renders `SiteHeader` (skip link + glass nav; `home`
+  gives the search app its wide container and "Buy safely" link, everything else
+  gets the narrow container and "Find a puppy") and `SiteFooter` (safety + scam
+  guide links). Never paste nav or footer markup into a page — five copies is how
+  the icons drifted apart the last time.
 - **Dog card:** photo with favorite heart top-right (base-100/85 blur circle,
   primary heart, `aria-pressed`) → Fraunces name (stretched link: the name's hit area is
   the whole card, other interactive elements sit above via `relative z-10`,

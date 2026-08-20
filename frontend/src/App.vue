@@ -7,8 +7,9 @@ import { parseQuery } from './smartSearch.js'
 import { useDrawer } from './useModal.js'
 import { fetchBreedImage } from './dogImages.js'
 import { buildSearchQuery, parseSearchUrl } from './searchUrl.js'
-import { ARTICLES, articlePath } from './content/articles.js'
-import { SAFETY_SECTIONS, safetyPath } from './content/safety.js'
+import AppHero from './components/AppHero.vue'
+import SiteHeader from './components/SiteHeader.vue'
+import SiteFooter from './components/SiteFooter.vue'
 import SearchHub from './components/SearchHub.vue'
 import ResultsFallback from './components/ResultsFallback.vue'
 import ListingCard from './components/ListingCard.vue'
@@ -20,8 +21,6 @@ import AlertSignup from './components/AlertSignup.vue'
 import BreedQuiz from './components/BreedQuiz.vue'
 import SourcedPrices from './components/SourcedPrices.vue'
 import SavedDogs from './components/SavedDogs.vue'
-import ThemePicker from './components/ThemePicker.vue'
-import PuppyLogo from './components/PuppyLogo.vue'
 import Icon from './components/Icon.vue'
 
 const US_STATES = [
@@ -714,135 +713,25 @@ onMounted(() => {
 </script>
 
 <template>
-  <!-- Visually hidden until focused: the first Tab stop skips the nav and hero for keyboard
-       and screen-reader users, who otherwise walk every chip to reach the dogs. -->
-  <a
-    href="#main"
-    class="btn btn-primary btn-sm sr-only focus:not-sr-only focus:fixed focus:top-2 focus:left-2 focus:z-50"
-  >
-    Skip to content
-  </a>
-
-  <!-- Glass sticky nav: identity + global actions, nothing else. -->
-  <nav class="bg-base-200/80 sticky top-0 z-40 backdrop-blur-md">
-    <div class="mx-auto flex max-w-6xl items-center justify-between gap-3 px-4 py-2 sm:px-6">
-      <!-- A link, like the guide's logo already is: there was no home link anywhere in this nav. -->
-      <a href="/" class="flex items-center gap-2">
-        <PuppyLogo class="h-9 w-9 shrink-0" />
-        <span class="font-display text-xl font-semibold tracking-tight">PuppyFinder</span>
-      </a>
-      <div class="flex items-center gap-1">
-        <!--
-          Saving was one click and everywhere; retrieving was a 5,000px scroll and then an
-          accordion. The count belongs where it is always visible.
-        -->
-        <button
-          v-if="favorites.length || recent.length"
-          type="button"
-          class="btn btn-ghost btn-sm"
-          :aria-label="`Your dogs — ${favorites.length} saved`"
-          @click="savedOpen = true"
-        >
-          <Icon name="heart" class="text-primary/80 h-4 w-4" />
-          <span v-if="favorites.length" class="badge badge-primary badge-sm">{{ favorites.length }}</span>
-          <span class="hidden sm:inline">Your dogs</span>
-        </button>
-        <!-- A link, not a dialog. The guide is eight pages now, and the state this used to
-             protect by staying in place is entirely in the query string — Back restores the
-             same search. See DESIGN.md. -->
-        <a href="/safe" class="btn btn-ghost btn-sm">
-          <Icon name="shield-check" class="text-primary/80 h-4 w-4" />
-          <span class="hidden sm:inline">Buy safely</span>
-        </a>
-        <ThemePicker />
-      </div>
-    </div>
-  </nav>
+  <SiteHeader
+    home
+    :show-saved="Boolean(favorites.length || recent.length)"
+    :saved-count="favorites.length"
+    @open-saved="savedOpen = true"
+  />
 
   <main id="main" class="mx-auto max-w-6xl px-4 pt-6 pb-16 sm:px-6">
     <!-- The one place a filter change is *announced*. Sighted users watch the grid repaint;
          a screen reader heard nothing at all — no busy state, no new count, nothing. -->
     <p role="status" aria-live="polite" class="sr-only">{{ resultsAnnouncement }}</p>
 
-    <!--
-      Editorial hero: one headline doing the brand work, numeric trust under it.
-
-      Mode-aware, because it wasn't: "Buy a puppy. Don't get scammed." sat above a grid of
-      rescue dogs, and the subhead talked about which marketplaces vet their breeders while
-      you were browsing shelters. The headline contradicted the page under it.
-    -->
-    <header class="mb-8 text-center">
-      <h1 class="font-display mx-auto max-w-3xl text-4xl leading-[1.1] font-semibold tracking-tight sm:text-6xl">
-        <template v-if="buying">
-          Buy a puppy.
-          <span class="text-primary">Don't get scammed.</span>
-        </template>
-        <template v-else-if="goal === 'both'">
-          Adopt or buy.
-          <span class="text-primary">Don't get scammed either way.</span>
-        </template>
-        <template v-else>
-          Adopt a dog.
-          <span class="text-primary">They're already waiting.</span>
-        </template>
-      </h1>
-      <p class="text-base-content/70 mx-auto mt-3 max-w-xl text-base">
-        <template v-if="buying">
-          Which marketplaces actually vet their breeders, which ones have a complaint
-          record, and the checks that catch a scam before you send a cent.
-        </template>
-        <template v-else-if="goal === 'both'">
-          Live shelter dogs next to honestly rated breeder marketplaces — and the checks
-          that catch a scam before you send a cent.
-        </template>
-        <template v-else>
-          Real dogs from public shelter feeds — photo, age, size and the shelter's own phone
-          number. No listing fees, no middlemen, and most are already vaccinated and neutered.
-        </template>
-      </p>
-      <!--
-        The clickable chips carry an arrow and an underline; the static one carries neither.
-        Before this they were all `badge badge-outline` and visually identical, so three
-        buttons sat in a row of four chips with nothing to say they did anything — and
-        cursor-pointer only helps after you have already guessed.
-      -->
-      <div class="mt-4 flex flex-wrap justify-center gap-2">
-        <button
-          v-if="showBuy && verifiedBreedCount"
-          type="button"
-          class="badge badge-lg badge-outline hover:badge-primary cursor-pointer underline decoration-dotted underline-offset-2"
-          @click="pricesOpen = true"
-        >
-          {{ verifiedBreedCount }} sourced price ranges →
-        </button>
-        <span v-if="buying" class="badge badge-lg badge-outline opacity-70">
-          7 breeder marketplaces, honestly rated
-        </span>
-        <!-- Adopting: the honest headline number is coverage, and it is already computed. -->
-        <span v-else-if="coverage.length" class="badge badge-lg badge-outline opacity-70">
-          {{ liveCount }} dogs live across {{ coverage.length }}
-          {{ coverage.length === 1 ? 'state' : 'states' }}
-        </span>
-        <a
-          href="/safe"
-          class="badge badge-lg badge-outline hover:badge-primary cursor-pointer underline decoration-dotted underline-offset-2"
-        >
-          <Icon name="shield-check" class="h-3.5 w-3.5" /> Scam-safety checklist →
-        </a>
-        <!-- Underlined like the others because it is clickable; no arrow, because it toggles
-             the view rather than opening something. Hidden in both mode, where each half of
-             its label would describe something already on the page. -->
-        <button
-          v-if="liveCount && goal !== 'both'"
-          type="button"
-          class="badge badge-lg cursor-pointer underline decoration-dotted underline-offset-2"
-          :class="goal === 'adopt' ? 'badge-primary' : 'badge-outline hover:badge-primary'"
-          @click="goal = goal === 'adopt' ? 'buy' : 'adopt'"
-        >
-          {{ goal === 'adopt' ? '🛍️ Or buy from a breeder' : `🤝 Or adopt (${liveCount} live)` }}
-        </button>
-      </div>
-    </header>
+    <AppHero
+      v-model:goal="goal"
+      :verified-breed-count="verifiedBreedCount"
+      :live-count="liveCount"
+      :coverage-states="coverage.length"
+      @open-prices="pricesOpen = true"
+    />
 
     <!-- Mobile: filters live behind a toggle so dogs stay above the fold. -->
     <div class="mb-4 lg:hidden">
@@ -1229,39 +1118,5 @@ onMounted(() => {
     />
   </main>
 
-  <!--
-    The safety guide's only link into the app used to be inside the modal, which nothing that
-    doesn't click ever opens — so eight pages of the best writing here had no route in. These
-    are real <a href>s on the default screen: a crawler can reach them, and a reader who wants
-    to send one to someone has a URL to copy.
-  -->
-  <footer class="border-base-300 border-t">
-    <div class="mx-auto max-w-6xl px-4 py-8 sm:px-6">
-      <h2 class="mb-3 text-xs font-bold tracking-wide uppercase opacity-60">
-        <a href="/safe" class="link link-hover">Buy &amp; adopt safely</a>
-      </h2>
-      <ul class="grid list-none gap-x-6 gap-y-1 p-0 text-sm sm:grid-cols-2 lg:grid-cols-4">
-        <li v-for="s in SAFETY_SECTIONS" :key="s.slug">
-          <a :href="safetyPath(s.slug)" class="link link-hover opacity-70">
-            <span aria-hidden="true">{{ s.emoji }}</span> {{ s.title }}
-          </a>
-        </li>
-      </ul>
-      <!-- The scam-guide entrance pages. A page nothing links to is an orphan however good it
-           is — the same rule that put the safety anchors above into this footer. -->
-      <h2 class="mt-6 mb-3 text-xs font-bold tracking-wide uppercase opacity-60">Scam guides</h2>
-      <ul class="grid list-none gap-x-6 gap-y-1 p-0 text-sm sm:grid-cols-2 lg:grid-cols-4">
-        <li v-for="a in ARTICLES" :key="a.slug">
-          <a :href="articlePath(a.slug)" class="link link-hover opacity-70">{{ a.h1 }}</a>
-        </li>
-        <li>
-          <a href="/embed" class="link link-hover opacity-70">
-            For rescues: a free scam-check widget
-          </a>
-        </li>
-      </ul>
-      <!-- No disclaimer here: ResultsFallback already ends every screen with one, and two
-           near-identical ones stacked a scroll apart is how a caveat stops being read. -->
-    </div>
-  </footer>
+  <SiteFooter home />
 </template>

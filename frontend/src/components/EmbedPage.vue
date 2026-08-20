@@ -1,9 +1,9 @@
 <script setup>
 import { onMounted, ref } from 'vue'
 import { EMBED_META } from '../content/articles.js'
-import Icon from './Icon.vue'
-import PuppyLogo from './PuppyLogo.vue'
-import ThemePicker from './ThemePicker.vue'
+import { setMeta } from '../meta.js'
+import SiteFooter from './SiteFooter.vue'
+import SiteHeader from './SiteHeader.vue'
 
 // The pitch page for rescues and shelters: a free, no-signup scam-check widget for their own
 // warning pages. This is also the project's partnership surface — a rescue that embeds the
@@ -40,41 +40,10 @@ async function copy() {
     // The textarea below is selectable either way.
   }
 }
-
-function setMeta(attr, key, content) {
-  let tag = document.head.querySelector(`meta[${attr}="${key}"]`)
-  if (!tag) {
-    tag = document.createElement('meta')
-    tag.setAttribute(attr, key)
-    document.head.appendChild(tag)
-  }
-  tag.setAttribute('content', content)
-}
 </script>
 
 <template>
-  <a
-    href="#main"
-    class="btn btn-primary btn-sm sr-only focus:not-sr-only focus:fixed focus:top-2 focus:left-2 focus:z-50"
-  >
-    Skip to content
-  </a>
-
-  <nav class="bg-base-200/80 sticky top-0 z-40 backdrop-blur-md">
-    <div class="mx-auto flex max-w-3xl items-center justify-between gap-3 px-4 py-2 sm:px-6">
-      <a href="/" class="flex items-center gap-2 no-underline">
-        <PuppyLogo class="h-9 w-9 shrink-0" />
-        <span class="font-display text-xl font-semibold tracking-tight">PuppyFinder</span>
-      </a>
-      <div class="flex items-center gap-1">
-        <a href="/" class="btn btn-ghost btn-sm">
-          <Icon name="search" class="text-primary/80 h-4 w-4" />
-          <span class="hidden sm:inline">Find a puppy</span>
-        </a>
-        <ThemePicker />
-      </div>
-    </div>
-  </nav>
+  <SiteHeader />
 
   <main id="main" class="mx-auto max-w-3xl px-4 pt-8 pb-16 sm:px-6">
     <header class="mb-6">
@@ -137,4 +106,6 @@ function setMeta(attr, key, content) {
       >the project's GitHub</a> — the whole app is open source.
     </p>
   </main>
+
+  <SiteFooter />
 </template>

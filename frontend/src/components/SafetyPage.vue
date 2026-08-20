@@ -2,12 +2,12 @@
 import { onMounted, ref } from 'vue'
 import { ARTICLES, articlePath } from '../content/articles.js'
 import { loadFavorites, loadRecent, toggleFavorite } from '../favorites.js'
+import { setMeta } from '../meta.js'
 import FeeCheck from './FeeCheck.vue'
-import Icon from './Icon.vue'
-import PuppyLogo from './PuppyLogo.vue'
 import SavedDogs from './SavedDogs.vue'
 import SellerCheck from './SellerCheck.vue'
-import ThemePicker from './ThemePicker.vue'
+import SiteFooter from './SiteFooter.vue'
+import SiteHeader from './SiteHeader.vue'
 import {
   DISCLAIMER,
   GUIDE_META,
@@ -66,51 +66,14 @@ function unsave(listing) {
   favorites.value = toggleFavorite(listing)
 }
 
-function setMeta(attr, key, content) {
-  let tag = document.head.querySelector(`meta[${attr}="${key}"]`)
-  if (!tag) {
-    tag = document.createElement('meta')
-    tag.setAttribute(attr, key)
-    document.head.appendChild(tag)
-  }
-  tag.setAttribute('content', content)
-}
 </script>
 
 <template>
-  <a
-    href="#main"
-    class="btn btn-primary btn-sm sr-only focus:not-sr-only focus:fixed focus:top-2 focus:left-2 focus:z-50"
-  >
-    Skip to content
-  </a>
-
-  <nav class="bg-base-200/80 sticky top-0 z-40 backdrop-blur-md">
-    <div class="mx-auto flex max-w-3xl items-center justify-between gap-3 px-4 py-2 sm:px-6">
-      <a href="/" class="flex items-center gap-2 no-underline">
-        <PuppyLogo class="h-9 w-9 shrink-0" />
-        <span class="font-display text-xl font-semibold tracking-tight">PuppyFinder</span>
-      </a>
-      <div class="flex items-center gap-1">
-        <button
-          v-if="favorites.length || recent.length"
-          type="button"
-          class="btn btn-ghost btn-sm"
-          :aria-label="`Your dogs — ${favorites.length} saved`"
-          @click="savedOpen = true"
-        >
-          <Icon name="heart" class="text-primary/80 h-4 w-4" />
-          <span v-if="favorites.length" class="badge badge-primary badge-sm">{{ favorites.length }}</span>
-          <span class="hidden sm:inline">Your dogs</span>
-        </button>
-        <a href="/" class="btn btn-ghost btn-sm">
-          <Icon name="search" class="text-primary/80 h-4 w-4" />
-          <span class="hidden sm:inline">Find a puppy</span>
-        </a>
-        <ThemePicker />
-      </div>
-    </div>
-  </nav>
+  <SiteHeader
+    :show-saved="Boolean(favorites.length || recent.length)"
+    :saved-count="favorites.length"
+    @open-saved="savedOpen = true"
+  />
 
   <main id="main" class="mx-auto max-w-3xl px-4 pt-8 pb-16 sm:px-6">
     <header class="mb-6">
@@ -212,6 +175,8 @@ function setMeta(attr, key, content) {
 
     <p class="mx-auto mt-8 max-w-prose text-center text-xs opacity-60">{{ DISCLAIMER }}</p>
   </main>
+
+  <SiteFooter />
 
   <SavedDogs
     v-if="savedOpen"
